@@ -19,7 +19,7 @@ describe("Line of Sight System", function () {
       mapsContract.address,
       {
         client: { wallet: userAccount },
-      }
+      },
     );
 
     return {
@@ -45,7 +45,7 @@ describe("Line of Sight System", function () {
     startPos: [number, number],
     endPos: [number, number],
     blockedPositions: [number, number][],
-    hasLOS: boolean
+    hasLOS: boolean,
   ): string {
     let diagram = `\nGrid: ${width}x${height} | LOS: ${hasLOS ? "✅" : "❌"}\n`;
     diagram += "  " + "0123456789".repeat(Math.ceil(width / 10)) + "\n";
@@ -72,7 +72,7 @@ describe("Line of Sight System", function () {
   // Helper function to set multiple blocked tiles
   async function setBlockedTiles(
     gameId: number,
-    positions: [number, number][]
+    positions: [number, number][],
   ) {
     for (const [row, col] of positions) {
       await maps.write.setBlockedTile([BigInt(gameId), row, col, true], {
@@ -84,7 +84,7 @@ describe("Line of Sight System", function () {
   // Helper function to set multiple scoring tiles
   async function setScoringTiles(
     gameId: number,
-    positions: [number, number][]
+    positions: [number, number][],
   ) {
     for (const [row, col] of positions) {
       await maps.write.setScoringTile([BigInt(gameId), row, col, 1], {
@@ -148,7 +148,7 @@ describe("Line of Sight System", function () {
       const col = 10;
 
       await expect(
-        userMaps.write.setBlockedTile([BigInt(gameId), row, col, true])
+        userMaps.write.setBlockedTile([BigInt(gameId), row, col, true]),
       ).to.be.rejected;
     });
   });
@@ -161,26 +161,26 @@ describe("Line of Sight System", function () {
       await expect(
         maps.write.setBlockedTile([BigInt(gameId), -1, 0, true], {
           account: owner.address,
-        })
+        }),
       ).to.be.rejected;
 
       await expect(
         maps.write.setBlockedTile([BigInt(gameId), 0, -1, true], {
           account: owner.address,
-        })
+        }),
       ).to.be.rejected;
 
       // Test coordinates beyond grid size
       await expect(
         maps.write.setBlockedTile([BigInt(gameId), 50, 0, true], {
           account: owner.address,
-        })
+        }),
       ).to.be.rejected;
 
       await expect(
         maps.write.setBlockedTile([BigInt(gameId), 0, 100, true], {
           account: owner.address,
-        })
+        }),
       ).to.be.rejected;
     });
 
@@ -836,7 +836,7 @@ describe("Line of Sight System", function () {
         await expect(
           maps.write.createPresetMap([invalidPositions], {
             account: owner.address,
-          })
+          }),
         ).to.be.rejected;
       });
     });
@@ -860,7 +860,7 @@ describe("Line of Sight System", function () {
 
         // Check that all positions are present
         const positionStrings = retrievedPositions.map(
-          (p: any) => `${p.row},${p.col}`
+          (p: any) => `${p.row},${p.col}`,
         );
         expect(positionStrings).to.include("5,5");
         expect(positionStrings).to.include("5,6");
@@ -945,7 +945,7 @@ describe("Line of Sight System", function () {
         await expect(
           maps.write.updatePresetMap([999, positions], {
             account: owner.address,
-          })
+          }),
         ).to.be.rejected;
       });
 
@@ -981,13 +981,17 @@ describe("Line of Sight System", function () {
 
         expect(retrievedBlocked).to.have.length(2);
         // Order may vary, so check both positions are present
-        const blockedPositions = retrievedBlocked.map((p: any) => `${p.row},${p.col}`);
-        expect(blockedPositions).to.include.members(['10,10', '9,9']);
+        const blockedPositions = retrievedBlocked.map(
+          (p: any) => `${p.row},${p.col}`,
+        );
+        expect(blockedPositions).to.include.members(["10,10", "9,9"]);
 
         expect(retrievedScoring).to.have.length(2);
         // Order may vary, so check both positions are present
-        const scoringPositions = retrievedScoring.map((p: any) => `${p.row},${p.col},${p.points}`);
-        expect(scoringPositions).to.include.members(['5,5,10', '8,8,15']);
+        const scoringPositions = retrievedScoring.map(
+          (p: any) => `${p.row},${p.col},${p.points}`,
+        );
+        expect(scoringPositions).to.include.members(["5,5,10", "8,8,15"]);
         expect(retrievedScoring[1]).to.deep.equal({
           row: 8,
           col: 8,
@@ -1112,7 +1116,7 @@ describe("Line of Sight System", function () {
         const mapId = await maps.read.mapCount();
         const gameId = 123;
         await expect(
-          userMaps.write.applyPresetMapToGame([BigInt(gameId), mapId])
+          userMaps.write.applyPresetMapToGame([BigInt(gameId), mapId]),
         ).to.be.rejected;
       });
 
@@ -1121,7 +1125,7 @@ describe("Line of Sight System", function () {
         await expect(
           maps.write.applyPresetMapToGame([BigInt(gameId), 999], {
             account: owner.address,
-          })
+          }),
         ).to.be.rejected;
       });
     });
@@ -1160,7 +1164,7 @@ describe("Line of Sight System", function () {
           [blockedPositions1, scoringPositions1],
           {
             account: owner.address,
-          }
+          },
         );
 
         // Create second map with only blocked tiles
@@ -1315,7 +1319,7 @@ describe("Line of Sight System", function () {
         const col = 10;
 
         await expect(
-          userMaps.write.setScoringTile([BigInt(gameId), row, col, 1])
+          userMaps.write.setScoringTile([BigInt(gameId), row, col, 1]),
         ).to.be.rejected;
       });
 
@@ -1326,26 +1330,26 @@ describe("Line of Sight System", function () {
         await expect(
           maps.write.setScoringTile([BigInt(gameId), -1, 0, 1], {
             account: owner.address,
-          })
+          }),
         ).to.be.rejected;
 
         await expect(
           maps.write.setScoringTile([BigInt(gameId), 0, -1, 1], {
             account: owner.address,
-          })
+          }),
         ).to.be.rejected;
 
         // Test coordinates beyond grid size
         await expect(
           maps.write.setScoringTile([BigInt(gameId), 50, 0, 1], {
             account: owner.address,
-          })
+          }),
         ).to.be.rejected;
 
         await expect(
           maps.write.setScoringTile([BigInt(gameId), 0, 100, 1], {
             account: owner.address,
-          })
+          }),
         ).to.be.rejected;
       });
     });
@@ -1408,7 +1412,7 @@ describe("Line of Sight System", function () {
         await expect(
           maps.write.createPresetScoringMap([invalidPositions], {
             account: owner.address,
-          })
+          }),
         ).to.be.rejected;
       });
 
@@ -1518,7 +1522,7 @@ describe("Line of Sight System", function () {
         await expect(
           maps.write.updatePresetScoringMap([999, positions], {
             account: owner.address,
-          })
+          }),
         ).to.be.rejected;
       });
 
@@ -1541,13 +1545,13 @@ describe("Line of Sight System", function () {
 
         // Verify scoring tiles are applied to the game
         expect(await maps.read.isTileScoring([BigInt(gameId), 5, 5])).to.equal(
-          1
+          1,
         );
         expect(
-          await maps.read.isTileScoring([BigInt(gameId), 10, 10])
+          await maps.read.isTileScoring([BigInt(gameId), 10, 10]),
         ).to.equal(1);
         expect(await maps.read.isTileScoring([BigInt(gameId), 0, 0])).to.equal(
-          0
+          0,
         );
       });
 
@@ -1570,7 +1574,7 @@ describe("Line of Sight System", function () {
 
         // Game 2 should not have scoring tiles yet
         expect(await maps.read.isTileScoring([BigInt(game2Id), 5, 5])).to.equal(
-          0
+          0,
         );
 
         // Apply to game 2
@@ -1580,10 +1584,10 @@ describe("Line of Sight System", function () {
 
         // Now both games should have scoring tiles
         expect(await maps.read.isTileScoring([BigInt(game1Id), 5, 5])).to.equal(
-          1
+          1,
         );
         expect(await maps.read.isTileScoring([BigInt(game2Id), 5, 5])).to.equal(
-          1
+          1,
         );
       });
 
@@ -1598,7 +1602,7 @@ describe("Line of Sight System", function () {
         const mapId = await maps.read.mapCount();
         const gameId = 123;
         await expect(
-          userMaps.write.applyPresetScoringMapToGame([BigInt(gameId), mapId])
+          userMaps.write.applyPresetScoringMapToGame([BigInt(gameId), mapId]),
         ).to.be.rejected;
       });
 
@@ -1607,7 +1611,7 @@ describe("Line of Sight System", function () {
         await expect(
           maps.write.applyPresetScoringMapToGame([BigInt(gameId), 999], {
             account: owner.address,
-          })
+          }),
         ).to.be.rejected;
       });
     });
@@ -1630,7 +1634,7 @@ describe("Line of Sight System", function () {
         expect(await maps.read.isTileBlocked([BigInt(gameId), row, col])).to.be
           .true;
         expect(
-          await maps.read.isTileScoring([BigInt(gameId), row, col])
+          await maps.read.isTileScoring([BigInt(gameId), row, col]),
         ).to.equal(1);
       });
 
@@ -1664,14 +1668,14 @@ describe("Line of Sight System", function () {
           [BigInt(gameId), scoringMapId],
           {
             account: owner.address,
-          }
+          },
         );
 
         // Verify both blocked and scoring tiles are applied
         expect(await maps.read.isTileBlocked([BigInt(gameId), 5, 5])).to.be
           .true;
         expect(
-          await maps.read.isTileScoring([BigInt(gameId), 10, 10])
+          await maps.read.isTileScoring([BigInt(gameId), 10, 10]),
         ).to.equal(1);
       });
 
@@ -1689,7 +1693,7 @@ describe("Line of Sight System", function () {
         expect(await maps.read.isTileBlocked([BigInt(gameId), row, col])).to.be
           .true;
         expect(
-          await maps.read.isTileScoring([BigInt(gameId), row, col])
+          await maps.read.isTileScoring([BigInt(gameId), row, col]),
         ).to.equal(0);
 
         // Set tile as scoring only
@@ -1704,7 +1708,7 @@ describe("Line of Sight System", function () {
         expect(await maps.read.isTileBlocked([BigInt(gameId), row, col])).to.be
           .false;
         expect(
-          await maps.read.isTileScoring([BigInt(gameId), row, col])
+          await maps.read.isTileScoring([BigInt(gameId), row, col]),
         ).to.equal(1);
       });
     });
@@ -1717,16 +1721,16 @@ describe("Line of Sight System", function () {
         // Note: We can't directly test _isTileScoringSafe as it's internal,
         // but we can test the behavior through public functions
         expect(
-          await maps.read.isTileScoringSafe([BigInt(gameId), -1, 0])
+          await maps.read.isTileScoringSafe([BigInt(gameId), -1, 0]),
         ).to.equal(0);
         expect(
-          await maps.read.isTileScoringSafe([BigInt(gameId), 0, -1])
+          await maps.read.isTileScoringSafe([BigInt(gameId), 0, -1]),
         ).to.equal(0);
         expect(
-          await maps.read.isTileScoringSafe([BigInt(gameId), 50, 0])
+          await maps.read.isTileScoringSafe([BigInt(gameId), 50, 0]),
         ).to.equal(0);
         expect(
-          await maps.read.isTileScoringSafe([BigInt(gameId), 0, 100])
+          await maps.read.isTileScoringSafe([BigInt(gameId), 0, 100]),
         ).to.equal(0);
       });
     });

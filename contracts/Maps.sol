@@ -39,12 +39,25 @@ contract Maps is Ownable {
     // Address of the Game contract that can apply preset maps
     address public gameAddress;
 
+    // Addresses allowed to create/edit preset maps (in addition to the owner)
+    mapping(address => bool) public isMapEditor;
+
     // Custom error for invalid positions
     error InvalidPosition();
     error MapNotFound();
     error NotGameContract();
+    error NotMapEditor();
+
+    event MapEditorSet(address indexed editor, bool allowed);
 
     constructor() Ownable(msg.sender) {}
+
+    /// @dev Restricts to the owner or an allowed map editor.
+    modifier onlyMapEditor() {
+        if (msg.sender != owner() && !isMapEditor[msg.sender])
+            revert NotMapEditor();
+        _;
+    }
 
     /**
      * @dev Set the address of the Game contract
@@ -55,6 +68,16 @@ contract Maps is Ownable {
     }
 
     /**
+     * @dev Grant or revoke map-editor rights (create/edit preset maps and tiles).
+     * @param _editor The address to update
+     * @param _allowed Whether the address may edit maps
+     */
+    function setMapEditor(address _editor, bool _allowed) external onlyOwner {
+        isMapEditor[_editor] = _allowed;
+        emit MapEditorSet(_editor, _allowed);
+    }
+
+    /**
      * @dev Create a new preset map with both blocked and scoring tiles
      * @param _blockedPositions Array of blocked positions
      * @param _scoringPositions Array of scoring positions with point values
@@ -62,7 +85,7 @@ contract Maps is Ownable {
     function createPresetMap(
         Position[] memory _blockedPositions,
         ScoringPosition[] memory _scoringPositions
-    ) external onlyOwner {
+    ) external onlyMapEditor {
         _createPresetMapInternal(_blockedPositions, _scoringPositions);
     }
 
@@ -72,7 +95,7 @@ contract Maps is Ownable {
      */
     function createPresetMap(
         Position[] memory _blockedPositions
-    ) external onlyOwner {
+    ) external onlyMapEditor {
         _createPresetMapInternal(_blockedPositions, new ScoringPosition[](0));
     }
 
@@ -82,7 +105,7 @@ contract Maps is Ownable {
      */
     function createPresetScoringMap(
         ScoringPosition[] memory _scoringPositions
-    ) external onlyOwner {
+    ) external onlyMapEditor {
         _createPresetMapInternal(new Position[](0), _scoringPositions);
     }
 
@@ -135,7 +158,7 @@ contract Maps is Ownable {
     function updatePresetMap(
         uint _mapId,
         Position[] calldata _blockedPositions
-    ) external onlyOwner {
+    ) external onlyMapEditor {
         if (_mapId == 0 || _mapId > mapCount) revert MapNotFound();
 
         // Get the current blocked positions and clear them
@@ -168,7 +191,7 @@ contract Maps is Ownable {
     function updatePresetScoringMap(
         uint _mapId,
         ScoringPosition[] calldata _scoringPositions
-    ) external onlyOwner {
+    ) external onlyMapEditor {
         if (_mapId == 0 || _mapId > mapCount) revert MapNotFound();
 
         // Get the current scoring positions and clear them
@@ -207,7 +230,7 @@ contract Maps is Ownable {
         uint _mapId,
         Position[] memory _blockedPositions,
         ScoringPosition[] memory _scoringPositions
-    ) external onlyOwner {
+    ) external onlyMapEditor {
         if (_mapId == 0 || _mapId > mapCount) revert MapNotFound();
 
         // Clear existing blocked positions
@@ -529,7 +552,7 @@ contract Maps is Ownable {
         int16 _row,
         int16 _col,
         bool _blocked
-    ) external onlyOwner {
+    ) external onlyMapEditor {
         if (_row < 0 || _row >= GRID_HEIGHT || _col < 0 || _col >= GRID_WIDTH) {
             revert InvalidPosition();
         }
@@ -548,7 +571,7 @@ contract Maps is Ownable {
         int16 _row,
         int16 _col,
         uint8 _points
-    ) external onlyOwner {
+    ) external onlyMapEditor {
         if (_row < 0 || _row >= GRID_HEIGHT || _col < 0 || _col >= GRID_WIDTH) {
             revert InvalidPosition();
         }

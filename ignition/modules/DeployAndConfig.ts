@@ -8,6 +8,10 @@ import { parseEther } from "viem";
 // rights as ShipPurchaser.
 const FIREBASE_FLOW_MINTER = "0x7f9dc2D68FF842EC79DA722B68E3ca7e5aa31CCb";
 
+// Address allowed to create/edit preset maps (in addition to the owner). Lets
+// map editing be done from a wallet other than the deployer/owner.
+const MAP_EDITOR = "0x69a5B3aE8598fC5A5419eaa1f2A59Db2D052e346";
+
 const DeployModule = buildModule("DeployModule", (m) => {
   // Deploy helper contracts first
   const randomManager = m.contract("RandomManager");
@@ -162,6 +166,11 @@ const DeployModule = buildModule("DeployModule", (m) => {
 
   // Set Game address in Maps contract
   m.call(maps, "setGameAddress", [game]);
+
+  // Allow the designated map editor wallet to create/edit preset maps
+  m.call(maps, "setMapEditor", [MAP_EDITOR, true], {
+    id: "AllowMapEditor",
+  });
 
   // Set Game address in Lobbies contract
   m.call(lobbies, "setGameAddress", [game]);
