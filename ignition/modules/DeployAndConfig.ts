@@ -4,6 +4,10 @@
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
 import { parseEther } from "viem";
 
+// Address allowed to mint ships from the Firebase Flow backend, with the same
+// rights as ShipPurchaser.
+const FIREBASE_FLOW_MINTER = "0x7f9dc2D68FF842EC79DA722B68E3ca7e5aa31CCb";
+
 const DeployModule = buildModule("DeployModule", (m) => {
   // Deploy helper contracts first
   const randomManager = m.contract("RandomManager");
@@ -190,6 +194,11 @@ const DeployModule = buildModule("DeployModule", (m) => {
 
   m.call(ships, "setIsAllowedToCreateShips", [tutorialClaim, true], {
     id: "AllowTutorialClaimToCreateShips",
+  });
+
+  // Allow the Firebase Flow backend minter to create ships (same as ShipPurchaser)
+  m.call(ships, "setIsAllowedToCreateShips", [FIREBASE_FLOW_MINTER, true], {
+    id: "AllowFirebaseFlowMinterToCreateShips",
   });
 
   m.call(gameResults, "setTutorialClaimContract", [tutorialClaim], {
