@@ -23,14 +23,16 @@ function generateStartingPositions(shipIds: bigint[], isCreator: boolean) {
 
 describe("Tournament", function () {
   async function deployTournamentFixture() {
-    const [owner, alice, bob, carol, feeRecipient] =
-      await hre.viem.getWalletClients();
+    const [owner, alice, bob, carol] = await hre.viem.getWalletClients();
     const publicClient = await hre.viem.getPublicClient();
+
+    // The module wires the protocol fee recipient to the deployer (account 0),
+    // which is `owner` here.
+    const feeRecipient = owner;
 
     const deployed = await hre.ignition.deploy(DeployTournamentModule);
 
-    // Tournament + World ID mock come from the Ignition module. The module wires
-    // the protocol fee recipient to account index 4, matching `feeRecipient` below.
+    // Tournament + World ID mock come from the Ignition module.
     const tournament = deployed.tournament;
     const mockWorldId = deployed.worldId;
 

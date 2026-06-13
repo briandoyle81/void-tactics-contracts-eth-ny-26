@@ -1,6 +1,10 @@
 node_modules
 .env
 
+# Cursor MCP config (may contain API keys / Bearer tokens)
+.cursor/mcp.json
+~/*
+
 # Hardhat files
 /cache
 /artifacts

@@ -73,7 +73,7 @@ contract Tournament is Ownable, ReentrancyGuard {
     }
 
     // ---- Config ----
-    IWorldID public immutable worldId;
+    IWorldID public worldId; // World ID router; mutable so it can be repointed
     uint256 public immutable groupId; // 1 for Orb (on-chain verification)
     IGameResultsReader public immutable gameResults;
     uint256 public externalNullifier; // hash(appId, action)
@@ -143,6 +143,10 @@ contract Tournament is Ownable, ReentrancyGuard {
     }
 
     // ---- Owner config ----
+    function setWorldId(address _worldId) external onlyOwner {
+        worldId = IWorldID(_worldId);
+    }
+
     function setExternalNullifier(uint256 _externalNullifier) external onlyOwner {
         externalNullifier = _externalNullifier;
     }
