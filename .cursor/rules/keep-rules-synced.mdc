@@ -1,0 +1,13 @@
+---
+description: Keep Claude Code and Cursor rules in sync
+alwaysApply: true
+---
+
+# Rules sync: CLAUDE.md ↔ .cursor/rules/
+
+Rules are maintained in two places — keep them in sync:
+
+- **Claude Code**: `CLAUDE.md` in the project root
+- **Cursor**: `.cursor/rules/*.mdc` files
+
+When you add, change, or remove a rule in one tool, apply the equivalent change in the other. Each `.mdc` file in `.cursor/rules/` should have a corresponding section in `CLAUDE.md` with the same intent, and vice versa.
