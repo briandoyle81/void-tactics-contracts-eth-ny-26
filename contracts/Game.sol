@@ -92,11 +92,15 @@ contract Game is Ownable {
     ) external {
         if (msg.sender != lobbiesAddress) revert NotLobbiesContract();
 
+        // Game id is the lobby id: each lobby starts at most one game, so the
+        // lobby id is a unique key for the game. `gameCount` is kept only as a
+        // tally of games started (no longer the id source).
+        uint gameId = _lobbyId;
         gameCount++;
-        GameData storage game = games[gameCount];
+        GameData storage game = games[gameId];
 
         // Initialize metadata
-        game.metadata.gameId = gameCount;
+        game.metadata.gameId = gameId;
         game.metadata.lobbyId = _lobbyId;
         game.metadata.creator = _creator;
         game.metadata.joiner = _joiner;
@@ -120,14 +124,14 @@ contract Game is Ownable {
 
         // Apply the selected preset map to this game if a map was selected
         if (_selectedMapId > 0) {
-            maps.applyPresetMapToGame(gameCount, _selectedMapId);
+            maps.applyPresetMapToGame(gameId, _selectedMapId);
         }
 
         // Calculate fleet attributes and place ships on grid
-        _initializeFleetAttributes(gameCount, _creatorFleetId, _joinerFleetId);
-        _placeShipsOnGrid(gameCount, _creatorFleetId, _joinerFleetId);
+        _initializeFleetAttributes(gameId, _creatorFleetId, _joinerFleetId);
+        _placeShipsOnGrid(gameId, _creatorFleetId, _joinerFleetId);
 
-        GameData storage gameAfterPlace = games[gameCount];
+        GameData storage gameAfterPlace = games[gameId];
         gameAfterPlace.totalActiveShipsAtRoundStart =
             EnumerableSet.length(
                 gameAfterPlace.playerActiveShipIds[
@@ -142,10 +146,10 @@ contract Game is Ownable {
         gameAfterPlace.shipsRemovedThisRound = 0;
 
         // Track game for both players
-        playerGames[_creator].push(gameCount);
-        playerGames[_joiner].push(gameCount);
+        playerGames[_creator].push(gameId);
+        playerGames[_joiner].push(gameId);
 
-        emit GameStarted(gameCount, _lobbyId, _creator, _joiner);
+        emit GameStarted(gameId, _lobbyId, _creator, _joiner);
     }
 
     // Internal function to initialize fleet attributes

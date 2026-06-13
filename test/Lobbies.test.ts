@@ -536,12 +536,14 @@ describe("Lobbies", function () {
         generateStartingPositions([6n], false),
       ]);
 
+      // gameCount tracks the number of games started (one), but the game id is
+      // now the lobby id, so this game lives at id 2 (lobby 1 was cancelled).
       const gameCount = await game.read.gameCount();
       expect(gameCount).to.equal(1n);
 
-      const startedGame = await game.read.getGame([1n]);
+      const startedGame = await game.read.getGame([2n]);
       expect(startedGame.metadata.lobbyId).to.equal(2n);
-      expect(startedGame.metadata.gameId).to.equal(1n);
+      expect(startedGame.metadata.gameId).to.equal(2n);
     });
   });
 

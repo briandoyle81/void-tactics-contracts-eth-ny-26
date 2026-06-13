@@ -5496,6 +5496,113 @@ describe("Game", function () {
       ).to.be.rejectedWith("InvalidMove");
     });
 
+    it("keys a game (and its result) by lobby id after an earlier lobby was cancelled", async function () {
+      const {
+        creatorLobbies,
+        joinerLobbies,
+        creator,
+        joiner,
+        ships,
+        game,
+        randomManager,
+        gameResults,
+      } = await loadFixture(deployGameFixture);
+
+      // Purchase and construct ships for both players
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.fulfillRandomRequest([
+          ship.traits.serialNumber,
+        ]);
+      }
+      await ships.write.constructAllMyShips({ account: creator.account });
+      await ships.write.constructAllMyShips({ account: joiner.account });
+
+      // Create lobby #1 and cancel it (creator leaves with no joiner). This
+      // advances lobbyCount to 1 without ever starting a game, so the next
+      // game's id (== its lobby id) will be 2, not 1 — a sparse game id.
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await creatorLobbies.write.leaveLobby([1n]);
+
+      // Create lobby #2 and start a game from it.
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([2n]);
+      await creatorLobbies.write.createFleet([
+        2n,
+        [1n, 2n],
+        generateStartingPositions([1n, 2n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        2n,
+        [6n, 7n],
+        generateStartingPositions([6n, 7n], false),
+      ]);
+
+      // The game lives at id 2 (== lobby id); there is no game at id 1.
+      await expect(game.read.getGame([1n])).to.be.rejectedWith("GameNotFound");
+
+      const startedGame = (await game.read.getGame([2n])) as GameDataView;
+      expect(startedGame.metadata.gameId).to.equal(2n);
+      expect(startedGame.metadata.lobbyId).to.equal(2n);
+      expect(startedGame.metadata.winner).to.equal(zeroAddress);
+
+      // playerGames tracks the sparse id (2) for both players.
+      const creatorGames = (await game.read.getGamesForPlayer([
+        creator.account.address,
+      ])) as GameDataView[];
+      expect(creatorGames.length).to.equal(1);
+      expect(creatorGames[0].metadata.gameId).to.equal(2n);
+      const joinerGames = (await game.read.getGamesForPlayer([
+        joiner.account.address,
+      ])) as GameDataView[];
+      expect(joinerGames.length).to.equal(1);
+      expect(joinerGames[0].metadata.gameId).to.equal(2n);
+
+      // Drive the game to completion (creator flees -> joiner wins) and verify
+      // GameResults is keyed by the sparse game id (2), with nothing at id 1.
+      await game.write.flee([2n], { account: creator.account });
+
+      const finishedGame = (await game.read.getGame([2n])) as GameDataView;
+      expect(finishedGame.metadata.winner.toLowerCase()).to.equal(
+        joiner.account.address.toLowerCase(),
+      );
+
+      expect(await gameResults.read.isGameResultRecorded([2n])).to.be.true;
+      const result = await gameResults.read.getGameResult([2n]);
+      expect(result.winner.toLowerCase()).to.equal(
+        joiner.account.address.toLowerCase(),
+      );
+      expect(result.loser.toLowerCase()).to.equal(
+        creator.account.address.toLowerCase(),
+      );
+
+      // No result was ever recorded at the phantom id 1.
+      expect(await gameResults.read.isGameResultRecorded([1n])).to.be.false;
+    });
+
     it("should end game when all ships are retreated", async function () {
       const {
         creatorLobbies,

@@ -78,13 +78,13 @@ const DeployModule = buildModule("DeployModule", (m) => {
   const metadataRenderer = m.contract("RenderMetadata", [imageRenderer]);
 
   // Mock for local/tests — Ignition + viem require a contract future, not a string address.
-  // const shipNames = m.contract("MockOnchainRandomShipNames");
+  const shipNames = m.contract("MockOnchainRandomShipNames");
 
   // For Flow testnet use
   // const shipNames = "0x9E433A07D283d56E8243EA25b7358521b1922df5";
 
   // For Ronin Saigon testnet use
-  const shipNames = "0x3866a81241Ec61414a3A7A99486f6652fFd0743C";
+  // const shipNames = "0x3866a81241Ec61414a3A7A99486f6652fFd0743C";
 
   // For XAI testnet use
   // const shipNames = "0xe7266c681ce3F8CD8853141139574F2CA70AA165";
