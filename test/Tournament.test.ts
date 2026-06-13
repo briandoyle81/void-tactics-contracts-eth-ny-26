@@ -3,7 +3,7 @@ import { loadFixture } from "@nomicfoundation/hardhat-toolbox-viem/network-helpe
 import hre from "hardhat";
 import { parseEther, zeroAddress } from "viem";
 import { ShipTuple, tupleToShip } from "./types";
-import DeployTournamentModule from "../ignition/modules/DeployTournament";
+import DeployModule from "../ignition/modules/DeployAndConfig";
 
 const EMPTY_PROOF = [0n, 0n, 0n, 0n, 0n, 0n, 0n, 0n] as const;
 
@@ -30,7 +30,7 @@ describe("Tournament", function () {
     // which is `owner` here.
     const feeRecipient = owner;
 
-    const deployed = await hre.ignition.deploy(DeployTournamentModule);
+    const deployed = await hre.ignition.deploy(DeployModule);
 
     // Tournament + World ID mock come from the Ignition module.
     const tournament = deployed.tournament;

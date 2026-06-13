@@ -12,6 +12,18 @@ const FIREBASE_FLOW_MINTER = "0x7f9dc2D68FF842EC79DA722B68E3ca7e5aa31CCb";
 // map editing be done from a wallet other than the deployer/owner.
 const MAP_EDITOR = "0x69a5B3aE8598fC5A5419eaa1f2A59Db2D052e346";
 
+// groupId 1 == Orb (the only credential type supported for on-chain verification).
+const TOURNAMENT_WORLD_ID_GROUP = 1n;
+
+// externalNullifier = hashToField(abi.encodePacked(hashToField(appId), action)),
+// matching what IDKit uses in the frontend. Computed from:
+//   app_id = "app_b2739b54eb71ceb8c76380c60c20ce22"
+//   action = "join-tournament"
+// (see scripts/computeExternalNullifier.ts for the derivation). If the app_id or action
+// changes, recompute and update this, or call Tournament.setExternalNullifier(...).
+const TOURNAMENT_EXTERNAL_NULLIFIER =
+  318078722027557965998987370672697888390534537434722412480399796468873891570n;
+
 const DeployModule = buildModule("DeployModule", (m) => {
   // Deploy helper contracts first
   const randomManager = m.contract("RandomManager");
@@ -274,6 +286,23 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // // Set the tiers for different chains
   // m.call(ships, "setPurchaseInfo", [tierSHIPS, tierPrices]);
 
+  // World ID router. Toggle between the two lines below (same pattern as
+  // `shipNames` above):
+  //   - Local / tests: deploy the mock (no real proofs available).
+  //   - Real network:  comment the mock, uncomment the router address so the
+  //                     Tournament is deployed pointing at the real router.
+  // Base Sepolia (chain 84532) testnet WorldIDRouter, verified against World ID docs.
+  const worldId = m.contract("MockWorldID");
+  // const worldId = "0x42FF98C4E85212a5D31358ACbFe76a621b50fC02";
+
+  const tournament = m.contract("Tournament", [
+    worldId,
+    TOURNAMENT_WORLD_ID_GROUP,
+    TOURNAMENT_EXTERNAL_NULLIFIER,
+    gameResults,
+    m.getAccount(0), // feeRecipient (protocol fee sink) == deployer
+  ]);
+
   return {
     randomManager,
     renderSpecial1,
@@ -316,6 +345,8 @@ const DeployModule = buildModule("DeployModule", (m) => {
     fleets,
     lobbies,
     tutorialClaim,
+    worldId,
+    tournament,
   };
 });
 

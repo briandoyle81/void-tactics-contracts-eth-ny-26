@@ -5,6 +5,8 @@ import "hardhat-gas-reporter";
 require("hardhat-contract-sizer");
 require("dotenv").config();
 
+const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY as string;
+
 const config: HardhatUserConfig = {
   solidity: {
     version: "0.8.28",
@@ -24,11 +26,19 @@ const config: HardhatUserConfig = {
     // only: [":ERC20$"],
   },
   etherscan: {
-    apiKey: {
-      "flow-testnet": "abc",
-      flow: "abc",
-    },
+    // Single Etherscan.io API key → hardhat-verify uses API v2 (chainid param) for
+    // all Etherscan-supported networks, including Base Sepolia (84532). Per-network
+    // keys + custom explorer URLs force deprecated v1 endpoints.
+    apiKey: ETHERSCAN_API_KEY,
     customChains: [
+      {
+        network: "base-sepolia",
+        chainId: 84532,
+        urls: {
+          apiURL: "https://api-sepolia.basescan.org/v2/api",
+          browserURL: "https://sepolia.basescan.org",
+        },
+      },
       {
         network: "flow",
         chainId: 747,
