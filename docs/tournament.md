@@ -20,7 +20,8 @@ These are the confirmed product decisions this design is built on:
 | `gameId` ↔ `lobbyId` | **Unify them**: change the game contract so `gameId == lobbyId` (see §4). Removes ambiguity when linking a match to its game. |
 | Bracket | **Single elimination**, seeded by registration order, byes for non-power-of-2 fields. |
 | Advancement | **Auto on-chain**: when both feeder matches of a slot resolve, the contract creates the next-round match slot. Game creation + Walrus upload + result submission are done by the **frontend/backend** (no relayer code in this repo). |
-| Prizes | **1% protocol fee** off the top, then **60 / 40** to 1st / 2nd of the remainder (no 3rd place). Tournament creation supports an optional **sponsor prize** and **free entry** (`entryFee == 0`). |
+| Prizes | **1% protocol fee** off the top, then **60 / 40** to 1st / 2nd of the remainder (no 3rd place). Tournament supports **one optional sponsor** (refundable on cancel) and **free entry** (`entryFee == 0`). |
+| Draws (temporary) | A drawn game cannot advance the bracket on its own. **Temporary rule:** the match is awarded to whichever player **registered first** (lower registration index). Resolved by a creator-only call; marked temporary in code. |
 | Field size / timing | Creator sets **min**, **max**, and **lastStartTime**. Anyone may `start()` when at max size, OR when `lastStartTime` passed and registrants ≥ min. Anyone may `cancel()` (refund) when below min after `lastStartTime`. |
 | Per-match game config | **Fixed at tournament creation** (map, cost limit, turn time, max score), applied to every match. |
 | World ID verification | On-chain via Base Sepolia `WorldIDRouter` (testnet), **Orb level / `groupId = 1`**. Testnet uses the **World ID Simulator** with a **staging `app_id`** and a pool of **fake test identities** (no real Orb scans). |
@@ -59,16 +60,21 @@ These are the confirmed product decisions this design is built on:
 
 Everything that touches funds, identity, and results lives on **one chain** (Base Sepolia). The only off-chain actors are the **frontend/backend** that (a) collect the World ID proof, (b) create lobbies for matches, (c) upload Walrus blobs, and (d) call `recordResult`. None of these can forge a winner because the winner is read from `GameResults` on-chain.
 
-### Existing deployed addresses (Base Sepolia, chain 84532)
+### Deployed addresses (Base Sepolia, chain 84532)
 
-| Contract | Address |
+> ⚠️ **All addresses will change.** The `gameId == lobbyId` change (§4) plus the new `Tournament` contract mean the **entire stack is redeployed fresh** on Base Sepolia (O-10). The table below is the **current** deployment, kept only for reference; every address becomes new after redeploy. Update this table and `ignition/deployments/chain-84532/deployed_addresses.json` post-deploy before wiring the frontend/backend.
+
+| Contract | Current address (to be replaced) |
 |---|---|
-| `Game` | `0xFc996f440CA9Bb841C26AB31c508E2BB43C38423` |
+| `Game` (modified — §4) | `0xFc996f440CA9Bb841C26AB31c508E2BB43C38423` |
 | `GameResults` | `0x9F3FAF7f8018C4bC68f6ea6490eA89AB025bf8Ac` |
 | `Lobbies` | `0x2BAb5F458407d6D07c3bC0d1aaa6d2f08D2302a0` |
 | `Fleets` | `0x69c86df545C96702429819d89b1E5Ad47164dF08` |
 | `Ships` | `0x8e5d341F11CAdd5177Ce8ebD7D40AB10BbD27B6F` |
 | `Maps` | `0xC14F9D9E667dCe0F27cE9Eb0f5f92fa4Aa366d7E` |
+| `Tournament` (new) | — |
+
+All of the above (and the renderers/etc.) are redeployed; collect the new addresses after deployment.
 
 ### World ID router (Base Sepolia testnet)
 
@@ -174,12 +180,13 @@ struct Tournament {
     TournamentState state;
     TournamentConfig config;
 
-    uint256 prizePool;       // entry fees + sponsor contributions (native wei)
-    uint256 sponsorAmount;   // portion seeded by sponsors (for display/refund math)
+    uint256 prizePool;       // entry fees + sponsor contribution (native wei)
+    address sponsor;         // single sponsor (address(0) if none); refunded on cancel
+    uint256 sponsorAmount;   // sponsor's contribution (for refund math)
 
-    address[] registrants;
+    address[] registrants;   // registration order == seed order
     mapping(address => bool) registered;
-    mapping(uint256 => bool) usedNullifiers; // World ID nullifierHash → used
+    mapping(uint256 => bool) usedNullifiers; // World ID nullifierHash → used (scoped to THIS tournament)
 
     Match[] bracket;         // flattened single-elim bracket
     uint8   totalRounds;
@@ -231,6 +238,7 @@ error StartConditionsNotMet(); error CancelConditionsNotMet();
 error NotActive(); error MatchNotFound(); error MatchAlreadyResolved();
 error GameNotAssigned(); error ResultNotRecorded(); error WinnerNotInMatch();
 error NothingToClaim(); error AlreadyRefunded(); error InvalidConfig();
+error SponsorAlreadySet(); error NotCreator(); error NotSponsor();
 ```
 
 ### 5.6 Functions
@@ -241,13 +249,15 @@ error NothingToClaim(); error AlreadyRefunded(); error InvalidConfig();
 function createTournament(TournamentConfig calldata cfg) external payable returns (uint256 tournamentId);
 ```
 - Validates `minPlayers >= 2`, `maxPlayers >= minPlayers`, `lastStartTime > block.timestamp`, game config within bounds (`turnTime`, `costLimit ≤ maxFleetCostLimit`, map exists if non-zero).
-- Any `msg.value` is recorded as the initial **sponsor prize** (`prizePool += msg.value; sponsorAmount += msg.value`). Free entry is simply `cfg.entryFee == 0`.
 - Sets `state = Registration`, `creator = msg.sender`.
+- If `msg.value > 0`, the creator becomes the tournament's **single sponsor**: `sponsor = msg.sender; sponsorAmount = msg.value; prizePool += msg.value`. Free entry is simply `cfg.entryFee == 0`.
 
 ```solidity
 function addSponsorPrize(uint256 tournamentId) external payable;
 ```
-- Allowed in `Registration` or `Active`. Adds `msg.value` to `prizePool` and `sponsorAmount`.
+- Allowed in `Registration` or `Active`.
+- **Only one sponsor per tournament.** If `sponsor == address(0)`, the caller becomes the sponsor. If a sponsor already exists, only that same `sponsor` may add more; any other caller reverts (`SponsorAlreadySet`).
+- Adds `msg.value` to `prizePool` and `sponsorAmount`.
 
 #### Registration (World ID gate)
 
@@ -297,17 +307,18 @@ Allowed when `state == Registration`, `block.timestamp > lastStartTime`, and `re
 ```solidity
 function claimRefund(uint256 tournamentId) external nonReentrant;
 ```
-- Allowed when `state == Cancelled`. Refunds `config.entryFee` to a registered, not-yet-refunded caller (pull payment).
-- Sponsor refunds: `creator`/sponsors reclaim `sponsorAmount` (tracked per sponsor — see O-4 for whether to track per-sponsor or refund all sponsor funds to `creator`).
+- Allowed when `state == Cancelled`.
+- If the caller is a registered, not-yet-refunded player, refunds `config.entryFee` and marks `refunded[caller] = true` (pull payment).
+- If the caller is the `sponsor` and `sponsorAmount > 0`, refunds `sponsorAmount` and zeroes it. (A single address that is both player and sponsor can claim both, once each.)
 
 #### Match → game linkage & results
 
 ```solidity
-function assignMatchGame(uint256 tournamentId, uint256 matchId, uint256 gameId) external onlyAdmin;
+function assignMatchGame(uint256 tournamentId, uint256 matchId, uint256 gameId) external;
 ```
-- Called by the tournament admin **after** creating the match's lobby via `Lobbies.createLobbyForAddresses` (recall `gameId == lobbyId`).
+- Restricted to the **tournament `creator`** (`NotCreator` otherwise).
+- Called **after** creating the match's lobby via `Lobbies.createLobbyForAddresses` (recall `gameId == lobbyId`).
 - Stores `gameId` on the match; emits `MatchGameAssigned`. Idempotent until resolved.
-- `onlyAdmin`: protocol owner or the tournament `creator` (see O-5 for exact authority).
 
 ```solidity
 function recordResult(uint256 tournamentId, uint256 matchId, bytes32 walrusBlobId) external; // permissionless
@@ -321,6 +332,14 @@ function recordResult(uint256 tournamentId, uint256 matchId, bytes32 walrusBlobI
 - If this resolves the final, sets `champion`/`runnerUp` and emits readiness for `finalize`.
 
 > The `walrusBlobId` is **not** trusted for correctness — it's an opaque pointer. The winner is always from `GameResults`. A wrong/missing blob only degrades the replay UX, not prize integrity.
+
+```solidity
+function resolveDraw(uint256 tournamentId, uint256 matchId, bytes32 walrusBlobId) external; // TEMPORARY
+```
+- **Temporary fix for drawn games.** A draw sets the game's winner to `address(0)` and is **not** written to `GameResults` (see `Game._endGame`), so `recordResult` can't resolve it.
+- Restricted to the tournament `creator` (the only off-chain actor who knows a draw occurred — there is no on-chain "draw" flag in `Game` today).
+- Awards the match to the player who **registered first** (the lower index in `registrants`) — deterministic, so the creator has no discretion over the outcome, only over invoking it. Sets `winner`, `walrusBlobId`, `resolved`, then `_advance`.
+- **Marked `// TEMPORARY` in code.** A proper fix would add a draw/ended indicator to `Game` (we can, since all contracts are being redeployed — see §4 note) or a deterministic on-chain tiebreak (e.g., score, then ship count). Deferred.
 
 #### Finalize & claim
 
@@ -352,8 +371,8 @@ function winningsOf(uint256, address) external view returns (uint256);
 
 - **Seeding:** registration order (`registrants[0]` is seed 1, etc.).
 - **Size:** pad to the next power of two `N`. The number of byes is `N - registrants.length`. Standard seeding gives the top seeds the byes (seed 1 plays the lowest, etc.). A bye is modeled as `player2 == address(0)`; the present player auto-advances at start (or on first `_advance`).
-- **Bracket storage:** flattened `Match[]`. First-round matches are created at `start()`. Later-round `Match` structs are created lazily by `_advance` when both feeder matches resolve, OR pre-allocated as empty slots — implementation detail (see O-6); pre-allocating all slots makes indexing simpler and is recommended for a hackathon.
-- **`_advance(matchId)`:** determines the parent slot `(matchId / 2)` in the next round, writes the winner into `player1` or `player2`, and emits `NextRoundMatchCreated` once both are present.
+- **Bracket storage:** flattened `Match[]`, **all slots pre-allocated at `start()`** for a power-of-two field of size `N` (`N - 1` total matches: `N/2` first-round, down to 1 final). First-round slots are filled with seeded players; later-round slots start empty (`player1 == player2 == address(0)`) and are populated by `_advance`. Pre-allocation keeps `matchId` indexing stable and simple.
+- **`_advance(matchId)`:** determines the parent slot in the next round, writes the winner into `player1` or `player2`, and emits `NextRoundMatchCreated` once that parent slot has both players.
 - **Byes:** resolved automatically at `start()` so round 2 can begin immediately for those slots.
 
 ### Off-chain responsibilities (frontend/backend repo — NO relayer in this repo)
@@ -459,7 +478,7 @@ interface MatchRecord {
 - `app/hooks/useMatchRecord.ts` — React Query wrapper with caching.
 - `app/components/TournamentRegister.tsx` — IDKit registration flow.
 
-> Walrus `blobId` ↔ `bytes32`: Walrus blob IDs are 256-bit values, base64url-encoded as strings. Decode to 32 bytes for storage; re-encode for the aggregator URL. Verify the exact encoding when wiring `walrus.ts` (O-9).
+> Walrus `blobId` ↔ `bytes32` and serialization are handled entirely in the **other repo** by capturing game events and storing the JSON record there. On-chain, `recordResult`/`resolveDraw` accept whatever `bytes32` the frontend supplies (may be `bytes32(0)` if a blob isn't attached); it's an opaque pointer and never affects prize integrity.
 
 ---
 
@@ -478,23 +497,33 @@ interface MatchRecord {
 
 ## 11. Deployment & Wiring
 
-1. Implement the `gameId == lobbyId` change in `Game.sol`; recompile and verify size; redeploy `Game` (and re-wire `Lobbies.setGameAddress`, `Game.setAddresses`, `GameResults.setGameContract`) on Base Sepolia. **(Confirm redeploy is acceptable — see O-10.)**
-2. Add a `Tournament` Ignition module: deploy with constructor args `(worldIdRouter, groupId=1, externalNullifier, gameResults, feeRecipient)`.
-3. The tournament admin must be (or be granted) the **owner of `Lobbies`** so it can call `createLobbyForAddresses` (off-chain admin EOA, not the contract).
-4. Add Base Sepolia network + verification config (already present in `hardhat.config.ts` as `base-sepolia`).
+1. Implement the `gameId == lobbyId` change in `Game.sol`; recompile and verify contract size (< 24 KiB; do not disable size checks).
+2. **Redeploy the entire stack** fresh on Base Sepolia (all contracts, per O-10) via Ignition, then run the existing wiring (`Game.setAddresses`, `Lobbies.setGameAddress`/`setFleetsAddress`/`setMapsAddress`, `GameResults.setGameContract`, etc.). All addresses change.
+3. Add a `Tournament` Ignition module: deploy with constructor args `(worldIdRouter, groupId=1, externalNullifier, gameResults, feeRecipient)` using the **newly deployed** `GameResults` address.
+4. The tournament admin (the per-tournament `creator` who pairs matches) must be (or be granted) the **owner of `Lobbies`** so it can call `createLobbyForAddresses` (off-chain admin EOA, not the contract).
+5. Add Base Sepolia network + verification config (already present in `hardhat.config.ts` as `base-sepolia`).
+6. **Record the new addresses:** after redeploy, update `ignition/deployments/chain-84532/deployed_addresses.json`, the address table in §2 of this doc, and the frontend/backend config. All prior addresses are superseded.
 
 ---
 
-## 12. Open Questions (need answers before implementation)
+## 12. Resolved Questions
 
-- **O-1 (World ID level): RESOLVED.** Use **Orb on-chain** (`groupId = 1`) verified against the Base Sepolia testnet router. Testnet proofs come from the **World ID Simulator** with a **staging `app_id`** (pool of fake test identities).
-- **O-2 (Flow demo):** Do we also need a Flow Testnet tournament path, or is Base Sepolia sufficient for judging?
-- **O-3 (nullifier scope + IDs):** Should one human be unique **per tournament** (allows entering many tournaments) or **globally** across all tournaments? Also confirm the staging `app_id` and `action` string (`tournament_register`).
-- **O-4 (sponsor refunds):** On cancel, refund sponsor funds to the `creator` only, or track per-sponsor contributions and refund each?
-- **O-5 (admin authority):** Who can call `assignMatchGame` and create lobbies — protocol owner only, the tournament `creator`, or a per-tournament admin address?
-- **O-6 (bracket storage):** Pre-allocate all bracket slots at `start()` (simpler indexing) vs. lazily create next-round `Match` structs? Recommend pre-allocate.
-- **O-7 (small-field prizes): RESOLVED.** No 3rd place; finalists split `R` 60/40, which works for any field ≥ 2.
-- **O-8 (draws):** Confirm matches must resolve via timeout/flee when a game would otherwise draw; the tournament will not advance on an unrecorded (draw) game.
-- **O-9 (Walrus encoding):** Confirm `blobId` ↔ `bytes32` encoding and whether we store the raw 32 bytes or a hash.
-- **O-10 (Game redeploy):** Is redeploying `Game` on Base Sepolia (for the `gameId == lobbyId` change) acceptable, given existing games on the current deployment would be orphaned? Or should we stand up a fresh tournament-only deployment?
+All previously-open questions are now resolved:
+
+- **O-1 (World ID level):** Use **Orb on-chain** (`groupId = 1`) verified against the Base Sepolia testnet router. Testnet proofs come from the **World ID Simulator** with a **staging `app_id`** (pool of fake test identities).
+- **O-2 (Flow demo):** **No Flow Testnet path.** Base Sepolia only.
+- **O-3 (nullifier scope):** **Per-tournament** uniqueness — the same human may enter different tournaments, but only once each. (`usedNullifiers` lives inside each `Tournament`.) Action string `tournament_register`; staging `app_id` provided at deploy.
+- **O-4 (sponsor refunds):** **One sponsor per tournament**, refunded their `sponsorAmount` on cancel.
+- **O-5 (admin authority):** The tournament **`creator`** calls `assignMatchGame` / `resolveDraw` and creates the lobbies.
+- **O-6 (bracket storage):** **Pre-allocate** all bracket slots at `start()`.
+- **O-7 (small-field prizes):** No 3rd place; finalists split `R` 60/40 (works for any field ≥ 2).
+- **O-8 (draws):** **Temporary rule** — drawn match awarded to the **first-to-register** player via the creator-only `resolveDraw`, marked `// TEMPORARY` (see §5.6).
+- **O-9 (Walrus encoding):** Handled in the **other repo** (capture events → store JSON). On-chain blob is an opaque `bytes32`.
+- **O-10 (redeploy):** **Redeploy all contracts** fresh on Base Sepolia; collect new addresses afterward.
+
+### Remaining inputs needed at implementation/deploy time (config, not design)
+
+- Staging World ID `app_id` and the confirmed Base Sepolia `WorldIDRouter` full address.
+- `feeRecipient` address for the 1% protocol fee.
+- The admin EOA that will own `Lobbies` and act as tournament `creator`.
 ```
