@@ -1,5 +1,7 @@
 # Void Tactics Contracts
 
+> **Note for judges:** This repository couldn't be forked from the original because the original is also mine — GitHub doesn't allow forking your own repo into the same account. The hackathon features described here (Dynamic Flow purchases, World ID tournament registration, Walrus game recording and replay) were all built after the hackathon start time. The original pre-hackathon deployment is at [voidtactics.xyz](https://www.voidtactics.xyz) for comparison.
+
 Hackathon Live Deployment: https://void-tactics-fe-eth-ny-26.vercel.app/
 Original Live Deployment: https://www.voidtactics.xyz
 
@@ -115,12 +117,6 @@ npx hardhat test
 
 ```bash
 npx hardhat ignition deploy ignition/modules/DeployAndConfig.ts --network base-sepolia
-```
-
-### GameBlobRegistry only (standalone, no redeployment of existing contracts)
-
-```bash
-npx hardhat ignition deploy ignition/modules/GameBlobRegistry.ts --network base-sepolia
 ```
 
 ### Authorize the backend minter
