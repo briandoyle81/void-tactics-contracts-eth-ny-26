@@ -98,7 +98,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
   const metadataRenderer = m.contract("RenderMetadata", [imageRenderer]);
 
   // Mock for local/tests — Ignition + viem require a contract future, not a string address.
-  const shipNames = m.contract("MockOnchainRandomShipNames");
+  // const shipNames = m.contract("MockOnchainRandomShipNames");
 
   // For Flow testnet use
   // const shipNames = "0x9E433A07D283d56E8243EA25b7358521b1922df5";
@@ -110,7 +110,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // const shipNames = "0xe7266c681ce3F8CD8853141139574F2CA70AA165";
 
   // For Base Sepolia testnet use
-  // const shipNames = "0x2b6C2e73D7D8B9dd49aF848B7A19FF003ED0d779";
+  const shipNames = "0x2b6C2e73D7D8B9dd49aF848B7A19FF003ED0d779";
 
   // Deploy GenerateNewShip with ship names
   const generateNewShip = m.contract("GenerateNewShip", [shipNames]);
@@ -292,8 +292,8 @@ const DeployModule = buildModule("DeployModule", (m) => {
   //   - Real network:  comment the mock, uncomment the router address so the
   //                     Tournament is deployed pointing at the real router.
   // Base Sepolia (chain 84532) testnet WorldIDRouter, verified against World ID docs.
-  const worldId = m.contract("MockWorldID");
-  // const worldId = "0x42FF98C4E85212a5D31358ACbFe76a621b50fC02";
+  // const worldId = m.contract("MockWorldID");
+  const worldId = "0x42FF98C4E85212a5D31358ACbFe76a621b50fC02";
 
   const tournament = m.contract("Tournament", [
     worldId,
@@ -301,6 +301,12 @@ const DeployModule = buildModule("DeployModule", (m) => {
     TOURNAMENT_EXTERNAL_NULLIFIER,
     gameResults,
     m.getAccount(0), // feeRecipient (protocol fee sink) == deployer
+  ]);
+
+  // Deploy GameBlobRegistry — stores Walrus blobId per player per completed game
+  const gameBlobRegistry = m.contract("GameBlobRegistry", [
+    gameResults,
+    FIREBASE_FLOW_MINTER,
   ]);
 
   return {
@@ -347,6 +353,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
     tutorialClaim,
     worldId,
     tournament,
+    gameBlobRegistry,
   };
 });
 
