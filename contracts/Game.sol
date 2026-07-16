@@ -58,7 +58,6 @@ contract Game is Ownable {
     error InvalidMove();
     error ShipDestroyed();
     error TurnTimeoutNotReached();
-    error TurnTimeoutExceeded();
 
     constructor(address _ships, address _shipAttributes) Ownable(msg.sender) {
         ships = IShips(_ships);
@@ -247,10 +246,18 @@ contract Game is Ownable {
         });
     }
 
-    // Calculate and store attributes for a ship in a game
+    // Calculate and store attributes for a ship in a game.
+    // Left public/permissionless on purpose so players can self-serve this during
+    // fleet setup, but the write is snapshot-once: `attributes.version` is 0 only
+    // until the first calculation, and ShipAttributes.currentAttributesVersion is
+    // seeded to 1 and only ever increases, so a non-zero version reliably means
+    // "already set for this game." Without this guard, anyone could call this again
+    // mid-game to pull in a newer ShipAttributes version/cost update, silently
+    // breaking the snapshot the game is supposed to lock in at start.
     function calculateShipAttributes(uint _gameId, uint _shipId) public {
         GameData storage game = games[_gameId];
         Attributes storage attributes = game.shipAttributes[_shipId];
+        if (attributes.version != 0) revert InvalidMove(); // already calculated for this game
 
         // Get calculated attributes from ShipAttributes contract
         Attributes memory calculatedAttributes = shipAttributes
@@ -298,22 +305,14 @@ contract Game is Ownable {
         _requireGameExists(_gameId);
         GameData storage game = games[_gameId];
 
-        // First, count how many ships are actually in the grid (including 0 HP ships)
-        uint shipCount = 0;
-        for (int16 row = 0; row < GRID_HEIGHT; row++) {
-            for (int16 col = 0; col < GRID_WIDTH; col++) {
-                uint shipId = game.grid[row][col];
-                if (shipId > 0 && !ships.isShipDestroyed(shipId)) {
-                    shipCount++;
-                }
-            }
-        }
-
-        // Add gone ship ids to the count
-        shipCount += game.goneShipIds.length;
-
-        // Create array with actual count
-        ShipPosition[] memory positions = new ShipPosition[](shipCount);
+        // Allocate for the worst case (every grid cell full, plus all gone ships),
+        // fill in a single pass below, then shrink the array's length word to the
+        // actual count in place. Avoids a second full grid scan just to size the array.
+        ShipPosition[] memory positions = new ShipPosition[](
+            uint(uint16(GRID_HEIGHT)) *
+                uint(uint16(GRID_WIDTH)) +
+                game.goneShipIds.length
+        );
         uint index = 0;
 
         // Iterate through the grid to find all ships
@@ -346,6 +345,13 @@ contract Game is Ownable {
                 status: sp.status
             });
             index++;
+        }
+
+        // The array was allocated for the worst case; shrink its length word down
+        // to the number of entries actually written (index is always <= allocated
+        // length, since it only increments inside the same bounds the array was sized for).
+        assembly {
+            mstore(positions, index)
         }
 
         return positions;
@@ -1241,18 +1247,18 @@ contract Game is Ownable {
         int16 _col
     ) external onlyOwner {
         // No checks needed for debug, assume correct info given
+        GameData storage game = games[_gameId];
 
         // Clear old position in grid
-        games[_gameId].grid[games[_gameId].shipPositions[_shipId].position.row][
-                games[_gameId].shipPositions[_shipId].position.col
-            ] = 0;
+        Position storage oldPosition = game.shipPositions[_shipId].position;
+        game.grid[oldPosition.row][oldPosition.col] = 0;
 
         // Set ship position
-        games[_gameId].shipPositions[_shipId].position = Position(_row, _col);
-        games[_gameId].shipPositions[_shipId].status = 0;
+        game.shipPositions[_shipId].position = Position(_row, _col);
+        game.shipPositions[_shipId].status = 0;
 
         // Set ship in grid
-        games[_gameId].grid[_row][_col] = _shipId;
+        game.grid[_row][_col] = _shipId;
     }
 
     // View functions

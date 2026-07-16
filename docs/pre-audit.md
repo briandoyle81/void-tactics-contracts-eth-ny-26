@@ -39,7 +39,8 @@ This audit covers 20 production Solidity contracts plus supporting interfaces, m
 ### C-02 — `Game.calculateShipAttributes` and `Game.calculateFleetAttributes` Are Unguarded Public State-Writing Functions
 
 **File:** `contracts/Game.sol`, lines 247–274  
-**Severity:** Critical
+**Severity:** Critical  
+**Status:** Fixed 2026-07-16 (see Addendum below)
 
 `calculateShipAttributes(uint _gameId, uint _shipId)` is `public` with no access control and no check that the ship actually belongs to the specified game. Anyone can call it for any `(_gameId, _shipId)` pair and overwrite the in-game ship attributes (range, damage, hull points, movement, damage reduction) with freshly recalculated values from `ShipAttributes`.
 
@@ -47,6 +48,8 @@ This audit covers 20 production Solidity contracts plus supporting interfaces, m
 1. If a `ShipAttributes` version upgrade occurs mid-game, any player can re-roll their own ships' stats upward, breaking the game's snapshot model.
 2. Attributes are intentionally snapshotted at game start so the `costsVersion` lock prevents in-flight changes; this function bypasses that snapshot entirely.
 3. `calculateFleetAttributes(uint _gameId, uint[] memory _shipIds)` (line 267) has the same visibility and has no check that `_shipIds` belong to that game.
+
+**Note (2026-07-16):** `games[_gameId].shipAttributes` (`Types.sol:154`) is scoped per-game, not global — so this finding was never about cross-game contamination (that part of the original concern was overstated; see L-01 note below). The real bug, confirmed and fixed, is that the write was unconditionally repeatable: nothing stopped this `public` function from being called again after the one-time snapshot `_initializeFleetAttributes` takes at game start, letting a live game's attributes be re-pulled from `ShipAttributes` mid-match if the admin changes its current version/costs. Visibility was intentionally left `public` (players are expected to self-serve this during fleet setup) — the fix is a snapshot-once guard, not access control. See the Addendum for the implementation.
 
 ---
 
@@ -279,7 +282,9 @@ The caller of `endGameOnTimeout` receives the win. This creates a front-running 
 **File:** `contracts/Game.sol`, lines 247–274  
 **Severity:** Low
 
-Even if access control is added, there is no check that the `_shipId` belongs to the game identified by `_gameId`. A ship from a different game or an unrelated ship can have its attributes rewritten into a live game.
+There is no check that the `_shipId` belongs to the game identified by `_gameId`.
+
+**Note (2026-07-16):** Since `games[_gameId].shipAttributes` (`Types.sol:154`) is a mapping scoped inside that game's own storage struct (not a global `shipId => Attributes` mapping), calling this with an unrelated `_shipId` only ever writes into that game's own unused slot for that id — it cannot reach into or corrupt a *different* live game's data. The practical risk is narrower than "rewritten into a live game" implies. Still worth adding the membership check as defense in depth, but it is not required for the C-02 fix (see Addendum), which closes the actual exploit path (re-rolling a ship's own attributes mid-match) via a snapshot-once guard instead.
 
 ---
 
@@ -454,7 +459,7 @@ Positions are first validated for column bounds (creator: 0–3, joiner: 13–16
 | ID | Contract | Function | Severity | Category |
 |---|---|---|---|---|
 | C-01 | RandomManager | `requestRandomness`, `fulfillRandomRequest` | Critical | Improper Randomness |
-| C-02 | Game | `calculateShipAttributes`, `calculateFleetAttributes` | Critical | Access Control |
+| C-02 | Game | `calculateShipAttributes`, `calculateFleetAttributes` | Critical | Access Control (Fixed) |
 | H-01 | ShipAttributes | `setCosts` | High | Logic Bug |
 | H-02 | Game | `moveShip` | High | Bounds Check |
 | H-03 | Game | `_processFlakArrayForFleet` | High | Logic Bug |
@@ -490,3 +495,128 @@ Positions are first validated for column bounds (creator: 0–3, joiner: 13–16
 | I-08 | Lobbies | `getAllLobbiesForPlayerWithDupes` | Info | Code Quality |
 | I-09 | Ships | `_update` | Info | ERC-721 Safety |
 | I-10 | Fleets | `createFleet` | Info | Gas Efficiency |
+| T-01 | Tournament | `resolveDraw` | High | Missing Validation |
+| T-02 | Tournament | `assignMatchGame`, `recordResult` | High | Result Replay |
+| T-03 | Tournament | `assignMatchGame`, `resolveDraw` | High | Locked Funds |
+| T-04 | Maps | `setMapEditor` | Informational | Widened Blast Radius |
+
+---
+
+## Addendum — Post-Audit Findings in `Tournament.sol` (2026-07-16)
+
+> **Status:** Follow-up review  
+> **Date:** 2026-07-16  
+> **Scope:** Changes merged after the baseline audit commit (`9a9a049`): `contracts/Tournament.sol`, `contracts/GameBlobRegistry.sol`, `contracts/ByteHasher.sol`, `contracts/IWorldID.sol`, `contracts/mocks/MockWorldID.sol`, and access-control changes to `contracts/Maps.sol`.
+
+None of the findings above (C-01 through I-10) have been remediated in the current tree. The only change to a previously-audited file is `Maps.sol` gaining an `isMapEditor` role (see T-04 below); the underlying bugs it touches (H-06, M-08) are unchanged.
+
+`Tournament.sol` is new since the audit and holds real funds (entry fees + sponsor prize pools). It introduces three findings of its own.
+
+### T-01 — `resolveDraw` Does Not Verify a Draw (or Any Game) Occurred
+
+**File:** `contracts/Tournament.sol`, lines 332–349  
+**Severity:** High
+
+```solidity
+function resolveDraw(
+    uint256 tournamentId,
+    uint256 matchId,
+    bytes32 walrusBlobId
+) external {
+    TournamentData storage t = _get(tournamentId);
+    if (msg.sender != t.creator) revert NotCreator();
+    if (t.state != TournamentState.Active) revert NotActive();
+    if (matchId >= t.bracket.length) revert MatchNotFound();
+    Match storage m = t.bracket[matchId];
+    if (m.resolved) revert MatchAlreadyResolved();
+    if (m.player1 == address(0) || m.player2 == address(0)) revert MatchNotReady();
+
+    address winner = t.seed[m.player1] <= t.seed[m.player2]
+        ? m.player1
+        : m.player2;
+    _resolve(t, matchId, winner, walrusBlobId);
+}
+```
+
+The function never reads `m.gameId`, never calls into `GameResults` or `Game`, and never checks that a game was even assigned to the match, let alone that it ended in a draw. It only checks that `msg.sender` is the tournament creator and that both bracket slots are filled. The comment above it frames this as a stopgap for the one case where `GameResults` can't represent an outcome (draws are never recorded there), but nothing in the code restricts its use to that case.
+
+**Why it matters:** The tournament creator can call `resolveDraw` on any active, unresolved match at any time — including matches where no game has been played at all — and it will deterministically resolve to whichever player registered first (lower seed). This lets a creator fast-forward or force the outcome of the entire bracket without any of the underlying games being played, defeating the contract's stated design goal that "winners are read trustlessly from GameResults on the same chain."
+
+---
+
+### T-02 — `assignMatchGame` / `recordResult` Accept Any Historical `gameId`, Enabling Result Replay
+
+**File:** `contracts/Tournament.sol`, lines 288–325  
+**Severity:** High
+
+`assignMatchGame` (creator-only) sets `m.gameId` to an arbitrary caller-supplied value with no check that the referenced game is new, that it was created after the match was scheduled, or that it has any relationship to the tournament at all:
+
+```solidity
+function assignMatchGame(
+    uint256 tournamentId,
+    uint256 matchId,
+    uint256 gameId
+) external {
+    ...
+    m.gameId = gameId;
+    emit MatchGameAssigned(tournamentId, matchId, gameId);
+}
+```
+
+`recordResult` then only validates that the stored `GameResult`'s winner/loser pair matches the match's two seeded players:
+
+```solidity
+GameResult memory gr = gameResults.getGameResult(m.gameId);
+bool ok = (gr.winner == m.player1 && gr.loser == m.player2) ||
+    (gr.winner == m.player2 && gr.loser == m.player1);
+if (!ok) revert WinnerNotInMatch();
+```
+
+Since `gameId` is the same global ID space used by ordinary (non-tournament) games (per the `game == lobbyId` change in `Game.sol`/`Lobbies.sol`), and `GameResults` records are permanent and never expire, any game the two matched players have ever played against each other — before the tournament existed, before the match was scheduled, or played casually outside the bracket UI — is a valid candidate for `assignMatchGame`.
+
+**Why it matters:** The creator can resolve a scheduled match using an old, unrelated result between the same two players instead of requiring them to actually play the current tournament match. This requires no cooperation from the players themselves (only from the creator), and breaks the "trustless from GameResults" guarantee the contract claims, since linkage between a `gameId` and a specific tournament match is entirely creator-asserted with no on-chain freshness or provenance check.
+
+---
+
+### T-03 — No Recovery Path for an Active Tournament With an Unresponsive Creator
+
+**File:** `contracts/Tournament.sol`, lines 288–349 (`assignMatchGame`, `resolveDraw`); no corresponding admin/timeout function exists  
+**Severity:** High
+
+Once `start()` moves a tournament to `TournamentState.Active`, the only two functions that can move a match toward resolution (`assignMatchGame`, `resolveDraw`) are gated with `if (msg.sender != t.creator) revert NotCreator();`. `recordResult` is permissionless but requires `m.gameId != 0`, which only the creator can set. There is no timeout, no owner override, and no forfeit-by-inactivity path anywhere in the contract for an `Active` tournament — `cancel()` only works while `state == Registration`.
+
+**Why it matters:** If the creator stops participating after `start()` (abandons the tournament, loses their key, or simply never calls `assignMatchGame`), every match is permanently stuck, `finalize()` can never be reached (`t.champion` never gets set), and `t.prizePool` — entry fees from every registrant plus any sponsor contribution — is locked in the contract with no rescue mechanism. This is the same failure mode as the audit's `DroneYard` H-04 finding (permanently locked funds), applied to a contract that pools money from many independent players rather than one.
+
+---
+
+### T-04 — `Maps.setMapEditor` Widens the Blast Radius of Unfixed H-06/M-08
+
+**File:** `contracts/Maps.sol`, lines 42–75 (added), interacting with existing H-06/M-08  
+**Severity:** Informational
+
+The new `onlyMapEditor` modifier (owner or any address flagged via `setMapEditor`) now gates `createPresetMap`, `updatePresetMap`, `updatePresetScoringMap`, `setBlockedTile`, and `setScoringTile`. This is a legitimate access-control improvement over the previous `onlyOwner`-only surface, but it does not touch `getScoreAndZeroOut` (H-06, still `public` with no access control at all) or fix `updatePresetMap`'s incomplete-tile-clearing bug (M-08). It does mean that whatever set of addresses `setMapEditor` is granted to going forward will each be able to trigger the still-unresolved M-08 behavior, where previously only the single owner key could.
+
+**Why it matters:** Not a new vulnerability by itself, but worth tracking alongside H-06/M-08 remediation — fixing those two findings should happen before (or alongside) granting `isMapEditor` to any address beyond the deployer, since the trusted-editor set is about to grow.
+
+---
+
+## Addendum — C-02 Remediation (2026-07-16)
+
+**File:** `contracts/Game.sol`, `calculateShipAttributes` (line ~258)
+
+Fixed by adding a snapshot-once guard rather than access control, since `calculateShipAttributes` is intentionally `public` so players can self-serve recalculating their own ships during fleet setup (there is no `msg.sender` restriction to begin with — it was never really "callable only by the owning player," just callable by anyone for any ship). The change:
+
+```solidity
+function calculateShipAttributes(uint _gameId, uint _shipId) public {
+    GameData storage game = games[_gameId];
+    Attributes storage attributes = game.shipAttributes[_shipId];
+    if (attributes.version != 0) revert InvalidMove(); // already calculated for this game
+    ...
+}
+```
+
+`attributes.version` is 0 only before the first calculation for that `(gameId, shipId)` pair — `ShipAttributes.currentAttributesVersion` is seeded to `1` in its constructor and only ever increases, so a non-zero `version` reliably means "already snapshotted for this game." This closes the actual exploit path (re-pulling a newer `ShipAttributes` version/cost update into an already-started game) while leaving the one legitimate call, from `_initializeFleetAttributes` at game start, unaffected. Reuses the existing `InvalidMove` error rather than adding a new one, to avoid growing the contract's bytecode further (see size note below).
+
+**Ship-to-game membership (L-01):** left unaddressed — confirmed lower risk than originally stated since `shipAttributes` is scoped per-game storage (see the L-01 note above), not a cross-game hazard. Can be added later as defense in depth.
+
+**Contract size:** `Game.sol` was already within ~20 bytes of the 24 KiB (24,576-byte) Spurious Dragon limit before this change (`hardhat.config.ts` even has a comment noting `runs: 1` "keeps Game under 24 KiB"). The new guard added 34 bytes, pushing it over. Rather than touch the optimizer settings (disallowed by `CLAUDE.md` regardless — no ignoring size limits), `getAllShipPositions` (same file) was rewritten to drop its redundant first pass: it used to scan the full grid once just to count live ships (to size the `positions` memory array) and a second time to populate it. It now allocates for the theoretical worst case (`GRID_HEIGHT * GRID_WIDTH + goneShipIds.length`), fills in one pass, and shrinks the array's length word in place via `assembly { mstore(positions, index) }` once the actual count is known — same return value, one grid scan instead of two. Net effect: `Game.sol` dropped from 24.014 KiB to 23.824 KiB, restoring headroom. `Game.test.ts` passes unchanged.
