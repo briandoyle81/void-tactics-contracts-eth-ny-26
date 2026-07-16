@@ -228,8 +228,12 @@ contract Game is Ownable {
     ) internal {
         GameData storage game = games[_gameId];
 
-        // Validate bounds and vacancy
+        // Validate bounds and vacancy. Lower-bound checks matter here: _row/_column
+        // are int16, and without them a negative value passes the upper-bound-only
+        // check and indexes an unintended (but validly-addressable) negative grid slot.
         if (
+            _row < 0 ||
+            _column < 0 ||
             _row >= GRID_HEIGHT ||
             _column >= GRID_WIDTH ||
             game.grid[_row][_column] != 0
@@ -534,8 +538,15 @@ contract Game is Ownable {
                 );
                 Attributes storage attributes = game.shipAttributes[_shipId];
                 if (movementCost > attributes.movement) revert InvalidMove();
-                if (_newRow >= GRID_HEIGHT || _newCol >= GRID_WIDTH)
-                    revert InvalidMove();
+                // Lower-bound check matters here too, for the same reason as
+                // _placeShipOnGrid: int16 coordinates let a negative value slip
+                // past an upper-bound-only comparison.
+                if (
+                    _newRow < 0 ||
+                    _newCol < 0 ||
+                    _newRow >= GRID_HEIGHT ||
+                    _newCol >= GRID_WIDTH
+                ) revert InvalidMove();
                 if (game.grid[_newRow][_newCol] != 0) {
                     // Ramming consumes the move and does not allow an additional action.
                     actionType = ActionType.Pass;
@@ -1078,18 +1089,20 @@ contract Game is Ownable {
                 uint8 damageReduction = game
                     .shipAttributes[targetShipId]
                     .damageReduction;
-                flakStrength = uint8(
+                // Apply this target's own reduction to the base flakStrength, reusing
+                // damageReduction's slot to hold the result (stack is too tight here
+                // for another local — see hardhat.config.ts). Never write back into
+                // flakStrength itself, or each subsequent target (and the second
+                // fleet's call) would compound the previous targets' reductions
+                // instead of applying their own.
+                damageReduction = uint8(
                     flakStrength -
                         ((uint16(flakStrength) * damageReduction) / 100)
                 );
-                if (
-                    flakStrength >= game.shipAttributes[targetShipId].hullPoints
-                ) {
+                if (damageReduction >= game.shipAttributes[targetShipId].hullPoints) {
                     _setShipHPToZero(_gameId, targetShipId);
                 } else {
-                    game
-                        .shipAttributes[targetShipId]
-                        .hullPoints -= flakStrength;
+                    game.shipAttributes[targetShipId].hullPoints -= damageReduction;
                 }
             }
         }

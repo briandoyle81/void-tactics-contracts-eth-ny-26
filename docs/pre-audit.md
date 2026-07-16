@@ -36,7 +36,7 @@ This audit covers 20 production Solidity contracts plus supporting interfaces, m
 
 ---
 
-### C-02 — `Game.calculateShipAttributes` and `Game.calculateFleetAttributes` Are Unguarded Public State-Writing Functions
+### ~~C-02 — `Game.calculateShipAttributes` and `Game.calculateFleetAttributes` Are Unguarded Public State-Writing Functions~~
 
 **File:** `contracts/Game.sol`, lines 247–274  
 **Severity:** Critical  
@@ -55,10 +55,11 @@ This audit covers 20 production Solidity contracts plus supporting interfaces, m
 
 ## High Severity Findings
 
-### H-01 — `ShipAttributes.setCosts` Increments Version Then Overwrites It
+### ~~H-01 — `ShipAttributes.setCosts` Increments Version Then Overwrites It~~
 
 **File:** `contracts/ShipAttributes.sol`, lines 342–345  
-**Severity:** High
+**Severity:** High  
+**Status:** Fixed 2026-07-16
 
 ```solidity
 function setCosts(Costs memory _costs) external onlyOwner {
@@ -69,14 +70,17 @@ function setCosts(Costs memory _costs) external onlyOwner {
 
 The function increments `costs.version`, then replaces the entire struct with the caller-supplied `_costs`. If the caller passes a `_costs.version` that is stale, zero, or matches the previous version, the version field will be wrong. All ships use `costsVersion` to detect staleness; a wrong version will either permanently lock all ships out of fleets (`ShipCostVersionMismatch`) or allow ships with outdated cost calculations to enter fleets silently.
 
+**Fix:** `newVersion` is now computed from storage (`costs.version + 1`) *before* the struct is overwritten, and reasserted onto `costs.version` after `costs = _costs`, so the caller-supplied `_costs.version` is discarded entirely — it's no longer possible to corrupt the version by passing a stale/zero/duplicate value. This also resolves M-01 below, which is the same bug. `test/ShipCostsVersions.test.ts` and `test/Ships.test.ts` (104 tests) pass unchanged.
+
 **Why it matters:** The costs-version system is the primary guard preventing ships with old (potentially underpriced) stats from entering competitive games. Corrupting it breaks fleet validation for all subsequent lobbies.
 
 ---
 
-### H-02 — `Game.moveShip` Does Not Validate Negative Grid Coordinates
+### ~~H-02 — `Game.moveShip` Does Not Validate Negative Grid Coordinates~~
 
 **File:** `contracts/Game.sol`, lines 527–530  
-**Severity:** High
+**Severity:** High  
+**Status:** Fixed 2026-07-16 (fixed together with M-06 below, same root cause)
 
 ```solidity
 if (_newRow >= GRID_HEIGHT || _newCol >= GRID_WIDTH)
@@ -87,12 +91,15 @@ Because `_newRow` and `_newCol` are `int16`, a player can pass negative values (
 
 **Why it matters:** A player can teleport ships to invisible negative-coordinate cells, escaping opponent fire while still being able to shoot, effectively making them invincible for the rest of the game.
 
+**Fix:** Added `_newRow < 0 || _newCol < 0` to `moveShip`'s bounds check and `_row < 0 || _column < 0` to `_placeShipOnGrid`'s (M-06), alongside the existing upper-bound checks. Full test suite (301 tests) passes unchanged; no contract-size regression.
+
 ---
 
-### H-03 — FlakArray Mutates `flakStrength` Across Targets, Nerfing Subsequent Hits
+### ~~H-03 — FlakArray Mutates `flakStrength` Across Targets, Nerfing Subsequent Hits~~
 
 **File:** `contracts/Game.sol`, lines 1069–1083  
-**Severity:** High
+**Severity:** High  
+**Status:** Fixed 2026-07-16
 
 ```solidity
 flakStrength = uint8(
@@ -105,16 +112,21 @@ flakStrength = uint8(
 
 **Why it matters:** The intended behaviour is "apply each target's damage reduction to the base flak strength." The actual behaviour penalises later targets (and the second fleet) with cumulative reductions. In edge cases where all targets have high damage reduction, the effective damage approaches zero for anything hit after the first target.
 
+**Fix:** The per-target reduced damage is no longer written back into the `flakStrength` parameter. A naive fix (a new `uint8 damage` local) hit `CompilerError: Stack too deep` — this function is already at the stack-depth limit under `viaIR: false` (see `hardhat.config.ts`). Instead, the already-in-scope `damageReduction` variable's slot is reused to hold the computed damage once it's no longer needed for the reduction calculation itself, so the fix adds zero new stack slots and zero bytecode-size risk. `flakStrength` (the base value) is now read-only for the rest of the loop, so every target's damage is computed independently from the true base value, matching the intended behaviour. Full suite (301 tests) passes; no contract-size regression.
+
 ---
 
-### H-04 — `DroneYard` Has No Withdrawal Function; UTC Accumulates and Is Permanently Locked
+### ~~H-04 — `DroneYard` Has No Withdrawal Function; UTC Accumulates and Is Permanently Locked~~
 
 **File:** `contracts/DroneYard.sol`, lines 113–163  
-**Severity:** High
+**Severity:** High  
+**Status:** Fixed 2026-07-16
 
 `modifyShip` transfers UTC tokens from the caller to `address(this)`, but `DroneYard` has no `withdraw`, no owner, no `Ownable`, and no rescue function. All modification fees are permanently locked in the contract with no mechanism to recover them.
 
 **Why it matters:** Every ship modification permanently burns UTC tokens from the economy. If this is unintentional, it is a financial loss; if it was intended as a burn mechanism, the effect is undocumented and constitutes an undisclosed economic parameter.
+
+**Fix:** `DroneYard` now inherits `Ownable` (deployer becomes owner via the existing Ignition deploy flow, same pattern as `Maps`/`ShipAttributes`/`GameResults`), and a new `onlyOwner` `withdraw(address _to)` sweeps the contract's full UTC balance to `_to`, emitting `Withdrawn(to, amount)`. Contract is tiny (6.6 KiB vs. the 24 KiB limit) so this carried no size risk. Full suite (301 tests) passes unchanged.
 
 ---
 
@@ -181,10 +193,11 @@ In `purchaseWithFlow`, `_processReferral` executes a raw ETH transfer via `.call
 
 ## Medium Severity Findings
 
-### M-01 — `ShipAttributes.setCosts` Version Increment Is Silently Overwritten
+### ~~M-01 — `ShipAttributes.setCosts` Version Increment Is Silently Overwritten~~
 
 **File:** `contracts/ShipAttributes.sol`, lines 342–344  
-**Severity:** Medium
+**Severity:** Medium  
+**Status:** Fixed 2026-07-16 — same bug as H-01, fixed together (see H-01 above).
 
 `costs = _costs` copies the entire `Costs` struct including its `version` field from the caller. The `costs.version++` on line 343 is therefore meaningless unless the caller passes `_costs.version == (old_version + 1)`. The intended auto-increment is silently defeated.
 
@@ -236,10 +249,11 @@ The fee check is `if (msg.value < additionalLobbyFee) revert InsufficientFee()`.
 
 ---
 
-### M-06 — `Game._placeShipOnGrid` Does Not Validate Negative Coordinates
+### ~~M-06 — `Game._placeShipOnGrid` Does Not Validate Negative Coordinates~~
 
 **File:** `contracts/Game.sol`, lines 229–233  
-**Severity:** Medium
+**Severity:** Medium  
+**Status:** Fixed 2026-07-16 — see H-02 above.
 
 ```solidity
 if (
@@ -459,22 +473,22 @@ Positions are first validated for column bounds (creator: 0–3, joiner: 13–16
 | ID | Contract | Function | Severity | Category |
 |---|---|---|---|---|
 | C-01 | RandomManager | `requestRandomness`, `fulfillRandomRequest` | Critical | Improper Randomness |
-| C-02 | Game | `calculateShipAttributes`, `calculateFleetAttributes` | Critical | Access Control (Fixed) |
-| H-01 | ShipAttributes | `setCosts` | High | Logic Bug |
-| H-02 | Game | `moveShip` | High | Bounds Check |
-| H-03 | Game | `_processFlakArrayForFleet` | High | Logic Bug |
-| H-04 | DroneYard | `modifyShip` | High | Locked Funds |
+| ~~C-02~~ | Game | `calculateShipAttributes`, `calculateFleetAttributes` | Critical | ~~Access Control~~ (Fixed) |
+| ~~H-01~~ | ShipAttributes | `setCosts` | High | ~~Logic Bug~~ (Fixed) |
+| ~~H-02~~ | Game | `moveShip` | High | ~~Bounds Check~~ (Fixed) |
+| ~~H-03~~ | Game | `_processFlakArrayForFleet` | High | ~~Logic Bug~~ (Fixed) |
+| ~~H-04~~ | DroneYard | `modifyShip` | High | ~~Locked Funds~~ (Fixed) |
 | H-05 | Ships | `shipBreaker` | High | State Management |
 | H-06 | Maps | `getScoreAndZeroOut` | High | Access Control |
 | H-07 | RandomManager | `fulfillRandomRequest` | High | Improper Randomness |
 | H-08 | Game | `flee` | High | Missing Validation |
 | H-09 | Ships | `purchaseWithFlow` | High | DoS / Self-Referral |
-| M-01 | ShipAttributes | `setCosts` | Medium | Logic Bug |
+| ~~M-01~~ | ShipAttributes | `setCosts` | Medium | ~~Logic Bug~~ (Fixed) |
 | M-02 | Game | `_performRepairDrones` | Medium | Integer Overflow |
 | M-03 | UniversalCredits | import | Medium | Production Readiness |
 | M-04 | ShipAttributes | `calculateShipAttributes` | Medium | Array OOB |
 | M-05 | Lobbies | `createLobby`, `joinLobby` | Medium | Fee Handling |
-| M-06 | Game | `_placeShipOnGrid` | Medium | Bounds Check |
+| ~~M-06~~ | Game | `_placeShipOnGrid` | Medium | ~~Bounds Check~~ (Fixed) |
 | M-07 | Game | `endGameOnTimeout` | Medium | Front-Running |
 | M-08 | Maps | `updatePresetMap` | Medium | Logic Bug |
 | L-01 | Game | `calculateShipAttributes` | Low | Missing Validation |

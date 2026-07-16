@@ -3,13 +3,14 @@ pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "./IShips.sol";
 import "./IUniversalCredits.sol";
 import "./IShipPurchaser.sol";
 import "./IOnchainRandomShipNames.sol";
 import "./Types.sol";
 
-contract DroneYard is ReentrancyGuard {
+contract DroneYard is Ownable, ReentrancyGuard {
     error NotShipOwner(uint _shipId);
     error ShipNotConstructed(uint _shipId);
     error ShipInFleet(uint _shipId);
@@ -17,6 +18,8 @@ contract DroneYard is ReentrancyGuard {
     error InsufficientFunds(uint _required, uint _available);
     error InvalidTraitValue(uint8 _value);
     error ArmorAndShieldsBothSet();
+
+    event Withdrawn(address indexed to, uint amount);
 
     IShips public immutable ships;
     IERC20 public immutable universalCredits;
@@ -28,11 +31,21 @@ contract DroneYard is ReentrancyGuard {
         address _universalCredits,
         address _shipPurchaser,
         address _shipNames
-    ) {
+    ) Ownable(msg.sender) {
         ships = IShips(_ships);
         universalCredits = IERC20(_universalCredits);
         shipPurchaser = IShipPurchaser(_shipPurchaser);
         shipNames = IOnchainRandomShipNames(_shipNames);
+    }
+
+    /**
+     * @dev Withdraw accumulated UTC modification fees to `_to`. H-04 fix: without
+     * this, every modifyShip fee is permanently locked in this contract.
+     */
+    function withdraw(address _to) external onlyOwner {
+        uint amount = universalCredits.balanceOf(address(this));
+        require(universalCredits.transfer(_to, amount), "UTC transfer failed");
+        emit Withdrawn(_to, amount);
     }
 
     /**

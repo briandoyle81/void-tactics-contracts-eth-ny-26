@@ -340,8 +340,13 @@ contract ShipAttributes is IShipAttributes, Ownable {
     }
 
     function setCosts(Costs memory _costs) external onlyOwner {
-        costs.version++;
+        // Compute the new version from current storage before it's overwritten below,
+        // and ignore whatever `_costs.version` the caller passed in — otherwise a
+        // stale/zero/duplicate caller-supplied version would silently corrupt the
+        // costsVersion ships rely on to detect stale cost data (see H-01/M-01).
+        uint16 newVersion = costs.version + 1;
         costs = _costs;
+        costs.version = newVersion;
     }
 
     function getCosts() external view returns (uint, Costs memory) {
