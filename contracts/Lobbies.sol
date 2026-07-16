@@ -247,8 +247,9 @@ contract Lobbies is Ownable, ReentrancyGuard {
             if (block.timestamp < timeoutEnd) revert PlayerInTimeout();
         }
 
-        // If reserving for a specific player, charge 1 UTC
+        // If reserving for a specific player, charge 1 UTC (no ETH involved)
         if (_reservedJoiner != address(0)) {
+            if (msg.value != 0) revert InsufficientFee();
             if (address(universalCredits) == address(0)) revert UTCTransferFailed();
             uint reservationFee = 1 ether; // 1 UTC
             uint balance = universalCredits.balanceOf(msg.sender);
@@ -260,7 +261,10 @@ contract Lobbies is Ownable, ReentrancyGuard {
         } else {
             // Check if player needs to pay for additional lobbies (FLOW payment)
             if (state.activeLobbiesCount >= freeGamesPerAddress) {
-                if (msg.value < additionalLobbyFee) revert InsufficientFee();
+                if (msg.value != additionalLobbyFee) revert InsufficientFee();
+            } else if (msg.value != 0) {
+                // Free lobby available: no fee is owed, so don't silently keep ETH
+                revert InsufficientFee();
             }
         }
 
@@ -327,8 +331,14 @@ contract Lobbies is Ownable, ReentrancyGuard {
         // Check if player needs to pay for additional lobbies (only for non-reserved lobbies)
         if (lobby.players.reservedJoiner == address(0)) {
             if (state.activeLobbiesCount >= freeGamesPerAddress) {
-                if (msg.value < additionalLobbyFee) revert InsufficientFee();
+                if (msg.value != additionalLobbyFee) revert InsufficientFee();
+            } else if (msg.value != 0) {
+                // Free lobby available: no fee is owed, so don't silently keep ETH
+                revert InsufficientFee();
             }
+        } else if (msg.value != 0) {
+            // Reserved lobbies don't charge the joiner an ETH fee
+            revert InsufficientFee();
         }
 
         lobby.players.joiner = msg.sender;

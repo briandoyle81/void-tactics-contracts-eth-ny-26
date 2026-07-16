@@ -991,12 +991,21 @@ contract Game is Ownable {
             Special.RepairDrones
         );
 
-        // Increase hull points by the repair strength, but don't exceed max hull points
-        uint8 newHullPoints = targetAttributes.hullPoints + repairStrength;
+        // Increase hull points by the repair strength, but don't exceed max hull points.
+        // Adding in uint16 first means the sum (max 255+255=510) can never overflow,
+        // so it's safe to mark unchecked — this removes the overflow-check/revert
+        // machinery a uint8 addition would otherwise carry, rather than adding a
+        // second checked op the way a "check the cap via subtraction first" reorder
+        // would (that trades one checked add for a checked subtract plus a checked
+        // add, which costs more bytecode, not less).
+        uint16 newHullPoints;
+        unchecked {
+            newHullPoints = uint16(targetAttributes.hullPoints) + uint16(repairStrength);
+        }
         if (newHullPoints > targetAttributes.maxHullPoints) {
             targetAttributes.hullPoints = targetAttributes.maxHullPoints;
         } else {
-            targetAttributes.hullPoints = newHullPoints;
+            targetAttributes.hullPoints = uint8(newHullPoints);
         }
 
         // Remove ship from zero HP set

@@ -627,6 +627,8 @@ contract Maps is Ownable {
         int16 _row,
         int16 _col
     ) public returns (uint8) {
+        if (msg.sender != gameAddress && msg.sender != owner())
+            revert NotGameContract();
         uint8 points = scoringTiles[_gameId][_row][_col];
         if (onlyOnceTiles[_gameId][_row][_col]) {
             scoringTiles[_gameId][_row][_col] = 0;

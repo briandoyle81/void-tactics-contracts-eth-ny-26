@@ -713,6 +713,14 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
                 revert NotYourShip(shipId);
             }
 
+            // Ships in a fleet must not be destroyed: _update's inFleet check would
+            // revert the _burn call below anyway, but only after timestampDestroyed
+            // has already been written — checking here keeps that write from ever
+            // happening instead of relying on the burn's revert to undo it.
+            if (s.shipData.inFleet) {
+                revert ShipInFleet(shipId);
+            }
+
             // Prevent recycling of free ships
             if (s.shipData.isFreeShip) {
                 revert CannotRecycleFreeShip(shipId);

@@ -15,17 +15,31 @@ This audit covers 20 production Solidity contracts plus supporting interfaces, m
 
 | Severity | Count |
 |---|---|
-| Critical | 2 |
-| High | 9 |
+| Critical | 3 |
+| High | 8 |
 | Medium | 8 |
 | Low | 8 |
 | Informational | 10 |
+
+*(Critical/High counts updated 2026-07-16: H-07 was reclassified to Critical — see C-01 above — shifting the original 2/9 split to 3/8. Does not include the Tournament/Maps addendum findings (T-01–T-04) added below, which post-date this snapshot.)*
 
 ---
 
 ## Critical Findings
 
-### C-01 — Insecure On-Chain Randomness via `block.prevrandao`
+### C-01 — `RandomManager.fulfillRandomRequest` Does Not Verify the Request Exists
+
+**File:** `contracts/RandomManager.sol`, lines 20–29  
+**Severity:** Critical  
+**Status:** Reclassified 2026-07-16 (was H-07 — elevated to Critical, moved above the randomness-source finding below; not yet fixed)
+
+`fulfillRandomRequest(uint _requestId)` accepts any `_requestId` value and returns a `block.prevrandao`-derived value. There is no mapping of outstanding requests, no check that the ID was ever issued by `requestRandomness()`, and no single-use prevention. Any caller (including MEV bots or validators) can call `fulfillRandomRequest` with a forged ID to front-run ship construction and predict or manipulate the random outcome before `constructShip` is called.
+
+**Why it matters:** Combined with C-02 below, this means randomness has no commit-reveal protection whatsoever. An attacker can observe the mempool for a `constructShip` call, front-run with `fulfillRandomRequest` using the same serial number to learn the output, and selectively abort their own construction if the result is unfavourable.
+
+---
+
+### C-02 — Insecure On-Chain Randomness via `block.prevrandao`
 
 **File:** `contracts/RandomManager.sol`, lines 14–28  
 **Severity:** Critical
@@ -36,7 +50,7 @@ This audit covers 20 production Solidity contracts plus supporting interfaces, m
 
 ---
 
-### ~~C-02 — `Game.calculateShipAttributes` and `Game.calculateFleetAttributes` Are Unguarded Public State-Writing Functions~~
+### ~~C-03 — `Game.calculateShipAttributes` and `Game.calculateFleetAttributes` Are Unguarded Public State-Writing Functions~~
 
 **File:** `contracts/Game.sol`, lines 247–274  
 **Severity:** Critical  
@@ -130,21 +144,25 @@ flakStrength = uint8(
 
 ---
 
-### H-05 — `shipBreaker` Does Not Check `inFleet` Before Burning
+### ~~H-05 — `shipBreaker` Does Not Check `inFleet` Before Burning~~
 
 **File:** `contracts/Ships.sol`, lines 701–739  
-**Severity:** High
+**Severity:** High  
+**Status:** Fixed 2026-07-16
 
 `shipBreaker` checks ownership (`s.owner != msg.sender`) but does **not** check `s.shipData.inFleet` before marking the ship destroyed and calling `_burn`. The `_update` override does check `inFleet` and would revert on the burn, so normally this is blocked — but only because the ERC-721 override is the last line of defence. If a ship is in a game, calling `shipBreaker` with its ID will revert at `_burn`, which is correct, but `s.shipData.timestampDestroyed = block.timestamp` writes before `_burn`. Because `_burn` reverts, the timestamp write is also reverted; however, this pattern is fragile and relying on the EVM revert cascade from `_burn` as the guard is a design smell flagged in the code itself (line 711 TODO).
 
 **Why it matters:** Any future change to burn logic (e.g., moving the inFleet check) could leave ships permanently marked as `timestampDestroyed` while still in a live fleet/game, breaking the game for both players.
 
+**Fix:** `shipBreaker` now checks `s.shipData.inFleet` itself (reusing the existing `ShipInFleet` error `_update` already throws) right after the ownership check, before `timestampDestroyed` is ever written — so the guard no longer depends on `_burn`'s revert to undo a state write that shouldn't have happened in the first place. Ships.sol was already tight (23.749 KiB); this added 47 bytes, landing at 23.796 KiB, still under the 24 KiB limit. Full suite (301 tests) passes unchanged.
+
 ---
 
-### H-06 — `Maps.getScoreAndZeroOut` Is `public` With No Access Control
+### ~~H-06 — `Maps.getScoreAndZeroOut` Is `public` With No Access Control~~
 
 **File:** `contracts/Maps.sol`, lines 602–612  
-**Severity:** High
+**Severity:** High  
+**Status:** Fixed 2026-07-16
 
 ```solidity
 function getScoreAndZeroOut(
@@ -156,38 +174,37 @@ This function zeros out a `onlyOnce` scoring tile for the given game. Any extern
 
 **Why it matters:** An attacker (or losing player) can zero out all scoring tiles immediately after a game starts, ensuring the game can only end by ship destruction, bypassing the map-objective victory condition entirely.
 
----
-
-### H-07 — `RandomManager.fulfillRandomRequest` Does Not Verify the Request Exists
-
-**File:** `contracts/RandomManager.sol`, lines 20–29  
-**Severity:** High
-
-`fulfillRandomRequest(uint _requestId)` accepts any `_requestId` value and returns a `block.prevrandao`-derived value. There is no mapping of outstanding requests, no check that the ID was ever issued by `requestRandomness()`, and no single-use prevention. Any caller (including MEV bots or validators) can call `fulfillRandomRequest` with a forged ID to front-run ship construction and predict or manipulate the random outcome before `constructShip` is called.
-
-**Why it matters:** Combined with C-01, this means randomness has no commit-reveal protection whatsoever. An attacker can observe the mempool for a `constructShip` call, front-run with `fulfillRandomRequest` using the same serial number to learn the output, and selectively abort their own construction if the result is unfavourable.
+**Fix:** Added the same `msg.sender != gameAddress && msg.sender != owner()` guard (reverting `NotGameContract()`) already used by `applyPresetMapToGame`/`applyPresetScoringMapToGame` in this same contract. `getScoreAndZeroOut` is only ever called from `Game._handleEndOfRound`, and no test calls it directly, so this is a drop-in restriction with no behavioral change for legitimate callers. Maps.sol has plenty of headroom (12.967 KiB vs. the 24 KiB limit). Full suite (301 tests) passes unchanged.
 
 ---
 
-### H-08 — `Game.flee` Is Missing a `_requireGameExists` Check
+### H-07 — `Game.flee` Is Missing a `_requireGameExists` Check
 
 **File:** `contracts/Game.sol`, lines 1358–1380  
-**Severity:** High
+**Severity:** High  
+**Status:** Deferred 2026-07-16 — `Game.sol` is too close to the 24 KiB contract-size limit to take the fix right now; see note below. Not struck through — still open, revisit when there's headroom.
 
 The commented-out check (lines 1360–1361 with "TODO: I think this is fine") means `flee` operates on a default-zeroed `GameData` storage reference when called with a non-existent `_gameId`. When `game.metadata.winner == address(0)` and `game.metadata.creator == address(0)`, the second guard (`msg.sender != creator && msg.sender != joiner`) will revert with `NotInGame` for any non-zero address. However, a call with a non-existent game ID and `address(0)` as a player would pass (since `address(0) == address(0)`) and trigger `_endGame(0, address(0), address(0))`, writing garbage winner state to game slot 0.
 
-**Why it matters:** Silent execution on non-existent game IDs can corrupt game slot 0, emit misleading `GameUpdate` events, and interfere with `gameResults.recordGameResult` if the draw path is ever altered.
+**Why it matters:** Silent execution on non-existent game IDs can corrupt game slot 0, emit misleading `GameUpdate` events, and interfere with `gameResults.recordGameResult` if the draw path is ever altered. In practice, exploiting this specific path requires `msg.sender == address(0)` (no known private key can transact from there), so live exploitability is low — but the guard should still exist as defense-in-depth and to remove the dead TODO comment.
+
+**Deferral note (2026-07-16):** Proposed fix, not yet applied: replace the commented-out dead check with a real call to the existing `_requireGameExists(_gameId)` helper (already shared by 6 other call sites in this file — `getGame`, `getAllShipPositions`, `moveShip`, `endGameOnTimeout`, etc.), which should cost only the small per-call-site overhead rather than duplicating the check body. As of this note, `Game.sol` is at 23.879 KiB against the 24 KiB (24,576-byte) limit — roughly 124 bytes of headroom. Deliberately holding off on spending any of that margin on this fix until we've either found more size savings elsewhere or confirmed the margin can absorb it safely alongside other pending fixes.
 
 ---
 
-### H-09 — `Ships.purchaseWithFlow` Referral Transfer Occurs Before State Finality
+### H-08 — `Ships.purchaseWithFlow` Referral Transfer Occurs Before State Finality
 
 **File:** `contracts/Ships.sol`, lines 163–165  
-**Severity:** High
+**Severity:** High  
+**Status:** Deferred 2026-07-16 — self-referral half is accepted as intended behavior; the revert-on-receive half is confirmed pure griefing/DoS (no funds at risk), deferring a fix. Not struck through — still open, revisit later.
 
 In `purchaseWithFlow`, `_processReferral` executes a raw ETH transfer via `.call{value: referralAmount}("")` inside the same function after minting. If the referrer is a contract and reverts on receive, the entire `purchaseWithFlow` transaction reverts, meaning the buyer loses their ships. There is also no prevention of a buyer naming themselves as `_referral`, allowing them to reclaim a portion of their own payment (self-referral).
 
 **Why it matters:** A malicious referral address can grief buyers by refusing ETH. Any buyer can self-refer to get a discount once their referralCount crosses a tier threshold. Both are exploitable with zero cost.
+
+**Deferral note (2026-07-16):**
+- **Self-referral:** accepted as acceptable/intended — not a bug to fix. Buyers being able to reclaim a portion of their own payment via self-referral once their `referralCount` crosses a tier threshold is fine as-is.
+- **Revert-on-receive griefing:** confirmed the actual blast radius is narrower than "the buyer loses their ships" suggests. `purchaseWithFlow` is a single `external payable nonReentrant` call; if `_processReferral`'s `.call{value: referralAmount}("")` fails, `_processReferral` reverts, which unwinds the *entire* transaction — the ship mints, the `amountPurchased` update, and the ETH transfer all roll back atomically (EVM revert semantics mean the buyer's `msg.value` is never actually taken on a reverted call). Net effect: no ships created, no funds charged, buyer only loses the gas spent on the failed attempt. So this is pure griefing/DoS, not a fund-loss bug — a malicious referral address can be handed out (e.g. via a referral link) to make every purchase through it fail, with no way for the buyer to know in advance. Deferred rather than fixed for now; a future fix would decouple the referral payout from the mint (e.g. pull-payment/credit balance for referrers instead of a synchronous push transfer) so a hostile referrer can only forfeit their own payout, not block the buyer's purchase.
 
 ---
 
@@ -203,10 +220,11 @@ In `purchaseWithFlow`, `_processReferral` executes a raw ETH transfer via `.call
 
 ---
 
-### M-02 — `Game._performRepairDrones` Has a `uint8` Addition Overflow Risk
+### ~~M-02 — `Game._performRepairDrones` Has a `uint8` Addition Overflow Risk~~
 
 **File:** `contracts/Game.sol`, lines 974–978  
-**Severity:** Medium
+**Severity:** Medium  
+**Status:** Fixed 2026-07-16
 
 ```solidity
 uint8 newHullPoints = targetAttributes.hullPoints + repairStrength;
@@ -216,12 +234,15 @@ If `hullPoints` is close to 255 and `repairStrength` is large, this addition wil
 
 **Why it matters:** A RepairDrones use on a ship with 250/255 HP and a repairStrength of 40 will revert the entire `moveShip` transaction, effectively locking the player out of their turn if they attempt the repair. The maxHullPoints cap (lines 975–977) is checked **after** the overflowing addition.
 
+**Fix:** Considered "reorder the cap check to happen before the addition" (compute `headroom = maxHullPoints - hullPoints`, compare, then add) but rejected it — that trades one checked `uint8` addition for a checked subtraction *plus* a checked addition in the safe branch, since Solidity inserts overflow-check machinery for every checked arithmetic op regardless of whether it can prove the op safe; that reorder would have cost more bytecode, not less. Instead, the sum is now computed in `uint16` (max 255+255=510, which always fits) inside an `unchecked` block — since the addition provably cannot overflow at that width, `unchecked` just strips out dead-weight revert machinery the compiler couldn't prove unreachable on its own, rather than skipping a real safety check. The final `uint8(newHullPoints)` truncation only happens in the branch where we've already confirmed it fits under `maxHullPoints`. Net effect: bug fixed *and* `Game.sol` shrank by 15 bytes (23.879 → 23.864 KiB). Full suite (301 tests) passes unchanged.
+
 ---
 
-### M-03 — `UniversalCredits` Has `hardhat/console.sol` in Production
+### ~~M-03 — `UniversalCredits` Has `hardhat/console.sol` in Production~~
 
 **File:** `contracts/UniversalCredits.sol`, line 4  
-**Severity:** Medium
+**Severity:** Medium  
+**Status:** Fixed 2026-07-16
 
 ```solidity
 import "hardhat/console.sol";
@@ -229,23 +250,31 @@ import "hardhat/console.sol";
 
 This is not commented out (unlike `Ships.sol` where it is commented). On a non-Hardhat network the import resolves to a no-op library, but it adds unnecessary bytecode weight and signals the contract was not prepared for production deployment. If the `console.sol` contract is not deployed on the target chain, all calls to `UniversalCredits` could fail at deployment.
 
+**Fix:** Removed the import (confirmed zero `console.*` calls anywhere in the file, so it was pure dead weight). Contract size unchanged (2.787 KiB before and after) — an unused `console.sol` import doesn't add runtime bytecode when nothing calls it — but this closes the production-readiness signal and the (theoretical) deployment-risk concern outright. Full suite (301 tests) passes unchanged.
+
 ---
 
 ### M-04 — `ShipAttributes` Attribute Version Arrays Can Be Out-of-Bounds Indexed
 
 **File:** `contracts/ShipAttributes.sol`, lines 120–155; `contracts/GenerateNewShip.sol`, lines 88–109  
-**Severity:** Medium
+**Severity:** Medium  
+**Status:** Won't fix (2026-07-16) — accepted as-is, not planned. Not struck through — left open for visibility, but no further action intended.
 
 `calculateShipAttributes` indexes `attributesVersions[version].guns[uint8(_ship.equipment.mainWeapon)]` without checking array length. `MainWeapon`, `Armor`, `Shields`, and `Special` enums each have 8 values (including 4 `future*` placeholders). The `setAllAttributes` function takes arbitrary-length arrays. If a version is deployed with only 4 gun entries (current default) and a ship has equipment enum value 4–7 (`future1–future4`), the call panics with an out-of-bounds access. `GenerateNewShip` uses `% 4` for weapon generation, but `customizeShip` accepts arbitrary `Equipment` values.
 
 ---
 
-### M-05 — `Lobbies.createLobby` and `joinLobby` Accept Excess ETH With No Refund
+### ~~M-05 — `Lobbies.createLobby` and `joinLobby` Accept Excess ETH With No Refund~~
 
 **File:** `contracts/Lobbies.sol`, lines 262–264, 329–331  
-**Severity:** Medium
+**Severity:** Medium  
+**Status:** Fixed 2026-07-16
 
 The fee check is `if (msg.value < additionalLobbyFee) revert InsufficientFee()`. Any ETH sent over `additionalLobbyFee` is silently retained by the contract. Players who over-pay (by mistake or via frontend error) permanently lose the difference.
+
+**Fix:** Both checks now require an exact fee (`msg.value != additionalLobbyFee`) instead of a minimum, so overpayment reverts up front with `InsufficientFee()` rather than being silently kept. All existing tests already pay the exact fee (`parseEther("1")` matching `additionalLobbyFee`), so this is a drop-in tightening with no behavior change for legitimate callers.
+
+Also closed two related gaps in the same functions where the fee branch is skipped entirely and `msg.value` wasn't validated at all: the UTC-reservation path in `createLobby` (`_reservedJoiner != address(0)`, which pays via UTC and needs no ETH) and the free-lobby path in both `createLobby` and `joinLobby` (`activeLobbiesCount < freeGamesPerAddress`), plus `joinLobby`'s reserved-lobby path (joiner owes no ETH fee — the creator already paid the UTC reservation fee). All four now revert `InsufficientFee()` on any nonzero `msg.value` when no fee is actually owed. Full suite (301 tests) passes unchanged; Lobbies.sol has plenty of headroom (14.677 KiB vs. the 24 KiB limit).
 
 ---
 
@@ -267,10 +296,11 @@ if (
 
 ---
 
-### M-07 — `Game.endGameOnTimeout` Winner-Determination Is Biased
+### ~~M-07 — `Game.endGameOnTimeout` Winner-Determination Is Biased~~
 
 **File:** `contracts/Game.sol`, lines 1335–1354  
-**Severity:** Medium
+**Severity:** Medium  
+**Status:** Not a bug (2026-07-16) — confirmed working as designed, no fix needed.
 
 ```solidity
 _endGame(_gameId, msg.sender, game.turnState.currentTurn);
@@ -278,14 +308,23 @@ _endGame(_gameId, msg.sender, game.turnState.currentTurn);
 
 The caller of `endGameOnTimeout` receives the win. This creates a front-running opportunity: if both players notice the timeout simultaneously, whoever broadcasts first wins. On high-latency chains or during congestion, the losing player of a close game can time their `endGameOnTimeout` call to arrive slightly after the opponent's turn starts, then immediately invoke timeout at the block after the turn time expires.
 
+**Resolution (2026-07-16):** Re-examined the actual guard at line 1374 — `if (msg.sender == game.turnState.currentTurn) revert InvalidMove();` — which means the player whose turn timed out can *never* call this function to declare themselves the winner; only the other (waiting) player can call it, and doing so is exactly how they're meant to claim victory over an unresponsive opponent. That's the intended design (confirmed with the project owner), not a bug: "if player 1 has run out of time, player 2 can seize victory by calling this function" is the feature working correctly, not a winner-determination flaw.
+
+The narrower residual case the original write-up was gesturing at — transaction-ordering nondeterminism right at the exact timeout boundary (a legitimate in-time move and an opponent's timeout call landing in the same block/close succession) — is an inherent property of any block-time-based turn timer, not something specific to this contract's logic, and isn't being tracked as a separate issue.
+
 ---
 
-### M-08 — `Maps.updatePresetMap` Cannot Fully Clear Old Tiles
+### ~~M-08 — `Maps.updatePresetMap` Cannot Fully Clear Old Tiles~~
 
 **File:** `contracts/Maps.sol`, lines 135–198  
-**Severity:** Medium
+**Severity:** Medium  
+**Status:** Not a bug (2026-07-16) — confirmed working as designed, no fix needed.
 
 `updatePresetMap` calls `_getPresetMap(_mapId)` to get current blocked positions, then clears them before setting new ones. However, if a prior update only set a subset of tiles and those mappings have been manually altered via `setBlockedTile`, the "clear old positions" step may be incomplete, leaving stale blocked positions for games that use that preset.
+
+**Resolution (2026-07-16):** Re-examined `_getPresetMap` (`Maps.sol:380-408`) and `_getPresetScoringMap` (`Maps.sol:457-492`) — neither reads a remembered/cached list of positions. Both do a full brute-force scan of all 187 grid cells (`GRID_HEIGHT * GRID_WIDTH`), checking `presetBlockedMaps[_mapId][row][col]` / `presetScoringMaps[_mapId][row][col]` directly for every cell. That means `updatePresetMap`'s "clear old positions" step always finds and clears *every* tile currently `true` for that map ID at call time, live — it can't go stale because it isn't relying on history in the first place.
+
+The finding's second claim — that `setBlockedTile` can desync this — doesn't hold up either: `setBlockedTile(_gameId, ...)` writes to `blockedTiles[_gameId][row][col]`, a completely separate mapping from `presetBlockedMaps[_mapId][row][col]`. It mutates per-*game* live-tile state, not preset-map storage, so it structurally cannot affect a preset map's blocked tiles at all. The "clear" step is provably complete by construction; no fix needed.
 
 ---
 
@@ -298,7 +337,7 @@ The caller of `endGameOnTimeout` receives the win. This creates a front-running 
 
 There is no check that the `_shipId` belongs to the game identified by `_gameId`.
 
-**Note (2026-07-16):** Since `games[_gameId].shipAttributes` (`Types.sol:154`) is a mapping scoped inside that game's own storage struct (not a global `shipId => Attributes` mapping), calling this with an unrelated `_shipId` only ever writes into that game's own unused slot for that id — it cannot reach into or corrupt a *different* live game's data. The practical risk is narrower than "rewritten into a live game" implies. Still worth adding the membership check as defense in depth, but it is not required for the C-02 fix (see Addendum), which closes the actual exploit path (re-rolling a ship's own attributes mid-match) via a snapshot-once guard instead.
+**Note (2026-07-16):** Since `games[_gameId].shipAttributes` (`Types.sol:154`) is a mapping scoped inside that game's own storage struct (not a global `shipId => Attributes` mapping), calling this with an unrelated `_shipId` only ever writes into that game's own unused slot for that id — it cannot reach into or corrupt a *different* live game's data. The practical risk is narrower than "rewritten into a live game" implies. Still worth adding the membership check as defense in depth, but it is not required for the C-03 fix (see Addendum), which closes the actual exploit path (re-rolling a ship's own attributes mid-match) via a snapshot-once guard instead.
 
 ---
 
@@ -472,25 +511,25 @@ Positions are first validated for column bounds (creator: 0–3, joiner: 13–16
 
 | ID | Contract | Function | Severity | Category |
 |---|---|---|---|---|
-| C-01 | RandomManager | `requestRandomness`, `fulfillRandomRequest` | Critical | Improper Randomness |
-| ~~C-02~~ | Game | `calculateShipAttributes`, `calculateFleetAttributes` | Critical | ~~Access Control~~ (Fixed) |
+| C-01 | RandomManager | `fulfillRandomRequest` | Critical | Improper Randomness (reclassified from H-07) |
+| C-02 | RandomManager | `requestRandomness`, `fulfillRandomRequest` | Critical | Improper Randomness |
+| ~~C-03~~ | Game | `calculateShipAttributes`, `calculateFleetAttributes` | Critical | ~~Access Control~~ (Fixed) |
 | ~~H-01~~ | ShipAttributes | `setCosts` | High | ~~Logic Bug~~ (Fixed) |
 | ~~H-02~~ | Game | `moveShip` | High | ~~Bounds Check~~ (Fixed) |
 | ~~H-03~~ | Game | `_processFlakArrayForFleet` | High | ~~Logic Bug~~ (Fixed) |
 | ~~H-04~~ | DroneYard | `modifyShip` | High | ~~Locked Funds~~ (Fixed) |
-| H-05 | Ships | `shipBreaker` | High | State Management |
-| H-06 | Maps | `getScoreAndZeroOut` | High | Access Control |
-| H-07 | RandomManager | `fulfillRandomRequest` | High | Improper Randomness |
-| H-08 | Game | `flee` | High | Missing Validation |
-| H-09 | Ships | `purchaseWithFlow` | High | DoS / Self-Referral |
+| ~~H-05~~ | Ships | `shipBreaker` | High | ~~State Management~~ (Fixed) |
+| ~~H-06~~ | Maps | `getScoreAndZeroOut` | High | ~~Access Control~~ (Fixed) |
+| H-07 | Game | `flee` | High | Missing Validation |
+| H-08 | Ships | `purchaseWithFlow` | High | DoS / Self-Referral |
 | ~~M-01~~ | ShipAttributes | `setCosts` | Medium | ~~Logic Bug~~ (Fixed) |
-| M-02 | Game | `_performRepairDrones` | Medium | Integer Overflow |
-| M-03 | UniversalCredits | import | Medium | Production Readiness |
-| M-04 | ShipAttributes | `calculateShipAttributes` | Medium | Array OOB |
-| M-05 | Lobbies | `createLobby`, `joinLobby` | Medium | Fee Handling |
+| ~~M-02~~ | Game | `_performRepairDrones` | Medium | ~~Integer Overflow~~ (Fixed) |
+| ~~M-03~~ | UniversalCredits | import | Medium | ~~Production Readiness~~ (Fixed) |
+| M-04 | ShipAttributes | `calculateShipAttributes` | Medium | Array OOB (Won't Fix) |
+| ~~M-05~~ | Lobbies | `createLobby`, `joinLobby` | Medium | ~~Fee Handling~~ (Fixed) |
 | ~~M-06~~ | Game | `_placeShipOnGrid` | Medium | ~~Bounds Check~~ (Fixed) |
-| M-07 | Game | `endGameOnTimeout` | Medium | Front-Running |
-| M-08 | Maps | `updatePresetMap` | Medium | Logic Bug |
+| ~~M-07~~ | Game | `endGameOnTimeout` | Medium | ~~Front-Running~~ (Not a bug) |
+| ~~M-08~~ | Maps | `updatePresetMap` | Medium | ~~Logic Bug~~ (Not a bug) |
 | L-01 | Game | `calculateShipAttributes` | Low | Missing Validation |
 | L-02 | Fleets | `removeShipFromFleet` | Low | State Ordering |
 | L-03 | Ships | `syncShipCosts` | Low | Access Control |
@@ -512,7 +551,7 @@ Positions are first validated for column bounds (creator: 0–3, joiner: 13–16
 | T-01 | Tournament | `resolveDraw` | High | Missing Validation |
 | T-02 | Tournament | `assignMatchGame`, `recordResult` | High | Result Replay |
 | T-03 | Tournament | `assignMatchGame`, `resolveDraw` | High | Locked Funds |
-| T-04 | Maps | `setMapEditor` | Informational | Widened Blast Radius |
+| ~~T-04~~ | Maps | `setMapEditor` | Informational | ~~Widened Blast Radius~~ (Moot) |
 
 ---
 
@@ -603,18 +642,19 @@ Once `start()` moves a tournament to `TournamentState.Active`, the only two func
 
 ---
 
-### T-04 — `Maps.setMapEditor` Widens the Blast Radius of Unfixed H-06/M-08
+### ~~T-04 — `Maps.setMapEditor` Widens the Blast Radius of Unfixed M-08~~
 
-**File:** `contracts/Maps.sol`, lines 42–75 (added), interacting with existing H-06/M-08  
-**Severity:** Informational
+**File:** `contracts/Maps.sol`, lines 42–75 (added), interacting with existing M-08  
+**Severity:** Informational  
+**Status:** Moot (2026-07-16) — both underlying concerns (H-06, M-08) are now resolved; nothing left for this finding to track.
 
-The new `onlyMapEditor` modifier (owner or any address flagged via `setMapEditor`) now gates `createPresetMap`, `updatePresetMap`, `updatePresetScoringMap`, `setBlockedTile`, and `setScoringTile`. This is a legitimate access-control improvement over the previous `onlyOwner`-only surface, but it does not touch `getScoreAndZeroOut` (H-06, still `public` with no access control at all) or fix `updatePresetMap`'s incomplete-tile-clearing bug (M-08). It does mean that whatever set of addresses `setMapEditor` is granted to going forward will each be able to trigger the still-unresolved M-08 behavior, where previously only the single owner key could.
+The new `onlyMapEditor` modifier (owner or any address flagged via `setMapEditor`) now gates `createPresetMap`, `updatePresetMap`, `updatePresetScoringMap`, `setBlockedTile`, and `setScoringTile`. This is a legitimate access-control improvement over the previous `onlyOwner`-only surface, but it does not fix `updatePresetMap`'s incomplete-tile-clearing bug (M-08). It does mean that whatever set of addresses `setMapEditor` is granted to going forward will each be able to trigger the still-unresolved M-08 behavior, where previously only the single owner key could.
 
-**Why it matters:** Not a new vulnerability by itself, but worth tracking alongside H-06/M-08 remediation — fixing those two findings should happen before (or alongside) granting `isMapEditor` to any address beyond the deployer, since the trusted-editor set is about to grow.
+**Update 2026-07-16:** H-06 (`getScoreAndZeroOut` unguarded) was fixed — see H-06 above. M-08 itself turned out not to be a bug at all (see M-08 above — `_getPresetMap`/`_getPresetScoringMap` do a full live grid re-scan on every call, so the "clear" step can't go stale, and `setBlockedTile` writes to a structurally separate mapping). With both of the concerns this finding was tracking resolved, there's no remaining blast radius to worry about — widening who can call `updatePresetMap` etc. via `setMapEditor` is fine as-is.
 
 ---
 
-## Addendum — C-02 Remediation (2026-07-16)
+## Addendum — C-03 Remediation (2026-07-16)
 
 **File:** `contracts/Game.sol`, `calculateShipAttributes` (line ~258)
 
