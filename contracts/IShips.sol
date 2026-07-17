@@ -20,4 +20,6 @@ interface IShips {
         uint _id,
         Ship memory _ship
     ) external;
+
+    function maxVariant() external view returns (uint16);
 }

@@ -953,17 +953,34 @@ contract Game is Ownable {
                 _newRow,
                 _newCol,
                 _targetShipId,
-                special
+                special,
+                _usingShip.traits.variant
             );
         }
 
         // Execute the special action
         if (special == Special.RepairDrones) {
-            _performRepairDrones(_gameId, _targetShipId);
+            _performRepairDrones(
+                _gameId,
+                _targetShipId,
+                _usingShip.traits.variant
+            );
         } else if (special == Special.EMP) {
-            _performEMP(_gameId, _shipId, _targetShipId, targetShip);
+            _performEMP(
+                _gameId,
+                _shipId,
+                _targetShipId,
+                targetShip,
+                _usingShip.traits.variant
+            );
         } else if (special == Special.FlakArray) {
-            _performFlakArray(_gameId, _shipId, _newRow, _newCol);
+            _performFlakArray(
+                _gameId,
+                _shipId,
+                _newRow,
+                _newCol,
+                _usingShip.traits.variant
+            );
         } else {
             revert InvalidMove(); // Other specials not implemented yet
         }
@@ -975,12 +992,16 @@ contract Game is Ownable {
         int16 _newRow,
         int16 _newCol,
         uint _targetShipId,
-        Special _special
+        Special _special,
+        uint16 _variant
     ) internal view {
         GameData storage game = games[_gameId];
         Position storage targetPos = game.shipPositions[_targetShipId].position;
         Position memory usingPos = Position(_newRow, _newCol);
-        uint8 specialRange = shipAttributes.getSpecialRange(_special);
+        uint8 specialRange = shipAttributes.getSpecialRange(
+            _special,
+            _variant
+        );
         uint8 manhattan = _manhattanDistance(usingPos, targetPos);
         if (manhattan > specialRange) {
             revert InvalidMove();
@@ -988,14 +1009,19 @@ contract Game is Ownable {
     }
 
     // Internal function to perform RepairDrones special
-    function _performRepairDrones(uint _gameId, uint _targetShipId) internal {
+    function _performRepairDrones(
+        uint _gameId,
+        uint _targetShipId,
+        uint16 _variant
+    ) internal {
         GameData storage game = games[_gameId];
         Attributes storage targetAttributes = game.shipAttributes[
             _targetShipId
         ];
 
         uint8 repairStrength = shipAttributes.getSpecialStrength(
-            Special.RepairDrones
+            Special.RepairDrones,
+            _variant
         );
 
         // Increase hull points by the repair strength, but don't exceed max hull points.
@@ -1025,14 +1051,18 @@ contract Game is Ownable {
         uint _gameId,
         uint _shipId,
         uint _targetShipId,
-        Ship memory _targetShip
+        Ship memory _targetShip,
+        uint16 _variant
     ) internal {
         GameData storage game = games[_gameId];
         Attributes storage targetAttributes = game.shipAttributes[
             _targetShipId
         ];
 
-        uint8 empStrength = shipAttributes.getSpecialStrength(Special.EMP);
+        uint8 empStrength = shipAttributes.getSpecialStrength(
+            Special.EMP,
+            _variant
+        );
         game.lastDamage[_targetShipId] = _shipId; // Track the ship using EMP as the last damager
         targetAttributes.reactorCriticalTimer += empStrength;
         if (targetAttributes.reactorCriticalTimer >= 3) {
@@ -1045,14 +1075,19 @@ contract Game is Ownable {
         uint _gameId,
         uint _shipId, // The id of the ship using the FlakArray
         int16 _newRow,
-        int16 _newCol
+        int16 _newCol,
+        uint16 _variant
     ) internal {
         GameData storage game = games[_gameId];
 
         // Get the range and strength of FlakArray from the attributes version
-        uint8 flakRange = shipAttributes.getSpecialRange(Special.FlakArray);
+        uint8 flakRange = shipAttributes.getSpecialRange(
+            Special.FlakArray,
+            _variant
+        );
         uint8 flakStrength = shipAttributes.getSpecialStrength(
-            Special.FlakArray
+            Special.FlakArray,
+            _variant
         );
 
         // Process both fleets using the same logic

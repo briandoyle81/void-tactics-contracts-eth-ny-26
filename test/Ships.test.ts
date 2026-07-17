@@ -2878,11 +2878,14 @@ describe("Ships", function () {
             newGuns,
             newArmors,
             newShields,
-            newSpecials,
-            newForeAccuracy,
-            newHull,
-            newEngineSpeeds,
           ],
+          { account: user1.account },
+        ),
+      ).to.be.rejectedWith("OwnableUnauthorizedAccount");
+
+      await expect(
+        shipAttributes.write.setVariantAttributes(
+          [1, 1, newForeAccuracy, newHull, newEngineSpeeds, newSpecials],
           { account: user1.account },
         ),
       ).to.be.rejectedWith("OwnableUnauthorizedAccount");
@@ -2906,6 +2909,7 @@ describe("Ships", function () {
         armor: [0, 8, 12, 18],
         shields: [0, 12, 24, 36],
         special: [0, 12, 24, 18],
+        variant: [0, 0],
       };
 
       // Update costs
@@ -2938,6 +2942,7 @@ describe("Ships", function () {
         armor: [0, 8, 12, 18],
         shields: [0, 12, 24, 36],
         special: [0, 12, 24, 18],
+        variant: [0, 0],
       };
 
       // Try to update costs as non-owner
@@ -2991,10 +2996,6 @@ describe("Ships", function () {
           newGuns,
           newArmors,
           newShields,
-          newSpecials,
-          newForeAccuracy,
-          newHull,
-          newEngineSpeeds,
         ],
         {
           account: owner.account,
@@ -3005,6 +3006,13 @@ describe("Ships", function () {
       const newVersion =
         await shipAttributes.read.getCurrentAttributesVersion();
       expect(newVersion).to.equal(2);
+
+      await shipAttributes.write.setVariantAttributes(
+        [2, 1, newForeAccuracy, newHull, newEngineSpeeds, newSpecials],
+        {
+          account: owner.account,
+        },
+      );
 
       // Verify new attributes are set correctly
       const versionData = await shipAttributes.read.getAttributesVersionBase([
@@ -3054,11 +3062,16 @@ describe("Ships", function () {
             newGuns,
             newArmors,
             newShields,
-            newSpecials,
-            newForeAccuracy,
-            newHull,
-            newEngineSpeeds,
           ],
+          {
+            account: user1.account,
+          },
+        ),
+      ).to.be.rejectedWith("OwnableUnauthorizedAccount");
+
+      await expect(
+        shipAttributes.write.setVariantAttributes(
+          [1, 1, newForeAccuracy, newHull, newEngineSpeeds, newSpecials],
           {
             account: user1.account,
           },

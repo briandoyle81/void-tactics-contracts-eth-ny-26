@@ -231,6 +231,31 @@ const DeployModule = buildModule("DeployModule", (m) => {
     id: "SetMaxVariantForTutorialShips",
   });
 
+  // Deploy AIController for single-player matches — it plays as one of the
+  // two players in a game exactly like a human wallet would.
+  const aiController = m.contract("AIController", [
+    ships,
+    lobbies,
+    game,
+    maps,
+  ]);
+
+  // Allow AIController to mint/construct its own fleet
+  m.call(ships, "setIsAllowedToCreateShips", [aiController, true], {
+    id: "AllowAIControllerToCreateShips",
+  });
+
+  // Allow AIController to create single-player lobbies without being
+  // Lobbies' owner
+  m.call(lobbies, "setIsAllowedToCreateLobbies", [aiController, true], {
+    id: "AllowAIControllerToCreateLobbies",
+  });
+
+  // Flag AIController so its games are tracked separately from PvP stats
+  m.call(gameResults, "setIsAIController", [aiController, true], {
+    id: "FlagAIControllerOnGameResults",
+  });
+
   // Enable minting for UniversalCredits
   m.call(universalCredits, "setMintIsActive", [true]);
 
@@ -355,6 +380,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
     worldId,
     tournament,
     gameBlobRegistry,
+    aiController,
   };
 });
 

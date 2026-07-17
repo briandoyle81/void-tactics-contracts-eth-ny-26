@@ -3385,7 +3385,7 @@ describe("Game", function () {
             s3: 0,
             l3: 0,
           },
-          variant: 0,
+          variant: 1,
           accuracy: 0,
           hull: 0,
           speed: 2, // Use valid speed value (0, 1, or 2)
@@ -4813,7 +4813,7 @@ describe("Game", function () {
             s3: 0,
             l3: 0,
           },
-          variant: 0,
+          variant: 1,
           accuracy: 0,
           hull: 0,
           speed: 2, // Use valid speed value (0, 1, or 2)
@@ -4949,7 +4949,7 @@ describe("Game", function () {
             s3: 0,
             l3: 0,
           },
-          variant: 0,
+          variant: 1,
           accuracy: 0,
           hull: 0,
           speed: 2,
@@ -5096,7 +5096,7 @@ describe("Game", function () {
             s3: 0,
             l3: 0,
           },
-          variant: 0,
+          variant: 1,
           accuracy: 0,
           hull: 0,
           speed: 2, // Use valid speed value (0, 1, or 2)
@@ -5246,7 +5246,7 @@ describe("Game", function () {
             s3: 0,
             l3: 0,
           },
-          variant: 0,
+          variant: 1,
           accuracy: 0,
           hull: 0,
           speed: 2, // Use valid speed value (0, 1, or 2)

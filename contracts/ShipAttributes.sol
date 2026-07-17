@@ -25,6 +25,7 @@ contract ShipAttributes is IShipAttributes, Ownable {
     event CostsSet(uint16 version);
     event CurrentAttributesVersionSet(uint16 version);
     event AttributesVersionCreated(uint16 version);
+    event VariantAttributesSet(uint16 version, uint16 variant);
 
     constructor(address _ships) Ownable(msg.sender) {
         ships = IShips(_ships);
@@ -44,6 +45,11 @@ contract ShipAttributes is IShipAttributes, Ownable {
         costs.armor = [0, 5, 10, 15];
         costs.shields = [0, 10, 20, 30];
         costs.special = [0, 10, 20, 15];
+        // Index 0 is unused (traits.variant is never 0); indices 1-3 are
+        // baseline variants 1-3 (variant 1 is the only one ordinary purchases
+        // can reach via Ships.maxVariant; TutorialClaim mints fixed ships
+        // using variants 1-3 directly for visual variety).
+        costs.variant = [0, 0, 0, 0];
 
         // Set up default attributes version 1
         AttributesVersion storage v1 = attributesVersions[1];
@@ -51,20 +57,34 @@ contract ShipAttributes is IShipAttributes, Ownable {
         v1.baseHull = 100;
         v1.baseSpeed = 3;
 
-        // Fore accuracy bonuses in whole number percentage additions
-        v1.foreAccuracy.push(0);
-        v1.foreAccuracy.push(25);
-        v1.foreAccuracy.push(50);
+        // Seed identical baseline hull-piece bonuses and special data for
+        // variants 1-3 — no per-variant differentiation yet (future
+        // setVariantAttributes calls can diverge these once variant balance
+        // is designed).
+        for (uint16 i = 1; i <= 3; i++) {
+            VariantAttributeData storage variantData = v1.variantData[i];
 
-        // Hull bonuses in hull points
-        v1.hull.push(0);
-        v1.hull.push(10);
-        v1.hull.push(20);
+            // Fore accuracy bonuses in whole number percentage additions
+            variantData.foreAccuracy.push(0);
+            variantData.foreAccuracy.push(25);
+            variantData.foreAccuracy.push(50);
 
-        // Engine speed in raw movement modifier
-        v1.engineSpeeds.push(0);
-        v1.engineSpeeds.push(1);
-        v1.engineSpeeds.push(2);
+            // Hull bonuses in hull points
+            variantData.hull.push(0);
+            variantData.hull.push(10);
+            variantData.hull.push(20);
+
+            // Engine speed in raw movement modifier
+            variantData.engineSpeeds.push(0);
+            variantData.engineSpeeds.push(1);
+            variantData.engineSpeeds.push(2);
+
+            // Initialize special data
+            variantData.specials.push(SpecialData(0, 0, 0)); // None
+            variantData.specials.push(SpecialData(1, 1, 0)); // EMP
+            variantData.specials.push(SpecialData(3, 40, 0)); // RepairDrones
+            variantData.specials.push(SpecialData(3, 30, 0)); // FlakArray
+        }
 
         // Initialize gun data
         // Remember, bridge + level extend range
@@ -84,12 +104,6 @@ contract ShipAttributes is IShipAttributes, Ownable {
         v1.shields.push(ShieldData(15, 1)); // Light
         v1.shields.push(ShieldData(30, 0)); // Medium
         v1.shields.push(ShieldData(45, -1)); // Heavy
-
-        // Initialize special data
-        v1.specials.push(SpecialData(0, 0, 0)); // None
-        v1.specials.push(SpecialData(1, 1, 0)); // EMP
-        v1.specials.push(SpecialData(3, 40, 0)); // RepairDrones
-        v1.specials.push(SpecialData(3, 30, 0)); // FlakArray
     }
 
     function setShipsAddress(address _ships) public onlyOwner {
@@ -130,6 +144,7 @@ contract ShipAttributes is IShipAttributes, Ownable {
 
         // Apply fore accuracy bonus to range as percentage increase (bridge + level extend range)
         uint8 foreAccuracyBonus = attributesVersions[currentAttributesVersion]
+            .variantData[_ship.traits.variant]
             .foreAccuracy[uint8(_ship.traits.accuracy)];
         calculatedBonus = (uint(attributes.range) * foreAccuracyBonus) / 100;
         attributes.range += uint8(calculatedBonus);
@@ -216,7 +231,9 @@ contract ShipAttributes is IShipAttributes, Ownable {
         ];
         uint8 baseHull = version.baseHull;
         // uint8 traitBonus = _ship.traits.hull * 10; // Convert trait to hull points
-        uint8 traitBonus = version.hull[_ship.traits.hull];
+        uint8 traitBonus = version.variantData[_ship.traits.variant].hull[
+            _ship.traits.hull
+        ];
         return baseHull + traitBonus;
     }
 
@@ -228,8 +245,12 @@ contract ShipAttributes is IShipAttributes, Ownable {
         ];
         int8 baseMovement = int8(version.baseSpeed);
 
+        VariantAttributeData storage variant = version.variantData[
+            _ship.traits.variant
+        ];
+
         // Add trait bonus
-        baseMovement += int8(version.engineSpeeds[_ship.traits.speed]);
+        baseMovement += int8(variant.engineSpeeds[_ship.traits.speed]);
 
         // Extract equipment bonuses as int8 to avoid stack-too-deep or type mismatch
         int8 gunMovement = version
@@ -241,7 +262,7 @@ contract ShipAttributes is IShipAttributes, Ownable {
         int8 shieldMovement = version
             .shields[uint8(_ship.equipment.shields)]
             .movement;
-        int8 specialMovement = version
+        int8 specialMovement = variant
             .specials[uint8(_ship.equipment.special)]
             .movement;
 
@@ -274,17 +295,25 @@ contract ShipAttributes is IShipAttributes, Ownable {
     }
 
     // Get special range from attributes version
-    function getSpecialRange(Special _special) public view returns (uint8) {
+    function getSpecialRange(
+        Special _special,
+        uint16 _variant
+    ) public view returns (uint8) {
         return
             attributesVersions[currentAttributesVersion]
+                .variantData[_variant]
                 .specials[uint8(_special)]
                 .range;
     }
 
     // Get special strength from attributes version
-    function getSpecialStrength(Special _special) public view returns (uint8) {
+    function getSpecialStrength(
+        Special _special,
+        uint16 _variant
+    ) public view returns (uint8) {
         return
             attributesVersions[currentAttributesVersion]
+                .variantData[_variant]
                 .specials[uint8(_special)]
                 .strength;
     }
@@ -315,12 +344,13 @@ contract ShipAttributes is IShipAttributes, Ownable {
 
     // Get special data from attributes version
     function getSpecialData(
-        Special _special
+        Special _special,
+        uint16 _variant
     ) public view returns (SpecialData memory) {
         return
-            attributesVersions[currentAttributesVersion].specials[
-                uint8(_special)
-            ];
+            attributesVersions[currentAttributesVersion]
+                .variantData[_variant]
+                .specials[uint8(_special)];
     }
 
     // Cost calculation functions
@@ -335,7 +365,8 @@ contract ShipAttributes is IShipAttributes, Ownable {
                 costs.mainWeapon[uint8(ship.equipment.mainWeapon)] +
                 costs.armor[uint8(ship.equipment.armor)] +
                 costs.shields[uint8(ship.equipment.shields)] +
-                costs.special[uint8(ship.equipment.special)]
+                costs.special[uint8(ship.equipment.special)] +
+                costs.variant[ship.traits.variant]
         );
 
         // TODO: Add rank-based discounts here if needed
@@ -384,27 +415,22 @@ contract ShipAttributes is IShipAttributes, Ownable {
     }
 
     /**
-     * @dev Set all attributes for a new version at once and increment the version
+     * @dev Set all attributes for a new version at once and increment the version.
+     * Per-variant hull-piece bonuses and specials are NOT carried forward from the
+     * previous version and must be configured separately via setVariantAttributes
+     * for each variant before ships using this version can be calculated.
      * @param _baseHull Base hull points
      * @param _baseSpeed Base speed
      * @param _guns Array of gun data
      * @param _armors Array of armor data
      * @param _shields Array of shield data
-     * @param _specials Array of special equipment data
-     * @param _foreAccuracy Array of fore accuracy bonuses
-     * @param _hull Array of hull bonuses
-     * @param _engineSpeeds Array of engine speed bonuses
      */
     function setAllAttributes(
         uint8 _baseHull,
         uint8 _baseSpeed,
         GunData[] memory _guns,
         ArmorData[] memory _armors,
-        ShieldData[] memory _shields,
-        SpecialData[] memory _specials,
-        uint8[] memory _foreAccuracy,
-        uint8[] memory _hull,
-        uint8[] memory _engineSpeeds
+        ShieldData[] memory _shields
     ) external onlyOwner {
         // Increment version
         currentAttributesVersion++;
@@ -434,26 +460,58 @@ contract ShipAttributes is IShipAttributes, Ownable {
             newVersionData.shields.push(_shields[i]);
         }
 
-        delete newVersionData.specials;
-        for (uint i = 0; i < _specials.length; i++) {
-            newVersionData.specials.push(_specials[i]);
-        }
-
-        delete newVersionData.foreAccuracy;
-        for (uint i = 0; i < _foreAccuracy.length; i++) {
-            newVersionData.foreAccuracy.push(_foreAccuracy[i]);
-        }
-
-        delete newVersionData.hull;
-        for (uint i = 0; i < _hull.length; i++) {
-            newVersionData.hull.push(_hull[i]);
-        }
-
-        delete newVersionData.engineSpeeds;
-        for (uint i = 0; i < _engineSpeeds.length; i++) {
-            newVersionData.engineSpeeds.push(_engineSpeeds[i]);
-        }
-
         emit AttributesVersionCreated(newVersion);
+    }
+
+    /**
+     * @dev Set per-variant hull-piece bonuses and special data for a given
+     * attributes version. Must be called for a variant before any ship with
+     * that traits.variant can have its attributes calculated under this
+     * version — lookups for an unconfigured variant revert (fail loud) rather
+     * than silently falling back to a default.
+     * @param _version Attributes version to configure (must already exist)
+     * @param _variant Ship variant (traits.variant) to configure
+     * @param _foreAccuracy Array of fore accuracy bonuses (bridge)
+     * @param _hull Array of hull bonuses
+     * @param _engineSpeeds Array of engine speed bonuses
+     * @param _specials Array of special equipment data
+     */
+    function setVariantAttributes(
+        uint16 _version,
+        uint16 _variant,
+        uint8[] memory _foreAccuracy,
+        uint8[] memory _hull,
+        uint8[] memory _engineSpeeds,
+        SpecialData[] memory _specials
+    ) external onlyOwner {
+        if (_version == 0 || _version > currentAttributesVersion) {
+            revert InvalidAttributesVersion();
+        }
+
+        VariantAttributeData storage variantData = attributesVersions[
+            _version
+        ].variantData[_variant];
+
+        delete variantData.foreAccuracy;
+        for (uint i = 0; i < _foreAccuracy.length; i++) {
+            variantData.foreAccuracy.push(_foreAccuracy[i]);
+        }
+
+        delete variantData.hull;
+        for (uint i = 0; i < _hull.length; i++) {
+            variantData.hull.push(_hull[i]);
+        }
+
+        delete variantData.engineSpeeds;
+        for (uint i = 0; i < _engineSpeeds.length; i++) {
+            variantData.engineSpeeds.push(_engineSpeeds[i]);
+        }
+
+        delete variantData.specials;
+        for (uint i = 0; i < _specials.length; i++) {
+            variantData.specials.push(_specials[i]);
+        }
+
+        emit VariantAttributesSet(_version, _variant);
     }
 }

@@ -16,9 +16,15 @@ interface IShipAttributes {
         uint[] memory _shipIds
     ) external view returns (Attributes[] memory);
 
-    function getSpecialRange(Special _special) external view returns (uint8);
+    function getSpecialRange(
+        Special _special,
+        uint16 _variant
+    ) external view returns (uint8);
 
-    function getSpecialStrength(Special _special) external view returns (uint8);
+    function getSpecialStrength(
+        Special _special,
+        uint16 _variant
+    ) external view returns (uint8);
 
     function getGunData(
         MainWeapon _weapon
@@ -33,7 +39,8 @@ interface IShipAttributes {
     ) external view returns (ShieldData memory);
 
     function getSpecialData(
-        Special _special
+        Special _special,
+        uint16 _variant
     ) external view returns (SpecialData memory);
 
     // Cost calculation functions
@@ -59,10 +66,15 @@ interface IShipAttributes {
         uint8 _baseSpeed,
         GunData[] memory _guns,
         ArmorData[] memory _armors,
-        ShieldData[] memory _shields,
-        SpecialData[] memory _specials,
+        ShieldData[] memory _shields
+    ) external;
+
+    function setVariantAttributes(
+        uint16 _version,
+        uint16 _variant,
         uint8[] memory _foreAccuracy,
         uint8[] memory _hull,
-        uint8[] memory _engineSpeeds
+        uint8[] memory _engineSpeeds,
+        SpecialData[] memory _specials
     ) external;
 }

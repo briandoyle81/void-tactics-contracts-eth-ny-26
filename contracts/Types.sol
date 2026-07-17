@@ -227,6 +227,7 @@ struct Costs {
     uint8[] armor;
     uint8[] shields;
     uint8[] special;
+    uint8[] variant; // indexed by traits.variant
 }
 
 // Be VERY CAREFUL giving negative movement!
@@ -257,17 +258,25 @@ struct SpecialData {
     int8 movement;
 }
 
+// Per-variant hull-piece bonuses (bridge/hull/engine) and per-variant special
+// effects. Nested in a mapping (not an array) inside AttributesVersion since
+// AttributesVersion only ever lives in storage (never copied to memory), so a
+// mapping field is safe here.
+struct VariantAttributeData {
+    uint8[] foreAccuracy; // "bridge": indexed by traits.accuracy tier (0-2)
+    uint8[] hull; // indexed by traits.hull tier (0-2)
+    uint8[] engineSpeeds; // "engine": indexed by traits.speed tier (0-2)
+    SpecialData[] specials; // indexed by Special enum (0-7)
+}
+
 struct AttributesVersion {
     uint16 version;
     uint8 baseHull;
     uint8 baseSpeed;
-    uint8[] foreAccuracy;
-    uint8[] hull;
-    uint8[] engineSpeeds;
     GunData[] guns;
     ArmorData[] armors;
     ShieldData[] shields;
-    SpecialData[] specials;
+    mapping(uint16 => VariantAttributeData) variantData; // keyed by traits.variant
 }
 
 enum LobbyStatus {

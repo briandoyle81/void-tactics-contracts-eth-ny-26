@@ -74,6 +74,7 @@ function sampleCostsV2() {
     armor: [0, 8, 12, 18],
     shields: [0, 12, 24, 36],
     special: [0, 12, 24, 18],
+    variant: [0, 0],
   };
 }
 
@@ -136,23 +137,18 @@ describe("Ship costs, versions, and fleets", function () {
       } = sampleSetAllAttributesArgs();
 
       await shipAttributes.write.setAllAttributes(
-        [
-          120,
-          4,
-          newGuns,
-          newArmors,
-          newShields,
-          newSpecials,
-          newForeAccuracy,
-          newHull,
-          newEngineSpeeds,
-        ],
+        [120, 4, newGuns, newArmors, newShields],
         { account: owner.account },
       );
 
       expect(
         await shipAttributes.read.getCurrentAttributesVersion(),
       ).to.equal(2);
+
+      await shipAttributes.write.setVariantAttributes(
+        [2, 1, newForeAccuracy, newHull, newEngineSpeeds, newSpecials],
+        { account: owner.account },
+      );
 
       await shipAttributes.write.setCurrentAttributesVersion([1n], {
         account: owner.account,
@@ -169,6 +165,158 @@ describe("Ship costs, versions, and fleets", function () {
       const v2 = await shipAttributes.read.getAttributesVersionBase([2n]);
       expect(v2[0]).to.equal(2);
       expect(v2[1]).to.equal(120);
+    });
+  });
+
+  describe("Per-variant ship attributes and specials", function () {
+    it("gives ships of different variants different hull points and special data", async function () {
+      const { ships, shipAttributes, randomManager, owner, user1 } =
+        await loadFixture(deployShipsFixture);
+
+      // Configure variant 2 with much higher hull bonuses and a much
+      // stronger/longer-range EMP than the constructor's variant 1 baseline
+      await shipAttributes.write.setVariantAttributes(
+        [
+          1,
+          2,
+          [0, 25, 50],
+          [0, 50, 100],
+          [0, 1, 2],
+          [
+            { range: 0, strength: 0, movement: 0 },
+            { range: 5, strength: 99, movement: 0 },
+            { range: 3, strength: 40, movement: 0 },
+            { range: 3, strength: 30, movement: 0 },
+          ],
+        ],
+        { account: owner.account },
+      );
+
+      // Tier 0 mints 5 ships per purchase, so ship 1 is the first ship of the
+      // variant-1 purchase and ship 6 is the first ship of the variant-2
+      // purchase
+      await ships.write.purchaseWithFlow(
+        [user1.account.address, 0n, user1.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [user1.account.address, 0n, user1.account.address, 2],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.fulfillRandomRequest([
+          ship.traits.serialNumber,
+        ]);
+      }
+      await ships.write.constructAllMyShips({ account: user1.account });
+
+      const variant1Ship = tupleToShip(
+        (await ships.read.ships([1n])) as ShipTuple,
+      );
+      const variant2Ship = tupleToShip(
+        (await ships.read.ships([6n])) as ShipTuple,
+      );
+      expect(variant1Ship.traits.variant).to.equal(1);
+      expect(variant2Ship.traits.variant).to.equal(2);
+
+      const attrs1 = await shipAttributes.read.calculateShipAttributesById([
+        1n,
+      ]);
+      const attrs2 = await shipAttributes.read.calculateShipAttributesById([
+        6n,
+      ]);
+
+      // Variant 2's hull bonus table is higher at every tier, so its
+      // computed hull points must exceed variant 1's regardless of which
+      // trait tier each ship happened to roll
+      expect(attrs2.hullPoints).to.be.greaterThan(attrs1.hullPoints);
+
+      const empRange1 = await shipAttributes.read.getSpecialRange([1, 1]);
+      const empStrength1 = await shipAttributes.read.getSpecialStrength([
+        1, 1,
+      ]);
+      const empRange2 = await shipAttributes.read.getSpecialRange([1, 2]);
+      const empStrength2 = await shipAttributes.read.getSpecialStrength([
+        1, 2,
+      ]);
+
+      expect(empStrength2).to.be.greaterThan(empStrength1);
+      expect(empRange2).to.be.greaterThan(empRange1);
+    });
+
+    it("reverts (fails loud) when reading an unconfigured variant", async function () {
+      const { shipAttributes } = await loadFixture(deployShipsFixture);
+
+      await expect(shipAttributes.read.getSpecialRange([1, 99])).to.be
+        .rejected;
+    });
+
+    it("includes the variant cost addend in calculateShipCost", async function () {
+      const { shipAttributes, owner } = await loadFixture(deployShipsFixture);
+
+      const newCosts = {
+        version: 2,
+        baseCost: 50,
+        accuracy: [0, 10, 25],
+        hull: [0, 10, 25],
+        speed: [0, 10, 25],
+        mainWeapon: [25, 30, 40, 40],
+        armor: [0, 5, 10, 15],
+        shields: [0, 10, 20, 30],
+        special: [0, 10, 20, 15],
+        variant: [0, 0, 50, 100],
+      };
+      await shipAttributes.write.setCosts([newCosts], {
+        account: owner.account,
+      });
+
+      const baseShip = {
+        name: "",
+        id: 0n,
+        equipment: { mainWeapon: 0, armor: 0, shields: 0, special: 0 },
+        traits: {
+          serialNumber: 0n,
+          colors: {
+            h1: 0,
+            s1: 0,
+            l1: 0,
+            h2: 0,
+            s2: 0,
+            l2: 0,
+            h3: 0,
+            s3: 0,
+            l3: 0,
+          },
+          variant: 1,
+          accuracy: 0,
+          hull: 0,
+          speed: 0,
+        },
+        shipData: {
+          shipsDestroyed: 0,
+          costsVersion: 0,
+          cost: 0,
+          modified: 0,
+          shiny: false,
+          constructed: false,
+          inFleet: false,
+          isFreeShip: false,
+          timestampDestroyed: 0n,
+        },
+        owner: zeroAddress,
+      };
+
+      const costVariant1 = await shipAttributes.read.calculateShipCost([
+        baseShip,
+      ]);
+      const costVariant2 = await shipAttributes.read.calculateShipCost([
+        { ...baseShip, traits: { ...baseShip.traits, variant: 2 } },
+      ]);
+
+      expect(costVariant2 - costVariant1).to.equal(50);
     });
   });
 

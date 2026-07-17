@@ -29,6 +29,10 @@ contract Lobbies is Ownable, ReentrancyGuard {
     mapping(uint => Lobby) public lobbies;
     mapping(address => PlayerLobbyState) public playerStates;
 
+    // Addresses (e.g. AIController) authorized to call createLobbyForAddresses
+    // without being the contract owner, mirroring Ships.isAllowedToCreateShips.
+    mapping(address => bool) public isAllowedToCreateLobbies;
+
     // New mappings for lobby tracking
     mapping(address => EnumerableSet.UintSet) private playerLobbies;
     EnumerableSet.UintSet private openLobbyIds;
@@ -84,6 +88,7 @@ contract Lobbies is Ownable, ReentrancyGuard {
     error LobbyNotReserved();
     error InsufficientUTC();
     error UTCTransferFailed();
+    error NotAuthorized(address caller);
 
     uint public constant MIN_TURN_TIME = 60; // 1 minute in seconds
     uint public constant MAX_TURN_TIME = 86400; // 24 hours in seconds
@@ -108,6 +113,13 @@ contract Lobbies is Ownable, ReentrancyGuard {
 
     function setMapsAddress(address _mapsAddress) public onlyOwner {
         maps = IMaps(_mapsAddress);
+    }
+
+    function setIsAllowedToCreateLobbies(
+        address _address,
+        bool _isAllowed
+    ) public onlyOwner {
+        isAllowedToCreateLobbies[_address] = _isAllowed;
     }
 
     function isLobbyOpenForJoining(uint _id) public view returns (bool) {
@@ -603,9 +615,11 @@ contract Lobbies is Ownable, ReentrancyGuard {
         emit LobbyTerminated(_lobbyId);
     }
 
-    // Owner function to create a lobby with both creator and joiner already set
-    // Bypasses paused state, timeout checks, and fee requirements
-    // Who goes first is determined by who creates their fleet first (not a lobby setting)
+    // Owner (or an address explicitly authorized via isAllowedToCreateLobbies,
+    // e.g. AIController) function to create a lobby with both creator and
+    // joiner already set. Bypasses paused state, timeout checks, and fee
+    // requirements. Who goes first is determined by who creates their fleet
+    // first (not a lobby setting).
     function createLobbyForAddresses(
         address _creator,
         address _joiner,
@@ -613,7 +627,9 @@ contract Lobbies is Ownable, ReentrancyGuard {
         uint _turnTime,
         uint _selectedMapId,
         uint _maxScore
-    ) public onlyOwner {
+    ) public {
+        if (msg.sender != owner() && !isAllowedToCreateLobbies[msg.sender])
+            revert NotAuthorized(msg.sender);
         if (_turnTime < MIN_TIMEOUT || _turnTime > MAX_TURN_TIME)
             revert InvalidTurnTime();
         if (_creator == _joiner) revert PlayerAlreadyInLobby();

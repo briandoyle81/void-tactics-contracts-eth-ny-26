@@ -235,6 +235,15 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         ship.traits.accuracy = _ship.traits.accuracy;
         ship.traits.hull = _ship.traits.hull;
         ship.traits.speed = _ship.traits.speed;
+        // NOTE: traits.variant is not bounds-checked against maxVariant here.
+        // DroneYard.validateShip is currently the only caller-side enforcement
+        // of that bound (variant == 0 or > maxVariant reverts there). Ships.sol
+        // has almost no bytecode headroom left (see
+        // docs/ShipsSizeOptimizationAnalysis.md for identified savings), so a
+        // second check here was deliberately deferred. Any future
+        // isAllowedToCreateShips-authorized caller that lets end users set
+        // variant must enforce this bound itself until there's room to
+        // centralize it.
         ship.traits.variant = _ship.traits.variant;
         ship.traits.colors = _ship.traits.colors;
         ship.equipment = _ship.equipment;
@@ -293,6 +302,11 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
 
         // Count shiny status change as 3 modifications
         if (_currentShip.shipData.shiny != _newShip.shipData.shiny) {
+            modifications += 3;
+        }
+
+        // Count variant change as 3 modifications, matching shiny's weight
+        if (_currentShip.traits.variant != _newShip.traits.variant) {
             modifications += 3;
         }
 

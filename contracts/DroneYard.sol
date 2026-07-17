@@ -18,6 +18,7 @@ contract DroneYard is Ownable, ReentrancyGuard {
     error InsufficientFunds(uint _required, uint _available);
     error InvalidTraitValue(uint8 _value);
     error ArmorAndShieldsBothSet();
+    error InvalidVariant(uint16 _variant);
 
     event Withdrawn(address indexed to, uint amount);
 
@@ -106,6 +107,10 @@ contract DroneYard is Ownable, ReentrancyGuard {
             revert InvalidTraitValue(_newShip.traits.hull);
         if (_newShip.traits.speed > 2)
             revert InvalidTraitValue(_newShip.traits.speed);
+        if (
+            _newShip.traits.variant == 0 ||
+            _newShip.traits.variant > ships.maxVariant()
+        ) revert InvalidVariant(_newShip.traits.variant);
 
         // One of armor or shields must be None
         if (
@@ -239,6 +244,11 @@ contract DroneYard is Ownable, ReentrancyGuard {
 
         // Count shiny status change as 3 modifications
         if (_currentShip.shipData.shiny != _newShip.shipData.shiny) {
+            modifications += 3;
+        }
+
+        // Count variant change as 3 modifications, matching shiny's weight
+        if (_currentShip.traits.variant != _newShip.traits.variant) {
             modifications += 3;
         }
 
