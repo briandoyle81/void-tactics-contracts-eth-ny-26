@@ -13,6 +13,14 @@ interface IGameResultsReader {
     function getGameResult(uint _gameId) external view returns (GameResult memory);
 }
 
+/// @dev Minimal reader for the deployed Game contract, used only to verify a
+/// draw actually happened (draws are never written to GameResults, so
+/// recordResult can't see them). getGame reverts with GameNotFound if the id
+/// doesn't exist.
+interface IGameReader {
+    function getGame(uint _gameId) external view returns (GameDataView memory);
+}
+
 /// @title Tournament
 /// @notice Single-elimination tournaments for Void Tactics. One human (World ID)
 ///         per registration. Matches are played in the existing Game contract;
@@ -37,6 +45,9 @@ contract Tournament is Ownable, ReentrancyGuard {
         uint256 turnTime;
         uint256 selectedMapId;
         uint256 maxScore;
+        // T-05: seconds after a match becomes ready (both players known) before
+        // claimForfeitWin becomes callable if neither player has started a game yet.
+        uint256 matchTimeout;
     }
 
     struct Match {
@@ -46,6 +57,7 @@ contract Tournament is Ownable, ReentrancyGuard {
         address player2; // address(0) == bye / not-yet-determined
         address winner;
         uint256 gameId; // == lobbyId of the played game (0 until assigned)
+        uint256 readyAt; // block.timestamp both player1 and player2 were set
         bytes32 walrusBlobId; // opaque match-record pointer
         bool resolved;
     }
@@ -76,9 +88,12 @@ contract Tournament is Ownable, ReentrancyGuard {
     IWorldID public worldId; // World ID router; mutable so it can be repointed
     uint256 public immutable groupId; // 1 for Orb (on-chain verification)
     IGameResultsReader public immutable gameResults;
+    IGameReader public immutable game;
     uint256 public externalNullifier; // hash(appId, action)
     address public feeRecipient;
     uint16 public constant PROTOCOL_FEE_BPS = 100; // 1.00%
+    uint256 public constant MIN_MATCH_TIMEOUT = 3600; // 1 hour
+    uint256 public constant MAX_MATCH_TIMEOUT = 604800; // 1 week
 
     uint256 public tournamentCount;
     mapping(uint256 => TournamentData) internal tournaments;
@@ -102,6 +117,7 @@ contract Tournament is Ownable, ReentrancyGuard {
     event PrizeClaimed(uint256 indexed tournamentId, address indexed player, uint256 amount);
     event TournamentCancelled(uint256 indexed tournamentId);
     event Refunded(uint256 indexed tournamentId, address indexed player, uint256 amount);
+    event MatchForfeited(uint256 indexed tournamentId, uint256 indexed matchId, address winner, address loser);
 
     // ---- Errors ----
     error TournamentNotFound();
@@ -125,20 +141,27 @@ contract Tournament is Ownable, ReentrancyGuard {
     error NothingToClaim();
     error InvalidConfig();
     error SponsorAlreadySet();
-    error NotCreator();
     error TransferFailed();
+    error GameNotComplete();
+    error NotADraw();
+    error GamePredatesAssignment();
+    error MatchTimeoutNotReached();
+    error GameAlreadyAssigned();
+    error NotAMatchPlayer();
 
     constructor(
         address _worldId,
         uint256 _groupId,
         uint256 _externalNullifier,
         address _gameResults,
+        address _game,
         address _feeRecipient
     ) Ownable(msg.sender) {
         worldId = IWorldID(_worldId);
         groupId = _groupId;
         externalNullifier = _externalNullifier;
         gameResults = IGameResultsReader(_gameResults);
+        game = IGameReader(_game);
         feeRecipient = _feeRecipient;
     }
 
@@ -162,7 +185,9 @@ contract Tournament is Ownable, ReentrancyGuard {
         if (
             cfg.minPlayers < 2 ||
             cfg.maxPlayers < cfg.minPlayers ||
-            cfg.lastStartTime <= block.timestamp
+            cfg.lastStartTime <= block.timestamp ||
+            cfg.matchTimeout < MIN_MATCH_TIMEOUT ||
+            cfg.matchTimeout > MAX_MATCH_TIMEOUT
         ) revert InvalidConfig();
 
         tournamentId = ++tournamentCount;
@@ -285,13 +310,21 @@ contract Tournament is Ownable, ReentrancyGuard {
     }
 
     // ---- Match wiring & results ----
+    /// @notice T-03: permissionless, not creator-only. assignMatchGame alone never
+    /// resolves anything — recordResult/resolveDraw independently re-verify
+    /// participant matching, freshness (readyAt), and win/draw state before any
+    /// payout, and a wrong assignment can simply be overwritten by anyone before
+    /// the match resolves. Keeping the creator's involvement mandatory here would
+    /// mean an unresponsive creator permanently locks every unresolved match (and
+    /// the whole prize pool) — the players can already pair themselves up via
+    /// Lobbies.createLobby's reservedJoiner with no creator involvement, so this
+    /// was the last remaining dependency on the creator staying active.
     function assignMatchGame(
         uint256 tournamentId,
         uint256 matchId,
         uint256 gameId
     ) external {
         TournamentData storage t = _get(tournamentId);
-        if (msg.sender != t.creator) revert NotCreator();
         if (t.state != TournamentState.Active) revert NotActive();
         if (matchId >= t.bracket.length) revert MatchNotFound();
         Match storage m = t.bracket[matchId];
@@ -320,32 +353,79 @@ contract Tournament is Ownable, ReentrancyGuard {
         bool ok = (gr.winner == m.player1 && gr.loser == m.player2) ||
             (gr.winner == m.player2 && gr.loser == m.player1);
         if (!ok) revert WinnerNotInMatch();
+        // T-02: participant matching alone isn't enough — gameId is a shared,
+        // permanent global id space (== lobbyId), so without this a stale game the
+        // same two players happened to play before this specific pairing even
+        // existed would otherwise pass. Requiring the result to postdate the
+        // moment both players were determined for this match (readyAt) closes the
+        // replay-an-old-game path (residual risk: the two players could still
+        // collude to play a fresh, off-bracket game after that point — this can't
+        // rule that out, only rule out reusing history from before the pairing).
+        if (gr.timestamp <= m.readyAt) revert GamePredatesAssignment();
 
         _resolve(t, matchId, gr.winner, walrusBlobId);
     }
 
-    /// @notice TEMPORARY: resolve a drawn game. A draw sets the game's winner to
-    /// address(0) and is never written to GameResults, so it cannot flow through
-    /// recordResult. As a stopgap the match is awarded to the player who registered
-    /// first (lower seed) — deterministic, so the creator has no say in the outcome.
-    /// Restricted to the creator because there is no on-chain "draw" flag in Game.
+    /// @notice Resolve a match that ended in a draw. A draw sets the game's winner
+    /// to address(0) and is never written to GameResults, so it can't flow through
+    /// recordResult — this reads the actual game state from Game directly instead,
+    /// verifying the game is finished (`ended`), genuinely drew (`winner ==
+    /// address(0)`), and its participants match this match's two players, the same
+    /// way recordResult validates against GameResults. The winner is still the
+    /// deterministic lower-seeded player (draws don't produce a natural winner to
+    /// read), but permissionless like recordResult now that the draw itself is
+    /// verified on-chain instead of taken on the creator's word.
     function resolveDraw(
         uint256 tournamentId,
         uint256 matchId,
         bytes32 walrusBlobId
     ) external {
         TournamentData storage t = _get(tournamentId);
-        if (msg.sender != t.creator) revert NotCreator();
         if (t.state != TournamentState.Active) revert NotActive();
         if (matchId >= t.bracket.length) revert MatchNotFound();
         Match storage m = t.bracket[matchId];
         if (m.resolved) revert MatchAlreadyResolved();
         if (m.player1 == address(0) || m.player2 == address(0)) revert MatchNotReady();
+        if (m.gameId == 0) revert GameNotAssigned();
+
+        GameDataView memory gd = game.getGame(m.gameId);
+        if (!gd.metadata.ended) revert GameNotComplete();
+        if (gd.metadata.winner != address(0)) revert NotADraw();
+        bool ok = (gd.metadata.creator == m.player1 && gd.metadata.joiner == m.player2) ||
+            (gd.metadata.creator == m.player2 && gd.metadata.joiner == m.player1);
+        if (!ok) revert WinnerNotInMatch();
+        // T-02: same reasoning as recordResult — require the game to have started
+        // after both players were determined for this match (readyAt), so an old
+        // pre-existing draw between the same two players can't be replayed here.
+        if (gd.metadata.startedAt <= m.readyAt) revert GamePredatesAssignment();
 
         address winner = t.seed[m.player1] <= t.seed[m.player2]
             ? m.player1
             : m.player2;
         _resolve(t, matchId, winner, walrusBlobId);
+    }
+
+    /// @notice T-05: claim a walkover win when the opponent never showed up to
+    /// play at all. Only callable by one of the two match players, only once
+    /// matchTimeout has elapsed since both players were determined (readyAt), and
+    /// only if no game was ever assigned — if a game exists but stalls mid-play,
+    /// use Game.endGameOnTimeout + recordResult instead (M-07), not this.
+    function claimForfeitWin(uint256 tournamentId, uint256 matchId) external {
+        TournamentData storage t = _get(tournamentId);
+        if (t.state != TournamentState.Active) revert NotActive();
+        if (matchId >= t.bracket.length) revert MatchNotFound();
+        Match storage m = t.bracket[matchId];
+        if (m.resolved) revert MatchAlreadyResolved();
+        if (m.player1 == address(0) || m.player2 == address(0)) revert MatchNotReady();
+        if (msg.sender != m.player1 && msg.sender != m.player2) revert NotAMatchPlayer();
+        if (m.gameId != 0) revert GameAlreadyAssigned();
+        if (block.timestamp <= m.readyAt + t.config.matchTimeout)
+            revert MatchTimeoutNotReached();
+
+        address winner = msg.sender;
+        address loser = msg.sender == m.player1 ? m.player2 : m.player1;
+        emit MatchForfeited(tournamentId, matchId, winner, loser);
+        _resolve(t, matchId, winner, bytes32(0));
     }
 
     // ---- Finalize & claim ----
@@ -412,6 +492,10 @@ contract Tournament is Ownable, ReentrancyGuard {
             uint256 sB = order[2 * i + 1];
             t.bracket[i].player1 = sA <= count ? t.registrants[sA - 1] : address(0);
             t.bracket[i].player2 = sB <= count ? t.registrants[sB - 1] : address(0);
+            // Real (non-bye) round-0 matches have both players known right away.
+            if (t.bracket[i].player1 != address(0) && t.bracket[i].player2 != address(0)) {
+                t.bracket[i].readyAt = block.timestamp;
+            }
         }
 
         // Auto-advance byes (exactly one side empty; N is the next power of two so
@@ -482,6 +566,7 @@ contract Tournament is Ownable, ReentrancyGuard {
             p.player2 = m.winner;
         }
         if (p.player1 != address(0) && p.player2 != address(0)) {
+            p.readyAt = block.timestamp;
             emit NextRoundMatchCreated(t.id, parentId, p.round);
         }
     }

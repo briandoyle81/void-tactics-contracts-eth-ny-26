@@ -125,7 +125,12 @@ struct GameMetadata {
     uint joinerFleetId;
     bool creatorGoesFirst;
     uint startedAt;
-    address winner; // Winner of the game (zero address if game is not over)
+    address winner; // Winner of the game (zero address if game is not over OR if it was a draw)
+    // True once _endGame has run. winner alone can't distinguish "not over" from
+    // "ended in a draw" (both leave winner == address(0)), so this is the one
+    // source of truth for "has this game ended." Packs into winner's storage
+    // slot (address is 20 bytes, bool is 1), so this costs no extra slot.
+    bool ended;
 }
 
 // Game turn state - turn and timing related data
@@ -156,6 +161,10 @@ struct GameData {
     mapping(int16 row => mapping(int16 column => uint shipId)) grid;
     // Board position and status for each ship (status: 0 = alive, 1 = destroyed, 2 = fled)
     mapping(uint => ShipPosition) shipPositions; // shipId => position + status
+    // Kill-credit tracking: target shipId => shipId of its last damager, scoped per
+    // game (was a top-level Game.sol mapping shared across all games; a ship id
+    // reused in a later game would inherit a stale entry from an earlier one).
+    mapping(uint => uint) lastDamage;
     EnumerableSet.UintSet shipMovedThisRound; // movedShipIds in current round
     EnumerableSet.UintSet shipsWithZeroHP; // shipIds with 0 hull points
     // Store active ship IDs for each player to avoid repeated fleet calls

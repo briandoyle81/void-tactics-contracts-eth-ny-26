@@ -11,7 +11,6 @@ contract UniversalCredits is ERC20, Ownable {
     bool public mintIsActive;
 
     mapping(address => bool) public authorizedToMint;
-    mapping(address => uint) public mintedAmount;
 
     constructor() ERC20("Universal Trade Credits", "UTC") Ownable(msg.sender) {}
 

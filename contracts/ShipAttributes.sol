@@ -22,6 +22,10 @@ contract ShipAttributes is IShipAttributes, Ownable {
     error ShipNotFound();
     error InvalidCostsVersion();
 
+    event CostsSet(uint16 version);
+    event CurrentAttributesVersionSet(uint16 version);
+    event AttributesVersionCreated(uint16 version);
+
     constructor(address _ships) Ownable(msg.sender) {
         ships = IShips(_ships);
 
@@ -347,6 +351,7 @@ contract ShipAttributes is IShipAttributes, Ownable {
         uint16 newVersion = costs.version + 1;
         costs = _costs;
         costs.version = newVersion;
+        emit CostsSet(newVersion);
     }
 
     function getCosts() external view returns (uint, Costs memory) {
@@ -360,6 +365,7 @@ contract ShipAttributes is IShipAttributes, Ownable {
     // Attributes version management functions
     function setCurrentAttributesVersion(uint16 _version) external onlyOwner {
         currentAttributesVersion = _version;
+        emit CurrentAttributesVersionSet(_version);
     }
 
     function getCurrentAttributesVersion() external view returns (uint16) {
@@ -447,5 +453,7 @@ contract ShipAttributes is IShipAttributes, Ownable {
         for (uint i = 0; i < _engineSpeeds.length; i++) {
             newVersionData.engineSpeeds.push(_engineSpeeds[i]);
         }
+
+        emit AttributesVersionCreated(newVersion);
     }
 }

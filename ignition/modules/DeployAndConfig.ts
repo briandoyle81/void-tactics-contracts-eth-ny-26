@@ -300,6 +300,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
     TOURNAMENT_WORLD_ID_GROUP,
     TOURNAMENT_EXTERNAL_NULLIFIER,
     gameResults,
+    game,
     m.getAccount(0), // feeRecipient (protocol fee sink) == deployer
   ]);
 

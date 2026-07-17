@@ -2,7 +2,7 @@ import { expect } from "chai";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox-viem/network-helpers";
 import hre from "hardhat";
 import { parseEther, zeroAddress } from "viem";
-import { ShipTuple, tupleToShip } from "./types";
+import { ActionType, GameDataView, ShipTuple, tupleToShip } from "./types";
 import DeployModule from "../ignition/modules/DeployAndConfig";
 
 const EMPTY_PROOF = [0n, 0n, 0n, 0n, 0n, 0n, 0n, 0n] as const;
@@ -19,6 +19,16 @@ function generateStartingPositions(shipIds: bigint[], isCreator: boolean) {
     }
   }
   return positions;
+}
+
+// Mirror of Game.test's helper for finding a ship's position from GameDataView.
+function findShipPosition(gameData: GameDataView, shipId: bigint) {
+  for (const shipPosition of gameData.shipPositions) {
+    if (shipPosition.shipId === shipId) {
+      return shipPosition.position;
+    }
+  }
+  throw new Error(`Ship ${shipId} not found in game data`);
 }
 
 describe("Tournament", function () {
@@ -89,6 +99,7 @@ describe("Tournament", function () {
       turnTime: bigint;
       selectedMapId: bigint;
       maxScore: bigint;
+      matchTimeout: bigint;
     }> = {}
   ) {
     return {
@@ -100,6 +111,7 @@ describe("Tournament", function () {
       turnTime: 300n,
       selectedMapId: 0n,
       maxScore: 100n,
+      matchTimeout: 3600n, // MIN_MATCH_TIMEOUT
       ...overrides,
     };
   }
@@ -285,11 +297,120 @@ describe("Tournament", function () {
     });
   });
 
-  describe("Draw resolution (temporary)", function () {
-    it("awards a drawn match to the lower seed (first to register)", async function () {
-      const { asOwner, asAlice, asBob, alice, now } = await loadFixture(
-        deployTournamentFixture
+  describe("Draw resolution", function () {
+    it("verifies the draw on-chain against Game before awarding it to the lower seed", async function () {
+      const { deployed, asOwner, asAlice, asBob, alice, bob, owner, now } =
+        await loadFixture(deployTournamentFixture);
+
+      const ships = deployed.ships;
+      const game = deployed.game;
+      const maps = deployed.maps;
+      const randomManager = deployed.randomManager;
+      const lobbies = deployed.lobbies;
+
+      await asOwner.write.createTournament([
+        defaultConfig(now, { maxPlayers: 2 }),
+      ]);
+      await asAlice.write.register([1n, 0n, 1n, EMPTY_PROOF], {
+        value: parseEther("1"),
+      });
+      await asBob.write.register([1n, 0n, 2n, EMPTY_PROOF], {
+        value: parseEther("1"),
+      });
+      await asOwner.write.start([1n]); // final match: player1 = alice, player2 = bob
+
+      // Can't resolve a draw before a game is even assigned to the match.
+      await expect(
+        asOwner.write.resolveDraw([1n, 0n, `0x${"00".repeat(32)}`])
+      ).to.be.rejectedWith("GameNotAssigned");
+
+      // --- Set up a real game between alice and bob and drive it to a genuine draw ---
+      await ships.write.purchaseWithFlow(
+        [alice.account.address, 0, bob.account.address, 1],
+        { value: parseEther("4.99") }
       );
+      await ships.write.purchaseWithFlow(
+        [bob.account.address, 0, alice.account.address, 1],
+        { value: parseEther("4.99") }
+      );
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.fulfillRandomRequest([
+          ship.traits.serialNumber,
+        ]);
+      }
+      await ships.write.constructAllMyShips({ account: alice.account });
+      await ships.write.constructAllMyShips({ account: bob.account });
+
+      await lobbies.write.createLobbyForAddresses([
+        alice.account.address,
+        bob.account.address,
+        1000n,
+        300n,
+        0n,
+        5n, // low maxScore for a quick draw
+      ]);
+      const lobbyId = 1n; // first lobby -> gameId == lobbyId == 1
+
+      await lobbies.write.createFleet(
+        [lobbyId, [1n], generateStartingPositions([1n], true)],
+        { account: alice.account }
+      );
+      await lobbies.write.createFleet(
+        [lobbyId, [6n], generateStartingPositions([6n], false)],
+        { account: bob.account }
+      );
+
+      let gameData = (await game.read.getGame([lobbyId])) as GameDataView;
+      const alicePos = findShipPosition(gameData, 1n);
+      const bobPos = findShipPosition(gameData, 6n);
+
+      // Equal scoring tiles under each ship: both reach maxScore with equal scores.
+      await maps.write.setScoringTile(
+        [lobbyId, alicePos.row, alicePos.col, 5],
+        { account: owner.account }
+      );
+      await maps.write.setScoringTile(
+        [lobbyId, bobPos.row, bobPos.col, 5],
+        { account: owner.account }
+      );
+
+      await game.write.moveShip(
+        [lobbyId, 1n, alicePos.row, alicePos.col, ActionType.Pass, 0n],
+        { account: alice.account }
+      );
+      await game.write.moveShip(
+        [lobbyId, 6n, bobPos.row, bobPos.col, ActionType.Pass, 0n],
+        { account: bob.account }
+      );
+
+      const finishedGame = (await game.read.getGame([lobbyId])) as GameDataView;
+      expect(finishedGame.metadata.winner).to.equal(zeroAddress); // genuine draw
+      expect(finishedGame.metadata.ended).to.be.true;
+
+      // --- Link the game to the match, then resolve the draw ---
+      await asOwner.write.assignMatchGame([1n, 0n, lobbyId]);
+
+      // Permissionless now that the draw is verified on-chain — bob (not the
+      // tournament creator) can call it just as well as the creator can.
+      await asBob.write.resolveDraw([1n, 0n, `0x${"11".repeat(32)}`]);
+      const bracket = await asOwner.read.getBracket([1n]);
+      expect(bracket[0].resolved).to.be.true;
+      expect(bracket[0].winner.toLowerCase()).to.equal(
+        alice.account.address.toLowerCase()
+      );
+    });
+
+    it("rejects resolveDraw when the assigned game actually has a winner", async function () {
+      const { deployed, asOwner, asAlice, asBob, alice, bob, now } =
+        await loadFixture(deployTournamentFixture);
+
+      const ships = deployed.ships;
+      const game = deployed.game;
+      const randomManager = deployed.randomManager;
+      const lobbies = deployed.lobbies;
+
       await asOwner.write.createTournament([
         defaultConfig(now, { maxPlayers: 2 }),
       ]);
@@ -301,17 +422,50 @@ describe("Tournament", function () {
       });
       await asOwner.write.start([1n]);
 
-      // Only the creator may resolve a draw.
-      await expect(
-        asBob.write.resolveDraw([1n, 0n, `0x${"00".repeat(32)}`])
-      ).to.be.rejectedWith("NotCreator");
-
-      await asOwner.write.resolveDraw([1n, 0n, `0x${"11".repeat(32)}`]);
-      const bracket = await asOwner.read.getBracket([1n]);
-      expect(bracket[0].resolved).to.be.true;
-      expect(bracket[0].winner.toLowerCase()).to.equal(
-        alice.account.address.toLowerCase()
+      await ships.write.purchaseWithFlow(
+        [alice.account.address, 0, bob.account.address, 1],
+        { value: parseEther("4.99") }
       );
+      await ships.write.purchaseWithFlow(
+        [bob.account.address, 0, alice.account.address, 1],
+        { value: parseEther("4.99") }
+      );
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.fulfillRandomRequest([
+          ship.traits.serialNumber,
+        ]);
+      }
+      await ships.write.constructAllMyShips({ account: alice.account });
+      await ships.write.constructAllMyShips({ account: bob.account });
+
+      await lobbies.write.createLobbyForAddresses([
+        alice.account.address,
+        bob.account.address,
+        1000n,
+        300n,
+        0n,
+        100n,
+      ]);
+      const lobbyId = 1n;
+
+      await lobbies.write.createFleet(
+        [lobbyId, [1n], generateStartingPositions([1n], true)],
+        { account: alice.account }
+      );
+      await lobbies.write.createFleet(
+        [lobbyId, [6n], generateStartingPositions([6n], false)],
+        { account: bob.account }
+      );
+
+      // Alice flees -> bob wins outright; this is not a draw.
+      await game.write.flee([lobbyId], { account: alice.account });
+
+      await asOwner.write.assignMatchGame([1n, 0n, lobbyId]);
+      await expect(
+        asOwner.write.resolveDraw([1n, 0n, `0x${"22".repeat(32)}`])
+      ).to.be.rejectedWith("NotADraw");
     });
   });
 
@@ -439,6 +593,253 @@ describe("Tournament", function () {
       await expect(
         asOwner.write.recordResult([1n, 0n, `0x${"00".repeat(32)}`])
       ).to.be.rejectedWith("GameNotAssigned");
+    });
+
+    it("T-03: assignMatchGame is permissionless — not gated to the tournament creator", async function () {
+      const { deployed, asOwner, asAlice, asBob, alice, bob, now } =
+        await loadFixture(deployTournamentFixture);
+
+      const ships = deployed.ships;
+      const game = deployed.game;
+      const randomManager = deployed.randomManager;
+      const lobbies = deployed.lobbies;
+
+      await asOwner.write.createTournament([
+        defaultConfig(now, { maxPlayers: 2 }),
+      ]);
+      await asAlice.write.register([1n, 0n, 1n, EMPTY_PROOF], {
+        value: parseEther("1"),
+      });
+      await asBob.write.register([1n, 0n, 2n, EMPTY_PROOF], {
+        value: parseEther("1"),
+      });
+      await asOwner.write.start([1n]); // asOwner is the tournament creator here
+
+      await ships.write.purchaseWithFlow(
+        [alice.account.address, 0, bob.account.address, 1],
+        { value: parseEther("4.99") }
+      );
+      await ships.write.purchaseWithFlow(
+        [bob.account.address, 0, alice.account.address, 1],
+        { value: parseEther("4.99") }
+      );
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.fulfillRandomRequest([
+          ship.traits.serialNumber,
+        ]);
+      }
+      await ships.write.constructAllMyShips({ account: alice.account });
+      await ships.write.constructAllMyShips({ account: bob.account });
+
+      await lobbies.write.createLobbyForAddresses([
+        alice.account.address,
+        bob.account.address,
+        1000n,
+        300n,
+        0n,
+        100n,
+      ]);
+      const lobbyId = 1n;
+
+      await lobbies.write.createFleet(
+        [lobbyId, [1n], generateStartingPositions([1n], true)],
+        { account: alice.account }
+      );
+      await lobbies.write.createFleet(
+        [lobbyId, [6n], generateStartingPositions([6n], false)],
+        { account: bob.account }
+      );
+
+      await game.write.flee([lobbyId], { account: alice.account }); // bob wins
+
+      // Neither call below is made by the tournament creator (asOwner) — proving
+      // the whole pipeline no longer depends on the creator staying responsive.
+      await asBob.write.assignMatchGame([1n, 0n, lobbyId]);
+      await asAlice.write.recordResult([1n, 0n, `0x${"44".repeat(32)}`]);
+
+      const bracket = await asOwner.read.getBracket([1n]);
+      expect(bracket[0].resolved).to.be.true;
+      expect(bracket[0].winner.toLowerCase()).to.equal(
+        bob.account.address.toLowerCase()
+      );
+    });
+
+    it("rejects reusing a game that predates this match becoming ready (T-02)", async function () {
+      const { deployed, asOwner, asAlice, asBob, alice, bob, now } =
+        await loadFixture(deployTournamentFixture);
+
+      const ships = deployed.ships;
+      const game = deployed.game;
+      const randomManager = deployed.randomManager;
+      const lobbies = deployed.lobbies;
+
+      // --- Play a real, unrelated game between alice and bob BEFORE the
+      // tournament (and this match) exists at all. ---
+      await ships.write.purchaseWithFlow(
+        [alice.account.address, 0, bob.account.address, 1],
+        { value: parseEther("4.99") }
+      );
+      await ships.write.purchaseWithFlow(
+        [bob.account.address, 0, alice.account.address, 1],
+        { value: parseEther("4.99") }
+      );
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.fulfillRandomRequest([
+          ship.traits.serialNumber,
+        ]);
+      }
+      await ships.write.constructAllMyShips({ account: alice.account });
+      await ships.write.constructAllMyShips({ account: bob.account });
+
+      await lobbies.write.createLobbyForAddresses([
+        alice.account.address,
+        bob.account.address,
+        1000n,
+        300n,
+        0n,
+        100n,
+      ]);
+      const oldGameId = 1n;
+
+      await lobbies.write.createFleet(
+        [oldGameId, [1n], generateStartingPositions([1n], true)],
+        { account: alice.account }
+      );
+      await lobbies.write.createFleet(
+        [oldGameId, [6n], generateStartingPositions([6n], false)],
+        { account: bob.account }
+      );
+
+      // Bob wins this old, pre-tournament game.
+      await game.write.flee([oldGameId], { account: alice.account });
+
+      // --- Only now does the tournament (and this match) come into existence.
+      // The match's readyAt is strictly later than the old game above. ---
+      await asOwner.write.createTournament([
+        defaultConfig(now, { maxPlayers: 2 }),
+      ]);
+      await asAlice.write.register([1n, 0n, 1n, EMPTY_PROOF], {
+        value: parseEther("1"),
+      });
+      await asBob.write.register([1n, 0n, 2n, EMPTY_PROOF], {
+        value: parseEther("1"),
+      });
+      await asOwner.write.start([1n]);
+
+      // Try to reuse the old, pre-existing result for this brand-new match.
+      await asOwner.write.assignMatchGame([1n, 0n, oldGameId]);
+      await expect(
+        asOwner.write.recordResult([1n, 0n, `0x${"33".repeat(32)}`])
+      ).to.be.rejectedWith("GamePredatesAssignment");
+    });
+  });
+
+  describe("Forfeit timeout (T-05)", function () {
+    it("rejects createTournament with a matchTimeout outside [MIN, MAX]", async function () {
+      const { asOwner, now } = await loadFixture(deployTournamentFixture);
+      await expect(
+        asOwner.write.createTournament([
+          defaultConfig(now, { matchTimeout: 3599n }), // below MIN_MATCH_TIMEOUT
+        ])
+      ).to.be.rejectedWith("InvalidConfig");
+      await expect(
+        asOwner.write.createTournament([
+          defaultConfig(now, { matchTimeout: 604801n }), // above MAX_MATCH_TIMEOUT
+        ])
+      ).to.be.rejectedWith("InvalidConfig");
+    });
+
+    it("rejects claimForfeitWin before the timeout has elapsed", async function () {
+      const { asOwner, asAlice, asBob, now } = await loadFixture(
+        deployTournamentFixture
+      );
+      await asOwner.write.createTournament([
+        defaultConfig(now, { maxPlayers: 2 }),
+      ]);
+      await asAlice.write.register([1n, 0n, 1n, EMPTY_PROOF], {
+        value: parseEther("1"),
+      });
+      await asBob.write.register([1n, 0n, 2n, EMPTY_PROOF], {
+        value: parseEther("1"),
+      });
+      await asOwner.write.start([1n]);
+
+      await expect(
+        asAlice.write.claimForfeitWin([1n, 0n])
+      ).to.be.rejectedWith("MatchTimeoutNotReached");
+    });
+
+    it("rejects claimForfeitWin from an address that isn't one of the match's players", async function () {
+      const { asOwner, asAlice, asBob, asCarol, now } = await loadFixture(
+        deployTournamentFixture
+      );
+      await asOwner.write.createTournament([
+        defaultConfig(now, { maxPlayers: 2 }),
+      ]);
+      await asAlice.write.register([1n, 0n, 1n, EMPTY_PROOF], {
+        value: parseEther("1"),
+      });
+      await asBob.write.register([1n, 0n, 2n, EMPTY_PROOF], {
+        value: parseEther("1"),
+      });
+      await asOwner.write.start([1n]);
+      await increaseTime(3601);
+
+      await expect(
+        asCarol.write.claimForfeitWin([1n, 0n])
+      ).to.be.rejectedWith("NotAMatchPlayer");
+    });
+
+    it("rejects claimForfeitWin once a game has already been assigned", async function () {
+      const { asOwner, asAlice, asBob, now } = await loadFixture(
+        deployTournamentFixture
+      );
+      await asOwner.write.createTournament([
+        defaultConfig(now, { maxPlayers: 2 }),
+      ]);
+      await asAlice.write.register([1n, 0n, 1n, EMPTY_PROOF], {
+        value: parseEther("1"),
+      });
+      await asBob.write.register([1n, 0n, 2n, EMPTY_PROOF], {
+        value: parseEther("1"),
+      });
+      await asOwner.write.start([1n]);
+      await asBob.write.assignMatchGame([1n, 0n, 999n]);
+      await increaseTime(3601);
+
+      await expect(
+        asAlice.write.claimForfeitWin([1n, 0n])
+      ).to.be.rejectedWith("GameAlreadyAssigned");
+    });
+
+    it("lets the present player claim a walkover once matchTimeout has elapsed with no game assigned", async function () {
+      const { asOwner, asAlice, asBob, bob, now } = await loadFixture(
+        deployTournamentFixture
+      );
+      await asOwner.write.createTournament([
+        defaultConfig(now, { maxPlayers: 2 }),
+      ]);
+      await asAlice.write.register([1n, 0n, 1n, EMPTY_PROOF], {
+        value: parseEther("1"),
+      });
+      await asBob.write.register([1n, 0n, 2n, EMPTY_PROOF], {
+        value: parseEther("1"),
+      });
+      await asOwner.write.start([1n]); // final match: player1 = alice, player2 = bob
+
+      // Alice never shows up. Once matchTimeout elapses, bob claims the walkover.
+      await increaseTime(3601);
+      await asBob.write.claimForfeitWin([1n, 0n]);
+
+      const bracket = await asOwner.read.getBracket([1n]);
+      expect(bracket[0].resolved).to.be.true;
+      expect(bracket[0].winner.toLowerCase()).to.equal(
+        bob.account.address.toLowerCase()
+      );
     });
   });
 

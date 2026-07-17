@@ -752,8 +752,17 @@ contract Lobbies is Ownable, ReentrancyGuard {
         return openLobbyIds.contains(_lobbyId);
     }
 
-    // This function will have dupes that must be
-    // filtered on the client sided
+    // This function will have dupes that must be filtered on the client side.
+    // Why: this concatenates two independent sets — playerLobbies[_player] (lobbies
+    // this player created/joined) and openLobbyIds (every currently-open lobby,
+    // any player) — rather than taking their union. If the player's own lobby is
+    // still open (waiting for a joiner), its id is a member of both sets, so it's
+    // copied into the result twice: once from the player-lobbies loop, once from
+    // the open-lobbies loop. Each set is individually dedupe-safe (EnumerableSet
+    // guarantees that); nothing dedupes *across* the two. Deduping on-chain would
+    // cost an extra O(n*m) contains-check pass (or a temporary set) on every call;
+    // pushing that to the client (trivial there, e.g. a JS Set) was a deliberate
+    // gas/bytecode tradeoff, not an oversight.
     function getAllLobbiesForPlayerWithDupes(
         address _player
     ) public view returns (Lobby[] memory) {

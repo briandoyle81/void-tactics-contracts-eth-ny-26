@@ -64,7 +64,12 @@ contract Fleets is Ownable, IFleets {
         if (_shipIds.length != _startingPositions.length)
             revert ArrayLengthMismatch();
 
-        // Validate positions based on whether this is creator or joiner fleet
+        // Validate positions based on whether this is creator or joiner fleet, and
+        // check for duplicates in the same pass (I-09: these used to be two
+        // separate loops over the same array with no dependency between them).
+        // O(n), all in memory, no storage writes. Use bitset for 17×11 grid (187
+        // positions max).
+        uint256[2] memory positionBitset; // 2 * 256 = 512 bits > 187 positions
         for (uint i = 0; i < _startingPositions.length; i++) {
             Position memory pos = _startingPositions[i];
 
@@ -78,6 +83,17 @@ contract Fleets is Ownable, IFleets {
 
             // Validate row bounds (0-10 for 11 rows)
             if (pos.row < 0 || pos.row > 10) revert InvalidPosition();
+
+            // Convert position to single key: row * GRID_WIDTH + col
+            uint256 key = uint256(int256(pos.row)) *
+                17 +
+                uint256(int256(pos.col));
+            uint256 wordIndex = key / 256;
+            uint256 bitIndex = key % 256;
+            if ((positionBitset[wordIndex] & (1 << bitIndex)) != 0) {
+                revert DuplicatePosition();
+            }
+            positionBitset[wordIndex] |= (1 << bitIndex);
         }
 
         uint totalCost = 0;
@@ -121,31 +137,6 @@ contract Fleets is Ownable, IFleets {
         newFleet.totalCost = totalCost;
         newFleet.isComplete = true;
 
-        // Validate that no positions are duplicated anywhere in the array
-        // O(n), all in memory, no storage writes
-        // Use bitset for 17×11 grid (187 positions max)
-        uint256[2] memory positionBitset; // 2 * 256 = 512 bits > 187 positions
-
-        for (uint i = 0; i < _startingPositions.length; i++) {
-            Position memory pos = _startingPositions[i];
-
-            // Convert position to single key: row * GRID_WIDTH + col
-            uint256 key = uint256(int256(pos.row)) *
-                17 +
-                uint256(int256(pos.col));
-
-            // Check if position already seen
-            uint256 wordIndex = key / 256;
-            uint256 bitIndex = key % 256;
-
-            if ((positionBitset[wordIndex] & (1 << bitIndex)) != 0) {
-                revert DuplicatePosition();
-            }
-
-            // Mark position as seen
-            positionBitset[wordIndex] |= (1 << bitIndex);
-        }
-
         // Mark ships as in fleet
         for (uint i = 0; i < _shipIds.length; i++) {
             ships.setInFleet(_shipIds[i], true);
@@ -188,12 +179,15 @@ contract Fleets is Ownable, IFleets {
                 }
                 fleet.shipIds.pop();
 
-                // Release ship from fleet
-                ships.setInFleet(_shipId, false);
-
-                // Update total cost
+                // Read cost before releasing the ship from the fleet: a ship's cost
+                // is only ever writable while inFleet is false (see Ships._setCostOfShip
+                // and DroneYard.modifyShip), so this ordering can't change behavior
+                // today, but it stops relying on that invariant holding elsewhere.
                 Ship memory ship = ships.getShip(_shipId);
                 fleet.totalCost -= ship.shipData.cost;
+
+                // Release ship from fleet
+                ships.setInFleet(_shipId, false);
 
                 return;
             }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.28;
 
 // import "hardhat/console.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";

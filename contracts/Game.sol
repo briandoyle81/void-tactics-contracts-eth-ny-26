@@ -23,8 +23,6 @@ contract Game is Ownable {
 
     mapping(address => uint[]) public playerGames;
 
-    // Tracking for last damage for kill credits
-    mapping(uint target => uint lastDamager) public lastDamage;
 
     // Grid constants
     int16 public constant GRID_WIDTH = 17; // Number of columns
@@ -431,6 +429,7 @@ contract Game is Ownable {
     function _endGame(uint _gameId, address _winner, address _loser) internal {
         GameData storage game = games[_gameId];
         game.metadata.winner = _winner;
+        game.metadata.ended = true;
         // Only record non-draw results
         if (_winner != address(0) && address(gameResults) != address(0)) {
             gameResults.recordGameResult(_gameId, _winner, _loser);
@@ -492,8 +491,10 @@ contract Game is Ownable {
         _requireGameExists(_gameId);
         GameData storage game = games[_gameId];
 
-        // Check if game has ended
-        if (game.metadata.winner != address(0)) revert InvalidMove();
+        // Check if game has ended (see GameMetadata.ended in Types.sol for why
+        // this can't just check winner != address(0): a draw also leaves winner
+        // at address(0), so that check would wrongly allow moves after a draw)
+        if (game.metadata.ended) revert InvalidMove();
 
         // Check if it's the player's turn
         if (msg.sender != game.turnState.currentTurn) revert InvalidMove();
@@ -674,25 +675,31 @@ contract Game is Ownable {
         );
         // Must be on the other team (by owner address)
         if (targetShip.owner == ship.owner) revert InvalidMove();
-        // Must be in range (manhattan)
-        Position memory shooterPos = Position(_newRow, _newCol);
-        Position storage targetPos = game.shipPositions[targetShipId].position;
-        uint8 manhattan = _manhattanDistance(shooterPos, targetPos);
+        // Must be in range (manhattan) and have line of sight. Scoped to a block so
+        // these locals are popped off the stack once validated — _performShoot is
+        // already tight on stack slots, and this makes room for the later
+        // game.lastDamage[...] write (a struct-nested mapping access needs one more
+        // transient slot than the flat mapping this replaced — see I-06 fix).
         Attributes storage shooterAttributes = game.shipAttributes[_shipId];
-        if (manhattan > shooterAttributes.range) revert InvalidMove();
+        {
+            Position memory shooterPos = Position(_newRow, _newCol);
+            Position storage targetPos = game.shipPositions[targetShipId].position;
+            uint8 manhattan = _manhattanDistance(shooterPos, targetPos);
+            if (manhattan > shooterAttributes.range) revert InvalidMove();
 
-        // Must have line of sight to target if manhattan > 1, can always see adjacent to shoot
-        if (
-            manhattan > 1 &&
-            !maps.hasMaps(
-                _gameId,
-                _newRow,
-                _newCol,
-                targetPos.row,
-                targetPos.col
-            )
-        ) {
-            revert InvalidMove();
+            // Must have line of sight to target if manhattan > 1, can always see adjacent to shoot
+            if (
+                manhattan > 1 &&
+                !maps.hasMaps(
+                    _gameId,
+                    _newRow,
+                    _newCol,
+                    targetPos.row,
+                    targetPos.col
+                )
+            ) {
+                revert InvalidMove();
+            }
         }
 
         // Get target attributes
@@ -716,7 +723,7 @@ contract Game is Ownable {
         // Reduce hull points
         if (reducedDamage >= targetAttributes.hullPoints) {
             _setShipHPToZero(_gameId, targetShipId);
-            lastDamage[targetShipId] = _shipId;
+            game.lastDamage[targetShipId] = _shipId;
         } else {
             targetAttributes.hullPoints -= uint8(reducedDamage);
         }
@@ -1026,7 +1033,7 @@ contract Game is Ownable {
         ];
 
         uint8 empStrength = shipAttributes.getSpecialStrength(Special.EMP);
-        lastDamage[_targetShipId] = _shipId; // Track the ship using EMP as the last damager
+        game.lastDamage[_targetShipId] = _shipId; // Track the ship using EMP as the last damager
         targetAttributes.reactorCriticalTimer += empStrength;
         if (targetAttributes.reactorCriticalTimer >= 3) {
             _removeShipFromGame(_gameId, _targetShipId, false, _targetShip);
@@ -1093,7 +1100,7 @@ contract Game is Ownable {
             uint8 distance = _manhattanDistance(flakPos, shipPos);
 
             if (distance <= flakRange && targetShipId != _shipId) {
-                lastDamage[targetShipId] = _shipId;
+                game.lastDamage[targetShipId] = _shipId;
                 // Apply damage reduction and deal damage
                 uint8 damageReduction = game
                     .shipAttributes[targetShipId]
@@ -1175,7 +1182,7 @@ contract Game is Ownable {
 
         // If this ship didn't retreat, set the timestamp destroyed
         if (!_isRetreat) {
-            ships.setTimestampDestroyed(_shipId, lastDamage[_shipId]);
+            ships.setTimestampDestroyed(_shipId, game.lastDamage[_shipId]);
         }
 
         // Remove ship from playerActiveShipIds
@@ -1392,8 +1399,9 @@ contract Game is Ownable {
         // if (games[_gameId].metadata.gameId == 0) revert GameNotFound();
         GameData storage game = games[_gameId];
 
-        // Check if game has already ended
-        if (game.metadata.winner != address(0)) revert InvalidMove();
+        // Check if game has already ended (winner alone can't tell: a draw also
+        // leaves winner == address(0), see GameMetadata.ended in Types.sol)
+        if (game.metadata.ended) revert InvalidMove();
 
         // Must be either the creator or joiner
         if (
