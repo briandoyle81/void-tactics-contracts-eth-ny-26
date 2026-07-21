@@ -131,6 +131,12 @@ struct GameMetadata {
     // source of truth for "has this game ended." Packs into winner's storage
     // slot (address is 20 bytes, bool is 1), so this costs no extra slot.
     bool ended;
+    // The contract that called startGame for this session (e.g. PvPMatch).
+    // Only this address may call forceEndSession, and it's who Game.sol
+    // calls back into (via IGameOrchestrator.onGameEnded) when the session
+    // ends, so each game mode can decide what "ended" means for it without
+    // core Game.sol needing to know about leaderboards/results contracts.
+    address orchestrator;
 }
 
 // Game turn state - turn and timing related data

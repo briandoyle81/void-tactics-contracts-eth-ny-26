@@ -7,7 +7,8 @@ import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./Types.sol";
 import "./Ships.sol";
-import "./Game.sol";
+import "./PvPMatch.sol";
+import "./SinglePlayerMatch.sol";
 import "./IFleets.sol";
 import "./IMaps.sol";
 
@@ -15,9 +16,18 @@ contract Lobbies is Ownable, ReentrancyGuard {
     using EnumerableSet for EnumerableSet.UintSet;
 
     Ships public ships;
-    Game public game;
+    PvPMatch public pvpMatch;
+    SinglePlayerMatch public singlePlayerMatch;
     IFleets public fleets;
     IMaps public maps;
+
+    // Addresses (e.g. SinglePlayerMatch) recognized as single-player
+    // orchestrators. A lobby is a single-player match exactly when its joiner
+    // is one of these addresses — everything else about lobby creation,
+    // joining (typically via reservedJoiner + acceptGame), fees, timeouts,
+    // and fleet creation is identical to a PvP lobby, on purpose, so both
+    // modes share the same lobby-count/free-games constraints.
+    mapping(address => bool) public isSinglePlayerOrchestrator;
     IERC20 public universalCredits;
 
     uint public lobbyCount;
@@ -28,10 +38,6 @@ contract Lobbies is Ownable, ReentrancyGuard {
 
     mapping(uint => Lobby) public lobbies;
     mapping(address => PlayerLobbyState) public playerStates;
-
-    // Addresses (e.g. AIController) authorized to call createLobbyForAddresses
-    // without being the contract owner, mirroring Ships.isAllowedToCreateShips.
-    mapping(address => bool) public isAllowedToCreateLobbies;
 
     // New mappings for lobby tracking
     mapping(address => EnumerableSet.UintSet) private playerLobbies;
@@ -88,7 +94,6 @@ contract Lobbies is Ownable, ReentrancyGuard {
     error LobbyNotReserved();
     error InsufficientUTC();
     error UTCTransferFailed();
-    error NotAuthorized(address caller);
 
     uint public constant MIN_TURN_TIME = 60; // 1 minute in seconds
     uint public constant MAX_TURN_TIME = 86400; // 24 hours in seconds
@@ -103,8 +108,21 @@ contract Lobbies is Ownable, ReentrancyGuard {
         universalCredits = IERC20(_universalCredits);
     }
 
-    function setGameAddress(address _gameAddress) public onlyOwner {
-        game = Game(_gameAddress);
+    function setPvpMatchAddress(address _pvpMatchAddress) public onlyOwner {
+        pvpMatch = PvPMatch(_pvpMatchAddress);
+    }
+
+    function setSinglePlayerMatchAddress(
+        address _singlePlayerMatchAddress
+    ) public onlyOwner {
+        singlePlayerMatch = SinglePlayerMatch(_singlePlayerMatchAddress);
+    }
+
+    function setIsSinglePlayerOrchestrator(
+        address _address,
+        bool _isSinglePlayerOrchestrator
+    ) public onlyOwner {
+        isSinglePlayerOrchestrator[_address] = _isSinglePlayerOrchestrator;
     }
 
     function setFleetsAddress(address _fleetsAddress) public onlyOwner {
@@ -113,13 +131,6 @@ contract Lobbies is Ownable, ReentrancyGuard {
 
     function setMapsAddress(address _mapsAddress) public onlyOwner {
         maps = IMaps(_mapsAddress);
-    }
-
-    function setIsAllowedToCreateLobbies(
-        address _address,
-        bool _isAllowed
-    ) public onlyOwner {
-        isAllowedToCreateLobbies[_address] = _isAllowed;
     }
 
     function isLobbyOpenForJoining(uint _id) public view returns (bool) {
@@ -552,18 +563,36 @@ contract Lobbies is Ownable, ReentrancyGuard {
             // Remove from tracking sets when game starts
             _cleanupLobbyFromAllSets(_lobbyId);
 
-            // Start the game
-            game.startGame(
-                _lobbyId,
-                lobby.basic.creator,
-                lobby.players.joiner,
-                lobby.players.creatorFleetId,
-                lobby.players.joinerFleetId,
-                lobby.gameConfig.creatorGoesFirst,
-                lobby.gameConfig.turnTime,
-                lobby.gameConfig.selectedMapId,
-                lobby.gameConfig.maxScore
-            );
+            // Start the game: dispatch to whichever orchestrator this match
+            // belongs to. A lobby is single-player exactly when its joiner is
+            // a recognized single-player orchestrator (e.g. SinglePlayerMatch
+            // accepting a reservation) — everything above this point (fees,
+            // reservation, timeouts, fleet creation) is identical either way.
+            if (isSinglePlayerOrchestrator[lobby.players.joiner]) {
+                singlePlayerMatch.startGame(
+                    _lobbyId,
+                    lobby.basic.creator,
+                    lobby.players.joiner,
+                    lobby.players.creatorFleetId,
+                    lobby.players.joinerFleetId,
+                    lobby.gameConfig.creatorGoesFirst,
+                    lobby.gameConfig.turnTime,
+                    lobby.gameConfig.selectedMapId,
+                    lobby.gameConfig.maxScore
+                );
+            } else {
+                pvpMatch.startGame(
+                    _lobbyId,
+                    lobby.basic.creator,
+                    lobby.players.joiner,
+                    lobby.players.creatorFleetId,
+                    lobby.players.joinerFleetId,
+                    lobby.gameConfig.creatorGoesFirst,
+                    lobby.gameConfig.turnTime,
+                    lobby.gameConfig.selectedMapId,
+                    lobby.gameConfig.maxScore
+                );
+            }
         }
     }
 
@@ -615,11 +644,9 @@ contract Lobbies is Ownable, ReentrancyGuard {
         emit LobbyTerminated(_lobbyId);
     }
 
-    // Owner (or an address explicitly authorized via isAllowedToCreateLobbies,
-    // e.g. AIController) function to create a lobby with both creator and
-    // joiner already set. Bypasses paused state, timeout checks, and fee
-    // requirements. Who goes first is determined by who creates their fleet
-    // first (not a lobby setting).
+    // Owner function to create a lobby with both creator and joiner already set
+    // Bypasses paused state, timeout checks, and fee requirements
+    // Who goes first is determined by who creates their fleet first (not a lobby setting)
     function createLobbyForAddresses(
         address _creator,
         address _joiner,
@@ -627,9 +654,7 @@ contract Lobbies is Ownable, ReentrancyGuard {
         uint _turnTime,
         uint _selectedMapId,
         uint _maxScore
-    ) public {
-        if (msg.sender != owner() && !isAllowedToCreateLobbies[msg.sender])
-            revert NotAuthorized(msg.sender);
+    ) public onlyOwner {
         if (_turnTime < MIN_TIMEOUT || _turnTime > MAX_TURN_TIME)
             revert InvalidTurnTime();
         if (_creator == _joiner) revert PlayerAlreadyInLobby();

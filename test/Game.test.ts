@@ -159,6 +159,7 @@ describe("Game", function () {
       joinerFleets,
       ships: deployed.ships,
       game: deployed.game,
+      pvpMatch: deployed.pvpMatch,
       randomManager: deployed.randomManager,
       maps: deployed.maps,
       gameResults: deployed.gameResults,
@@ -2085,24 +2086,26 @@ describe("Game", function () {
         generateStartingPositions([6n, 7n, 8n, 9n, 10n], false),
       ]);
 
-      // Round 1: Creator moves first ship
-      await game.write.moveShip([1n, 1n, 0, 1, ActionType.Pass, 0n], {
+      // Round 1: Creator moves first ship (no-op: this test is about
+      // turn-passing with uneven fleet sizes, not movement, so stay in place
+      // rather than assume a specific random movement stat)
+      await game.write.moveShip([1n, 1n, 0, 0, ActionType.Pass, 0n], {
         account: creator.account,
       });
 
       // Round 1: Joiner moves first ship
       await moveShipWithinMovement(game, 1n, 6n, joiner.account);
 
-      // Round 1: Creator moves second ship
-      await game.write.moveShip([1n, 2n, 2, 1, ActionType.Pass, 0n], {
+      // Round 1: Creator moves second ship (no-op, see above)
+      await game.write.moveShip([1n, 2n, 1, 1, ActionType.Pass, 0n], {
         account: creator.account,
       });
 
       // Round 1: Joiner moves second ship
       await moveShipWithinMovement(game, 1n, 7n, joiner.account);
 
-      // Round 1: Creator moves third ship
-      await game.write.moveShip([1n, 3n, 4, 1, ActionType.Pass, 0n], {
+      // Round 1: Creator moves third ship (no-op, see above)
+      await game.write.moveShip([1n, 3n, 2, 2, ActionType.Pass, 0n], {
         account: creator.account,
       });
 
@@ -2126,7 +2129,7 @@ describe("Game", function () {
           (await game.read.getGame([1n])) as any
         ).turnState.currentTurn.toLowerCase(),
       ).to.equal(creator.account.address.toLowerCase());
-      await game.write.moveShip([1n, 1n, 0, 2, ActionType.Pass, 0n], {
+      await game.write.moveShip([1n, 1n, 0, 0, ActionType.Pass, 0n], {
         account: creator.account,
       });
     });
@@ -5404,6 +5407,7 @@ describe("Game", function () {
         joiner,
         ships,
         game,
+        pvpMatch,
         fleets,
         lobbies,
         randomManager,
@@ -5473,10 +5477,10 @@ describe("Game", function () {
 
       // Timeout: other player calls endGameOnTimeout to claim win (timed-out player forfeits)
       await expect(
-        game.write.endGameOnTimeout([gameId], { account: creator.account }),
+        pvpMatch.write.endGameOnTimeout([gameId], { account: creator.account }),
       ).to.be.rejectedWith("InvalidMove");
 
-      await game.write.endGameOnTimeout([gameId], {
+      await pvpMatch.write.endGameOnTimeout([gameId], {
         account: joiner.account,
       });
 
@@ -5494,6 +5498,7 @@ describe("Game", function () {
         joiner,
         ships,
         game,
+        pvpMatch,
         fleets,
         lobbies,
         randomManager,
@@ -5557,7 +5562,7 @@ describe("Game", function () {
       ); // winner (zero address means game not over)
 
       // Creator flees
-      await game.write.flee([gameId], { account: creator.account });
+      await pvpMatch.write.flee([gameId], { account: creator.account });
 
       // Check game status after flee
       const gameAfterFlee = await game.read.getGame([gameId]);
@@ -5584,7 +5589,7 @@ describe("Game", function () {
 
       // Verify that the other player cannot flee again
       await expect(
-        game.write.flee([gameId], { account: joiner.account }),
+        pvpMatch.write.flee([gameId], { account: joiner.account }),
       ).to.be.rejectedWith("InvalidMove");
     });
 
@@ -5596,6 +5601,7 @@ describe("Game", function () {
         joiner,
         ships,
         game,
+        pvpMatch,
         randomManager,
         gameResults,
       } = await loadFixture(deployGameFixture);
@@ -5675,7 +5681,7 @@ describe("Game", function () {
 
       // Drive the game to completion (creator flees -> joiner wins) and verify
       // GameResults is keyed by the sparse game id (2), with nothing at id 1.
-      await game.write.flee([2n], { account: creator.account });
+      await pvpMatch.write.flee([2n], { account: creator.account });
 
       const finishedGame = (await game.read.getGame([2n])) as GameDataView;
       expect(finishedGame.metadata.winner.toLowerCase()).to.equal(
@@ -5703,6 +5709,7 @@ describe("Game", function () {
         joiner,
         ships,
         game,
+        pvpMatch,
         fleets,
         lobbies,
         randomManager,

@@ -304,6 +304,7 @@ describe("Tournament", function () {
 
       const ships = deployed.ships;
       const game = deployed.game;
+      const pvpMatch = deployed.pvpMatch;
       const maps = deployed.maps;
       const randomManager = deployed.randomManager;
       const lobbies = deployed.lobbies;
@@ -408,6 +409,7 @@ describe("Tournament", function () {
 
       const ships = deployed.ships;
       const game = deployed.game;
+      const pvpMatch = deployed.pvpMatch;
       const randomManager = deployed.randomManager;
       const lobbies = deployed.lobbies;
 
@@ -460,7 +462,7 @@ describe("Tournament", function () {
       );
 
       // Alice flees -> bob wins outright; this is not a draw.
-      await game.write.flee([lobbyId], { account: alice.account });
+      await pvpMatch.write.flee([lobbyId], { account: alice.account });
 
       await asOwner.write.assignMatchGame([1n, 0n, lobbyId]);
       await expect(
@@ -485,6 +487,7 @@ describe("Tournament", function () {
 
       const ships = deployed.ships;
       const game = deployed.game;
+      const pvpMatch = deployed.pvpMatch;
       const gameResults = deployed.gameResults;
       const randomManager = deployed.randomManager;
       const lobbies = deployed.lobbies;
@@ -541,7 +544,7 @@ describe("Tournament", function () {
       );
 
       // Alice flees -> bob wins; GameResults records winner=bob, loser=alice.
-      await game.write.flee([lobbyId], { account: alice.account });
+      await pvpMatch.write.flee([lobbyId], { account: alice.account });
       expect(await gameResults.read.isGameResultRecorded([lobbyId])).to.be.true;
 
       // --- Link the game to the match and record the result ---
@@ -601,6 +604,7 @@ describe("Tournament", function () {
 
       const ships = deployed.ships;
       const game = deployed.game;
+      const pvpMatch = deployed.pvpMatch;
       const randomManager = deployed.randomManager;
       const lobbies = deployed.lobbies;
 
@@ -652,7 +656,7 @@ describe("Tournament", function () {
         { account: bob.account }
       );
 
-      await game.write.flee([lobbyId], { account: alice.account }); // bob wins
+      await pvpMatch.write.flee([lobbyId], { account: alice.account }); // bob wins
 
       // Neither call below is made by the tournament creator (asOwner) — proving
       // the whole pipeline no longer depends on the creator staying responsive.
@@ -672,6 +676,7 @@ describe("Tournament", function () {
 
       const ships = deployed.ships;
       const game = deployed.game;
+      const pvpMatch = deployed.pvpMatch;
       const randomManager = deployed.randomManager;
       const lobbies = deployed.lobbies;
 
@@ -715,7 +720,7 @@ describe("Tournament", function () {
       );
 
       // Bob wins this old, pre-tournament game.
-      await game.write.flee([oldGameId], { account: alice.account });
+      await pvpMatch.write.flee([oldGameId], { account: alice.account });
 
       // --- Only now does the tournament (and this match) come into existence.
       // The match's readyAt is strictly later than the old game above. ---

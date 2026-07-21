@@ -222,17 +222,16 @@ describe("Ship costs, versions, and fleets", function () {
       expect(variant1Ship.traits.variant).to.equal(1);
       expect(variant2Ship.traits.variant).to.equal(2);
 
-      const attrs1 = await shipAttributes.read.calculateShipAttributesById([
-        1n,
-      ]);
       const attrs2 = await shipAttributes.read.calculateShipAttributesById([
         6n,
       ]);
 
-      // Variant 2's hull bonus table is higher at every tier, so its
-      // computed hull points must exceed variant 1's regardless of which
-      // trait tier each ship happened to roll
-      expect(attrs2.hullPoints).to.be.greaterThan(attrs1.hullPoints);
+      // Compare against variant 2's configured hull bonus for whichever hull
+      // tier this ship actually rolled (tiers are randomly assigned per ship,
+      // so comparing two ships' hullPoints directly isn't reliable — only
+      // the bonus at a given ship's own tier is deterministic)
+      const variant2HullBonus = [0, 50, 100][variant2Ship.traits.hull];
+      expect(attrs2.hullPoints).to.equal(100 + variant2HullBonus);
 
       const empRange1 = await shipAttributes.read.getSpecialRange([1, 1]);
       const empStrength1 = await shipAttributes.read.getSpecialStrength([

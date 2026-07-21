@@ -8,15 +8,23 @@ import "./IShips.sol";
 import "./IFleets.sol";
 import "./IShipAttributes.sol";
 import "./IMaps.sol";
-import "./IGameResults.sol";
+import "./IGameOrchestrator.sol";
 
 contract Game is Ownable {
     IShips public ships;
     IFleets public fleets;
     IShipAttributes public shipAttributes;
     IMaps public maps;
-    address public lobbiesAddress;
-    IGameResults public gameResults;
+
+    // Contracts (e.g. PvPMatch) authorized to call startGame/forceEndSession,
+    // mirroring Ships.isAllowedToCreateShips. Each session records which
+    // authorized contract started it (GameMetadata.orchestrator), which is
+    // who this contract calls back into (IGameOrchestrator.onGameEnded) and
+    // who alone may force that session to end early (forceEndSession) — this
+    // is how PvP-specific concerns (a PvP leaderboard, human forfeit/timeout)
+    // stay out of core Game.sol while other modes (e.g. single-player) can
+    // each be authorized independently.
+    mapping(address => bool) public isAllowedToStartGames;
 
     mapping(uint => GameData) games;
     uint public gameCount;
@@ -47,15 +55,14 @@ contract Game is Ownable {
         uint targetShipId
     );
 
-    error NotLobbiesContract();
+    error NotAllowedToStartGames();
+    error NotOrchestrator();
     error GameNotFound();
-    error NotInGame();
     error ShipNotFound();
     error ShipNotOwned();
     error ShipAlreadyMoved();
     error InvalidMove();
     error ShipDestroyed();
-    error TurnTimeoutNotReached();
 
     constructor(address _ships, address _shipAttributes) Ownable(msg.sender) {
         ships = IShips(_ships);
@@ -64,16 +71,19 @@ contract Game is Ownable {
 
     function setAddresses(
         address _mapsAddress,
-        address _lobbiesAddress,
         address _fleetsAddress,
-        address _gameResultsAddress,
         address _shipAttributesAddress
     ) public onlyOwner {
         maps = IMaps(_mapsAddress);
-        lobbiesAddress = _lobbiesAddress;
         fleets = IFleets(_fleetsAddress);
-        gameResults = IGameResults(_gameResultsAddress);
         shipAttributes = IShipAttributes(_shipAttributesAddress);
+    }
+
+    function setIsAllowedToStartGames(
+        address _address,
+        bool _isAllowed
+    ) public onlyOwner {
+        isAllowedToStartGames[_address] = _isAllowed;
     }
 
     function startGame(
@@ -87,7 +97,7 @@ contract Game is Ownable {
         uint _selectedMapId,
         uint _maxScore
     ) external {
-        if (msg.sender != lobbiesAddress) revert NotLobbiesContract();
+        if (!isAllowedToStartGames[msg.sender]) revert NotAllowedToStartGames();
 
         // Game id is the lobby id: each lobby starts at most one game, so the
         // lobby id is a unique key for the game. `gameCount` is kept only as a
@@ -99,6 +109,7 @@ contract Game is Ownable {
         // Initialize metadata
         game.metadata.gameId = gameId;
         game.metadata.lobbyId = _lobbyId;
+        game.metadata.orchestrator = msg.sender;
         game.metadata.creator = _creator;
         game.metadata.joiner = _joiner;
         game.metadata.creatorFleetId = _creatorFleetId;
@@ -425,14 +436,21 @@ contract Game is Ownable {
         }
     }
 
-    // Helper function to end the game and record results
+    // Helper function to end the game and notify the orchestrator
     function _endGame(uint _gameId, address _winner, address _loser) internal {
         GameData storage game = games[_gameId];
         game.metadata.winner = _winner;
         game.metadata.ended = true;
-        // Only record non-draw results
-        if (_winner != address(0) && address(gameResults) != address(0)) {
-            gameResults.recordGameResult(_gameId, _winner, _loser);
+        // Let whichever contract started this session (e.g. PvPMatch) decide
+        // what "ended" means for it (PvP: record to a leaderboard; other
+        // modes: whatever they need) — called even on a draw (_winner ==
+        // address(0)) so that decision isn't made here in core Game.sol.
+        if (game.metadata.orchestrator != address(0)) {
+            IGameOrchestrator(game.metadata.orchestrator).onGameEnded(
+                _gameId,
+                _winner,
+                _loser
+            );
         }
         // Remove all ships from fleets when game ends
         _removeShipsFromFleet(
@@ -1397,58 +1415,21 @@ contract Game is Ownable {
             });
     }
 
-    // Check if current turn has timed out
-    function _isTurnTimedOut(uint _gameId) internal view returns (bool) {
-        GameData storage game = games[_gameId];
-        return
-            block.timestamp >
-            game.turnState.turnStartTime + game.turnState.turnTime;
-    }
-
-    // Force a move when turn times out (only the other player can call this)
-    function endGameOnTimeout(uint _gameId) external {
+    // Lets the orchestrator that started this session (e.g. PvPMatch) end it
+    // early with a given winner/loser — this is how mode-specific forfeit
+    // mechanics (human flee/timeout, or whatever a future mode needs) drive
+    // core Game.sol's win/loss bookkeeping without that logic living here.
+    function forceEndSession(
+        uint _gameId,
+        address _winner,
+        address _loser
+    ) external {
         _requireGameExists(_gameId);
-        if (!_isTurnTimedOut(_gameId)) revert TurnTimeoutNotReached();
-
         GameData storage game = games[_gameId];
-
-        // Only the other player can force a timeout skip
-        if (msg.sender == game.turnState.currentTurn) revert InvalidMove();
-
-        // Must be either the creator or joiner
-        if (
-            msg.sender != game.metadata.creator &&
-            msg.sender != game.metadata.joiner
-        ) revert NotInGame();
-
-        // End the game with the timed out player as the loser
-        _endGame(_gameId, msg.sender, game.turnState.currentTurn);
-
-        // Emit event to notify clients of game state change
-        emit GameUpdate(_gameId);
-    }
-
-    // Flee function - either player can end the game at any time
-    function flee(uint _gameId) external {
-        // TODO: I think this is fine
-        // if (games[_gameId].metadata.gameId == 0) revert GameNotFound();
-        GameData storage game = games[_gameId];
-
-        // Check if game has already ended (winner alone can't tell: a draw also
-        // leaves winner == address(0), see GameMetadata.ended in Types.sol)
+        if (msg.sender != game.metadata.orchestrator) revert NotOrchestrator();
         if (game.metadata.ended) revert InvalidMove();
 
-        // Must be either the creator or joiner
-        if (
-            msg.sender != game.metadata.creator &&
-            msg.sender != game.metadata.joiner
-        ) revert NotInGame();
-
-        // Set the other player as the winner and record the game result
-        address winner = msg.sender == game.metadata.creator
-            ? game.metadata.joiner
-            : game.metadata.creator;
-        _endGame(_gameId, winner, msg.sender);
+        _endGame(_gameId, _winner, _loser);
 
         // Emit event to notify clients of game state change
         emit GameUpdate(_gameId);

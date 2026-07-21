@@ -150,6 +150,19 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // Deploy Lobbies contract
   const lobbies = m.contract("Lobbies", [ships]);
 
+  // Deploy PvPMatch: the PvP-specific orchestration split out of Game.sol
+  // (human forfeit/timeout, PvP leaderboard recording). Core Game.sol stays
+  // mode-agnostic; this is what Lobbies talks to for starting/ending matches.
+  const pvpMatch = m.contract("PvPMatch", [game, gameResults]);
+
+  // Deploy SinglePlayerMatch: plays single-player matches as an on-chain AI
+  // opponent, through the exact same Lobbies flow as a human joiner.
+  const singlePlayerMatch = m.contract("SinglePlayerMatch", [
+    ships,
+    lobbies,
+    game,
+  ]);
+
   const tutorialClaim = m.contract("TutorialClaim", [ships, gameResults]);
 
   // Set all config values in a single call
@@ -164,17 +177,22 @@ const DeployModule = buildModule("DeployModule", (m) => {
     universalCredits, // universalCredits
   ]);
 
-  // Set all addresses in Game contract
-  m.call(game, "setAddresses", [
-    maps,
-    lobbies,
-    fleets,
-    gameResults,
-    shipAttributes,
-  ]);
+  // Set all addresses in Game contract (Fleets/Maps/ShipAttributes stay core
+  // dependencies; Lobbies/GameResults moved to PvPMatch)
+  m.call(game, "setAddresses", [maps, fleets, shipAttributes]);
 
-  // Set Game contract address in GameResults contract
-  m.call(gameResults, "setGameContract", [game]);
+  // Authorize PvPMatch and SinglePlayerMatch to start/force-end sessions on
+  // core Game.sol
+  m.call(game, "setIsAllowedToStartGames", [pvpMatch, true], {
+    id: "AllowPvPMatchToStartGames",
+  });
+  m.call(game, "setIsAllowedToStartGames", [singlePlayerMatch, true], {
+    id: "AllowSinglePlayerMatchToStartGames",
+  });
+
+  // Set PvPMatch contract address in GameResults contract (PvPMatch now
+  // records PvP results, not core Game.sol)
+  m.call(gameResults, "setGameContract", [pvpMatch]);
 
   // Set Game address in Maps contract
   m.call(maps, "setGameAddress", [game]);
@@ -184,8 +202,24 @@ const DeployModule = buildModule("DeployModule", (m) => {
     id: "AllowMapEditor",
   });
 
-  // Set Game address in Lobbies contract
-  m.call(lobbies, "setGameAddress", [game]);
+  // Set PvPMatch address in Lobbies contract
+  m.call(lobbies, "setPvpMatchAddress", [pvpMatch]);
+
+  // Set Lobbies address in PvPMatch contract
+  m.call(pvpMatch, "setLobbiesAddress", [lobbies]);
+
+  // Set SinglePlayerMatch address in Lobbies contract, and recognize it as a
+  // single-player orchestrator (createFleet dispatches to it instead of
+  // PvPMatch when a lobby's joiner is this address)
+  m.call(lobbies, "setSinglePlayerMatchAddress", [singlePlayerMatch]);
+  m.call(lobbies, "setIsSinglePlayerOrchestrator", [singlePlayerMatch, true], {
+    id: "RecognizeSinglePlayerMatch",
+  });
+
+  // Allow SinglePlayerMatch to mint/construct its own fleet
+  m.call(ships, "setIsAllowedToCreateShips", [singlePlayerMatch, true], {
+    id: "AllowSinglePlayerMatchToCreateShips",
+  });
 
   // Set Fleets address in Lobbies contract
   m.call(lobbies, "setFleetsAddress", [fleets]);
@@ -229,31 +263,6 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // Tutorial ships use trait variants 1–3; default maxVariant is 1
   m.call(ships, "setMaxVariant", [3], {
     id: "SetMaxVariantForTutorialShips",
-  });
-
-  // Deploy AIController for single-player matches — it plays as one of the
-  // two players in a game exactly like a human wallet would.
-  const aiController = m.contract("AIController", [
-    ships,
-    lobbies,
-    game,
-    maps,
-  ]);
-
-  // Allow AIController to mint/construct its own fleet
-  m.call(ships, "setIsAllowedToCreateShips", [aiController, true], {
-    id: "AllowAIControllerToCreateShips",
-  });
-
-  // Allow AIController to create single-player lobbies without being
-  // Lobbies' owner
-  m.call(lobbies, "setIsAllowedToCreateLobbies", [aiController, true], {
-    id: "AllowAIControllerToCreateLobbies",
-  });
-
-  // Flag AIController so its games are tracked separately from PvP stats
-  m.call(gameResults, "setIsAIController", [aiController, true], {
-    id: "FlagAIControllerOnGameResults",
   });
 
   // Enable minting for UniversalCredits
@@ -374,13 +383,14 @@ const DeployModule = buildModule("DeployModule", (m) => {
     maps,
     gameResults,
     game,
+    pvpMatch,
+    singlePlayerMatch,
     fleets,
     lobbies,
     tutorialClaim,
     worldId,
     tournament,
     gameBlobRegistry,
-    aiController,
   };
 });
 

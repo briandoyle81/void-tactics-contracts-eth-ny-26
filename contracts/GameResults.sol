@@ -20,15 +20,6 @@ contract GameResults is Ownable {
     // Tutorial claim contract: may record tutorial win/loss into player stats only
     address public tutorialClaimContract;
 
-    // Addresses (e.g. AIController) whose games are single-player matches.
-    // recordGameResult routes results involving a flagged address into
-    // singlePlayerStats (keyed by the human opponent) instead of the PvP
-    // playerStats/leaderboard, so AI matches never affect PvP standing.
-    mapping(address => bool) public isAIController;
-
-    // Single-player stats, keyed by the human player
-    mapping(address => PlayerStats) public singlePlayerStats;
-
     // Events
     event GameResultRecorded(
         uint indexed gameId,
@@ -47,15 +38,6 @@ contract GameResults is Ownable {
     event GameContractSet(address indexed gameContract);
 
     event TutorialClaimContractSet(address indexed tutorialClaimContract);
-
-    event AIControllerSet(address indexed aiController, bool isAIController);
-
-    event SinglePlayerStatsUpdated(
-        address indexed player,
-        uint wins,
-        uint losses,
-        uint totalGames
-    );
 
     // Errors
     error GameAlreadyRecorded();
@@ -83,19 +65,6 @@ contract GameResults is Ownable {
     ) external onlyOwner {
         tutorialClaimContract = _tutorialClaimContract;
         emit TutorialClaimContractSet(_tutorialClaimContract);
-    }
-
-    /**
-     * @dev Flag or unflag an address (e.g. AIController) whose games are
-     * single-player matches, routed into singlePlayerStats instead of the
-     * PvP leaderboard.
-     */
-    function setIsAIController(
-        address _address,
-        bool _isAIController
-    ) external onlyOwner {
-        isAIController[_address] = _isAIController;
-        emit AIControllerSet(_address, _isAIController);
     }
 
     /**
@@ -144,17 +113,9 @@ contract GameResults is Ownable {
             timestamp: block.timestamp
         });
 
-        // Single-player games (either side flagged as an AIController) are
-        // tracked separately, keyed by the human opponent, so they never
-        // affect the PvP leaderboard/stats.
-        if (isAIController[_winner] || isAIController[_loser]) {
-            bool humanWon = !isAIController[_winner];
-            address human = humanWon ? _winner : _loser;
-            _updateSinglePlayerStats(human, humanWon);
-        } else {
-            _updatePlayerStats(_winner, true); // Winner
-            _updatePlayerStats(_loser, false); // Loser
-        }
+        // Update player statistics
+        _updatePlayerStats(_winner, true); // Winner
+        _updatePlayerStats(_loser, false); // Loser
 
         totalGamesTracked++;
 
@@ -186,31 +147,6 @@ contract GameResults is Ownable {
     }
 
     /**
-     * @dev Update single-player statistics when a single-player game result
-     * is recorded
-     * @param _player The human player's address
-     * @param _won Whether the human player won (true) or lost (false)
-     */
-    function _updateSinglePlayerStats(address _player, bool _won) internal {
-        PlayerStats storage stats = singlePlayerStats[_player];
-
-        if (_won) {
-            stats.wins++;
-        } else {
-            stats.losses++;
-        }
-
-        stats.totalGames++;
-
-        emit SinglePlayerStatsUpdated(
-            _player,
-            stats.wins,
-            stats.losses,
-            stats.totalGames
-        );
-    }
-
-    /**
      * @dev Get the complete statistics for a player
      * @param _player The player address
      * @return The player's statistics
@@ -219,17 +155,6 @@ contract GameResults is Ownable {
         address _player
     ) external view returns (PlayerStats memory) {
         return playerStats[_player];
-    }
-
-    /**
-     * @dev Get the complete single-player statistics for a human player
-     * @param _player The human player address
-     * @return The player's single-player statistics
-     */
-    function getSinglePlayerStats(
-        address _player
-    ) external view returns (PlayerStats memory) {
-        return singlePlayerStats[_player];
     }
 
     /**

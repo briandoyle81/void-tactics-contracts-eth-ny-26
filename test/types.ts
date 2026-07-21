@@ -172,6 +172,7 @@ export interface GameMetadata {
   creatorGoesFirst: boolean;
   startedAt: bigint;
   winner: Address;
+  orchestrator: Address;
 }
 
 export interface GameTurnState {
