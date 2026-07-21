@@ -9,6 +9,7 @@ import "./IFleets.sol";
 import "./IShipAttributes.sol";
 import "./IMaps.sol";
 import "./IGameOrchestrator.sol";
+import "./SpecialEffectsLib.sol";
 
 contract Game is Ownable {
     IShips public ships;
@@ -25,6 +26,13 @@ contract Game is Ownable {
     // stay out of core Game.sol while other modes (e.g. single-player) can
     // each be authorized independently.
     mapping(address => bool) public isAllowedToStartGames;
+
+    // Owner-authorized resolver contract for each faction's (traits.variant)
+    // innate ability, dispatched via ActionType.FactionAbility — independent
+    // of equipment.special/ActionType.Special entirely. See
+    // IFactionAbilityResolver — the resolver owns all pre-dispatch checks
+    // for its ability and Game.sol just applies whatever it returns.
+    mapping(uint16 => address) public factionAbilityResolvers;
 
     mapping(uint => GameData) games;
     uint public gameCount;
@@ -84,6 +92,13 @@ contract Game is Ownable {
         bool _isAllowed
     ) public onlyOwner {
         isAllowedToStartGames[_address] = _isAllowed;
+    }
+
+    function setFactionAbilityResolver(
+        uint16 _variant,
+        address _resolver
+    ) public onlyOwner {
+        factionAbilityResolvers[_variant] = _resolver;
     }
 
     function startGame(
@@ -308,7 +323,17 @@ contract Game is Ownable {
         return attributes;
     }
 
-    // Get ship position on the grid
+    // Get a single ship's position/side/status in O(1) — unlike
+    // getAllShipPositions, this doesn't scan the grid, so resolvers (e.g.
+    // RamResolver) that only need one or two ships' positions should use
+    // this instead.
+    function getShipPosition(
+        uint _gameId,
+        uint _shipId
+    ) external view returns (ShipPosition memory) {
+        _requireGameExists(_gameId);
+        return games[_gameId].shipPositions[_shipId];
+    }
 
     // Get all ship positions for a game
     // External view, memory use ok
@@ -465,39 +490,9 @@ contract Game is Ownable {
         );
     }
 
-    /// @dev Move `_shipId` onto (dest); if tile has enemy at 0 HP, retreat them, +1 rammer reactor, destroy rammer if >=3.
-    /// @return true if rammer was destroyed (caller skips moved set + primary action).
-    function _moveShipToCellOrRam(
-        uint _gameId,
-        uint _shipId,
-        int16 _destRow,
-        int16 _destCol,
-        address moverOwner,
-        Ship memory moverShip
-    ) internal returns (bool) {
-        GameData storage g = games[_gameId];
-        uint occ = g.grid[_destRow][_destCol];
-        if (occ != 0) {
-            Ship memory victim = _validateShipExistsAndNotDestroyed(occ);
-            if (victim.owner == moverOwner) revert InvalidMove();
-            if (g.shipAttributes[occ].hullPoints != 0) revert InvalidMove();
-            _removeShipFromGame(_gameId, occ, true, victim);
-            Attributes storage ra = g.shipAttributes[_shipId];
-            ra.reactorCriticalTimer++;
-            if (ra.reactorCriticalTimer >= 3) {
-                _removeShipFromGame(_gameId, _shipId, false, moverShip);
-                return true;
-            }
-        }
-        Position storage p = g.shipPositions[_shipId].position;
-        g.grid[p.row][p.col] = 0;
-        g.grid[_destRow][_destCol] = _shipId;
-        p.row = _destRow;
-        p.col = _destCol;
-        return false;
-    }
-
-    // Move (may ram enemy at 0 HP onto their tile) then perform action unless rammer reactor destroys ship.
+    // Move then perform action. Landing on an occupied cell is never valid
+    // for a plain move — ramming is now the Ram special (resolver-backed,
+    // faction 1 only), not an automatic side effect of movement.
     function moveShip(
         uint _gameId,
         uint _shipId,
@@ -545,8 +540,6 @@ contract Game is Ownable {
         int16 oldRow = shipPos.row;
         int16 oldCol = shipPos.col;
 
-        bool skipPerform;
-
         if (actionType != ActionType.Retreat) {
             // Allow moving to the current position (no-op move), skip movement validation and position occupied check
 
@@ -566,37 +559,30 @@ contract Game is Ownable {
                     _newRow >= GRID_HEIGHT ||
                     _newCol >= GRID_WIDTH
                 ) revert InvalidMove();
-                if (game.grid[_newRow][_newCol] != 0) {
-                    // Ramming consumes the move and does not allow an additional action.
-                    actionType = ActionType.Pass;
-                }
-                skipPerform = _moveShipToCellOrRam(
-                    _gameId,
-                    _shipId,
-                    _newRow,
-                    _newCol,
-                    ship.owner,
-                    ship
-                );
+                // Occupied destinations are never reachable by a plain move —
+                // see the Ram special for the only way to land on another
+                // ship's tile.
+                if (game.grid[_newRow][_newCol] != 0) revert InvalidMove();
+                Position storage p = game.shipPositions[_shipId].position;
+                game.grid[p.row][p.col] = 0;
+                game.grid[_newRow][_newCol] = _shipId;
+                p.row = _newRow;
+                p.col = _newCol;
             }
 
-            if (!skipPerform) {
-                EnumerableSet.add(game.shipMovedThisRound, _shipId);
-            }
+            EnumerableSet.add(game.shipMovedThisRound, _shipId);
         }
 
-        if (!skipPerform) {
-            _performAction(
-                game,
-                _gameId,
-                _shipId,
-                _newRow,
-                _newCol,
-                actionType,
-                targetShipId,
-                ship
-            );
-        }
+        _performAction(
+            game,
+            _gameId,
+            _shipId,
+            _newRow,
+            _newCol,
+            actionType,
+            targetShipId,
+            ship
+        );
 
         // Check if both players have moved all their ships (round complete)
         if (_checkRoundComplete(_gameId)) {
@@ -667,6 +653,14 @@ contract Game is Ownable {
             _performSpecial(
                 _gameId,
                 _shipId,
+                _newRow,
+                _newCol,
+                targetShipId,
+                _ship
+            );
+        } else if (actionType == ActionType.FactionAbility) {
+            _performFactionAbility(
+                _gameId,
                 _newRow,
                 _newCol,
                 targetShipId,
@@ -947,53 +941,49 @@ contract Game is Ownable {
         uint _targetShipId,
         Ship memory _usingShip
     ) internal {
-        // Only validate target ship for specials that need targets
-        Ship memory targetShip;
-        if (_usingShip.equipment.special != Special.FlakArray) {
-            targetShip = _validateShipExistsAndNotDestroyed(_targetShipId);
-        }
-
         Special special = _usingShip.equipment.special;
 
-        // Validate special-specific requirements
-        if (special == Special.RepairDrones) {
-            // RepairDrones can only target friendly ships
-            if (targetShip.owner != _usingShip.owner) revert InvalidMove();
-        } else if (special == Special.EMP) {
-            // EMP can only target enemy ships
-            if (targetShip.owner == _usingShip.owner) revert InvalidMove();
-        }
-
-        // Validate range for specials that need targets
-        if (special != Special.FlakArray) {
-            _validateSpecialRange(
-                _gameId,
+        if (special == Special.RepairDrones || special == Special.EMP) {
+            GameData storage game = games[_gameId];
+            Ship memory targetShip = _validateShipExistsAndNotDestroyed(
+                _targetShipId
+            );
+            // RepairDrones can only target friendly ships; EMP only enemy ships
+            bool isRepair = special == Special.RepairDrones;
+            if (isRepair == (targetShip.owner != _usingShip.owner))
+                revert InvalidMove();
+            SpecialEffectsLib.validateSpecialRange(
+                game,
+                shipAttributes,
                 _newRow,
                 _newCol,
                 _targetShipId,
                 special,
                 _usingShip.traits.variant
             );
-        }
-
-        // Execute the special action
-        if (special == Special.RepairDrones) {
-            _performRepairDrones(
-                _gameId,
-                _targetShipId,
-                _usingShip.traits.variant
-            );
-        } else if (special == Special.EMP) {
-            _performEMP(
-                _gameId,
-                _shipId,
-                _targetShipId,
-                targetShip,
-                _usingShip.traits.variant
-            );
+            if (isRepair) {
+                SpecialEffectsLib.performRepairDrones(
+                    game,
+                    shipAttributes,
+                    _targetShipId,
+                    _usingShip.traits.variant
+                );
+            } else {
+                bool critical = SpecialEffectsLib.performEMP(
+                    game,
+                    shipAttributes,
+                    _shipId,
+                    _targetShipId,
+                    _usingShip.traits.variant
+                );
+                if (critical) {
+                    _removeShipFromGame(_gameId, _targetShipId, false, targetShip);
+                }
+            }
         } else if (special == Special.FlakArray) {
-            _performFlakArray(
-                _gameId,
+            SpecialEffectsLib.performFlakArray(
+                games[_gameId],
+                shipAttributes,
                 _shipId,
                 _newRow,
                 _newCol,
@@ -1004,177 +994,55 @@ contract Game is Ownable {
         }
     }
 
-    // Helper function to validate special range
-    function _validateSpecialRange(
+    // Internal function to perform a faction's innate ability
+    // (ActionType.FactionAbility) — dispatched by traits.variant, not by an
+    // equipped item, so every ship of that faction has it regardless of
+    // loadout. Resolved entirely by an owner-authorized resolver contract:
+    // it owns all pre-dispatch validation for its ability and returns a
+    // declarative effect list. SpecialEffectsLib (a separately-deployed
+    // library — see its header comment) owns the resolver call and all
+    // hull/reactor/relocate arithmetic against game storage, and hands back
+    // only the ships that need removing; Game.sol applies those through its
+    // own _removeShipFromGame so fleet cleanup/game-end/orchestrator
+    // callback stay correct.
+    function _performFactionAbility(
         uint _gameId,
         int16 _newRow,
         int16 _newCol,
         uint _targetShipId,
-        Special _special,
-        uint16 _variant
-    ) internal view {
-        GameData storage game = games[_gameId];
-        Position storage targetPos = game.shipPositions[_targetShipId].position;
-        Position memory usingPos = Position(_newRow, _newCol);
-        uint8 specialRange = shipAttributes.getSpecialRange(
-            _special,
-            _variant
-        );
-        uint8 manhattan = _manhattanDistance(usingPos, targetPos);
-        if (manhattan > specialRange) {
-            revert InvalidMove();
-        }
-    }
-
-    // Internal function to perform RepairDrones special
-    function _performRepairDrones(
-        uint _gameId,
-        uint _targetShipId,
-        uint16 _variant
+        Ship memory _usingShip
     ) internal {
-        GameData storage game = games[_gameId];
-        Attributes storage targetAttributes = game.shipAttributes[
-            _targetShipId
-        ];
-
-        uint8 repairStrength = shipAttributes.getSpecialStrength(
-            Special.RepairDrones,
-            _variant
-        );
-
-        // Increase hull points by the repair strength, but don't exceed max hull points.
-        // Adding in uint16 first means the sum (max 255+255=510) can never overflow,
-        // so it's safe to mark unchecked — this removes the overflow-check/revert
-        // machinery a uint8 addition would otherwise carry, rather than adding a
-        // second checked op the way a "check the cap via subtraction first" reorder
-        // would (that trades one checked add for a checked subtract plus a checked
-        // add, which costs more bytecode, not less).
-        uint16 newHullPoints;
-        unchecked {
-            newHullPoints = uint16(targetAttributes.hullPoints) + uint16(repairStrength);
+        address resolver = factionAbilityResolvers[_usingShip.traits.variant];
+        if (resolver == address(0)) revert InvalidMove();
+        SpecialEffectsLib.EffectResults memory results = SpecialEffectsLib
+            .resolveAndApply(
+                games[_gameId],
+                resolver,
+                SpecialEffectsLib.ResolveContext({
+                    gameId: _gameId,
+                    shipId: _usingShip.id,
+                    variant: _usingShip.traits.variant,
+                    targetShipId: _targetShipId,
+                    newRow: _newRow,
+                    newCol: _newCol
+                })
+            );
+        // Removals must be applied before relocations — a relocation that
+        // lands on a cell a removal is vacating would otherwise get
+        // clobbered (see SpecialEffectsLib.EffectResults).
+        for (uint i = 0; i < results.removeShipIds.length; i++) {
+            _removeShipFromGame(
+                _gameId,
+                results.removeShipIds[i],
+                results.removeKinds[i] == 1,
+                _validateShipExistsAndNotDestroyed(results.removeShipIds[i])
+            );
         }
-        if (newHullPoints > targetAttributes.maxHullPoints) {
-            targetAttributes.hullPoints = targetAttributes.maxHullPoints;
-        } else {
-            targetAttributes.hullPoints = uint8(newHullPoints);
-        }
-
-        // Remove ship from zero HP set
-        // WARNING: This will break things if repair can ever be zero
-        EnumerableSet.remove(game.shipsWithZeroHP, _targetShipId);
-    }
-
-    // Internal function to perform EMP special
-    function _performEMP(
-        uint _gameId,
-        uint _shipId,
-        uint _targetShipId,
-        Ship memory _targetShip,
-        uint16 _variant
-    ) internal {
-        GameData storage game = games[_gameId];
-        Attributes storage targetAttributes = game.shipAttributes[
-            _targetShipId
-        ];
-
-        uint8 empStrength = shipAttributes.getSpecialStrength(
-            Special.EMP,
-            _variant
+        SpecialEffectsLib.applyRelocations(
+            games[_gameId],
+            results.relocateShipIds,
+            results.relocatePositions
         );
-        game.lastDamage[_targetShipId] = _shipId; // Track the ship using EMP as the last damager
-        targetAttributes.reactorCriticalTimer += empStrength;
-        if (targetAttributes.reactorCriticalTimer >= 3) {
-            _removeShipFromGame(_gameId, _targetShipId, false, _targetShip);
-        }
-    }
-
-    // Internal function to perform FlakArray special
-    function _performFlakArray(
-        uint _gameId,
-        uint _shipId, // The id of the ship using the FlakArray
-        int16 _newRow,
-        int16 _newCol,
-        uint16 _variant
-    ) internal {
-        GameData storage game = games[_gameId];
-
-        // Get the range and strength of FlakArray from the attributes version
-        uint8 flakRange = shipAttributes.getSpecialRange(
-            Special.FlakArray,
-            _variant
-        );
-        uint8 flakStrength = shipAttributes.getSpecialStrength(
-            Special.FlakArray,
-            _variant
-        );
-
-        // Process both fleets using the same logic
-        _processFlakArrayForFleet(
-            _gameId,
-            _shipId,
-            _newRow,
-            _newCol,
-            flakRange,
-            flakStrength,
-            game.playerActiveShipIds[game.metadata.creator]
-        );
-        _processFlakArrayForFleet(
-            _gameId,
-            _shipId,
-            _newRow,
-            _newCol,
-            flakRange,
-            flakStrength,
-            game.playerActiveShipIds[game.metadata.joiner]
-        );
-    }
-
-    // Helper function to process flak array damage for a single fleet
-    function _processFlakArrayForFleet(
-        uint _gameId,
-        uint _shipId,
-        int16 _newRow,
-        int16 _newCol,
-        uint8 flakRange,
-        uint8 flakStrength,
-        EnumerableSet.UintSet storage shipIds
-    ) internal {
-        GameData storage game = games[_gameId];
-        uint shipCount = EnumerableSet.length(shipIds);
-        Position memory flakPos = Position(_newRow, _newCol);
-
-        for (uint i = 0; i < shipCount; i++) {
-            uint targetShipId = EnumerableSet.at(shipIds, i);
-
-            // Check if ship is within range and not the ship using flak
-            Position storage shipPos = game
-                .shipPositions[targetShipId]
-                .position;
-            uint8 distance = _manhattanDistance(flakPos, shipPos);
-
-            if (distance <= flakRange && targetShipId != _shipId) {
-                game.lastDamage[targetShipId] = _shipId;
-                // Apply damage reduction and deal damage
-                uint8 damageReduction = game
-                    .shipAttributes[targetShipId]
-                    .damageReduction;
-                // Apply this target's own reduction to the base flakStrength, reusing
-                // damageReduction's slot to hold the result (stack is too tight here
-                // for another local — see hardhat.config.ts). Never write back into
-                // flakStrength itself, or each subsequent target (and the second
-                // fleet's call) would compound the previous targets' reductions
-                // instead of applying their own.
-                damageReduction = uint8(
-                    flakStrength -
-                        ((uint16(flakStrength) * damageReduction) / 100)
-                );
-                if (damageReduction >= game.shipAttributes[targetShipId].hullPoints) {
-                    _setShipHPToZero(_gameId, targetShipId);
-                } else {
-                    game.shipAttributes[targetShipId].hullPoints -= damageReduction;
-                }
-            }
-        }
     }
 
     /// @notice Removes a ship from the grid, fleets, and per-player active sets; records it as gone.

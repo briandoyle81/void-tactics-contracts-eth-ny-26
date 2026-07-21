@@ -49,6 +49,23 @@ enum Special {
     future4
 }
 
+// Declarative outcome of a resolver-backed faction ability (see
+// IFactionAbilityResolver), applied by Game.sol without re-validating
+// anything — the resolver owns all pre-dispatch checks for its ability.
+// One entry per affected ship; a resolver may return any number of these.
+// newRow/newCol double as the "relocate" flag: type(int16).min (an
+// unreachable grid coordinate) means "don't move this ship". Fewer, denser
+// fields keep the external-call ABI decode/encode Game.sol pays for as
+// small as possible — this struct crosses a contract boundary every time.
+struct SpecialEffect {
+    uint shipId;
+    int16 hullDelta; // negative = damage, positive = heal; capped at maxHullPoints
+    int8 reactorTimerDelta; // added to reactorCriticalTimer; still auto-removes at >=3
+    int16 newRow; // type(int16).min = no relocation
+    int16 newCol;
+    uint8 removalKind; // 0 = none, 1 = retreat, 2 = destroy (mirrors _removeShipFromGame's retreat/destroy flag)
+}
+
 // Raw Traits Will Never Change
 struct Traits {
     uint256 serialNumber; // Id for random number in commit reveal
@@ -354,7 +371,11 @@ enum ActionType {
     Shoot,
     Retreat,
     Assist,
-    Special
+    Special,
+    // Innate to every ship of a given faction (traits.variant), independent
+    // of loadout — unlike Special, which requires equipping a specific
+    // equipment.special slot. Dispatched by faction, not by an equipped item.
+    FactionAbility
 }
 
 // Last move information stored in game data

@@ -141,8 +141,16 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // Deploy GameResults contract
   const gameResults = m.contract("GameResults");
 
+  // Deploy SpecialEffectsLib: resolver-backed special dispatch + the
+  // RepairDrones/EMP/FlakArray arithmetic, split out of Game.sol purely for
+  // bytecode headroom (see the library's header comment). Linked into Game
+  // at deploy time.
+  const specialEffectsLib = m.library("SpecialEffectsLib");
+
   // Deploy Game contract with ShipAttributes
-  const game = m.contract("Game", [ships, shipAttributes]);
+  const game = m.contract("Game", [ships, shipAttributes], {
+    libraries: { SpecialEffectsLib: specialEffectsLib },
+  });
 
   // Deploy Fleets contract
   const fleets = m.contract("Fleets", [ships]);
@@ -164,6 +172,12 @@ const DeployModule = buildModule("DeployModule", (m) => {
   ]);
 
   const tutorialClaim = m.contract("TutorialClaim", [ships, gameResults]);
+
+  // Deploy RamResolver: the faction 1 innate ability (traits.variant == 1),
+  // resolver-backed per IFactionAbilityResolver and dispatched via
+  // ActionType.FactionAbility rather than the old
+  // automatic-side-effect-of-movement ramming mechanic.
+  const ramResolver = m.contract("RamResolver", [game]);
 
   // Set all config values in a single call
   m.call(ships, "setConfig", [
@@ -189,6 +203,9 @@ const DeployModule = buildModule("DeployModule", (m) => {
   m.call(game, "setIsAllowedToStartGames", [singlePlayerMatch, true], {
     id: "AllowSinglePlayerMatchToStartGames",
   });
+
+  // Wire RamResolver in as the faction ability resolver for faction 1
+  m.call(game, "setFactionAbilityResolver", [1, ramResolver]);
 
   // Set PvPMatch contract address in GameResults contract (PvPMatch now
   // records PvP results, not core Game.sol)
@@ -391,6 +408,8 @@ const DeployModule = buildModule("DeployModule", (m) => {
     worldId,
     tournament,
     gameBlobRegistry,
+    specialEffectsLib,
+    ramResolver,
   };
 });
 

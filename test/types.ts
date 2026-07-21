@@ -346,4 +346,5 @@ export enum ActionType {
   Retreat,
   Assist,
   Special,
+  FactionAbility,
 }

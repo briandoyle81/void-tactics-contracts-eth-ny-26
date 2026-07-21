@@ -3742,24 +3742,15 @@ describe("Game", function () {
         { account: joiner.account },
       );
 
-      // 3) Creator ship 3 hits joiner 6 again. Combined with ship 2's shot, this
-      // isn't guaranteed to finish ship 6 off this round — how much damage two
-      // shots deal depends on the ships' randomly-generated gun damage / hull
-      // points. That's fine: the "moved then reduced to 0 HP" case this test
-      // targets doesn't have to land in round 1 specifically, so we just assert
-      // ship 6 took more damage and carry on; it gets finished off in round 2 below.
+      // 3) Creator ship 3 passes (not a second shot at ship 6) — ship 6 must
+      // stay alive through round 1 so the "moved then reduced to 0 HP" case
+      // this test targets can land in round 2 (step 7 below) instead. Only
+      // ship 2's single round-1 shot has hit ship 6 so far.
       gameData = (await game.read.getGame([1n])) as GameDataView;
       const pos3 = findShipPosition(gameData, 3n);
       await game.write.moveShip(
-        [1n, 3n, pos3.row, pos3.col, ActionType.Shoot, 6n],
+        [1n, 3n, pos3.row, pos3.col, ActionType.Pass, 0n],
         { account: creator.account },
-      );
-      const ship6AfterRound1Shots = await game.read.getShipAttributes([
-        1n,
-        6n,
-      ]);
-      expect(ship6AfterRound1Shots.hullPoints).to.be.lessThan(
-        ship6Damaged.hullPoints,
       );
 
       // 4) Joiner 7 passes
@@ -3862,8 +3853,31 @@ describe("Game", function () {
     });
   });
 
-  describe("Ram (0 HP enemy)", function () {
-    it("allows moving onto an enemy at 0 HP, retreats victim, and applies 1 reactor damage to rammer", async function () {
+  describe("Ram (ActionType.FactionAbility, faction 1)", function () {
+    // Ram is resolver-backed (RamResolver) and dispatched by
+    // traits.variant alone — every faction-1 ship has it regardless of
+    // loadout, so this only needs to set the ship's faction via
+    // customizeShip (owner authorized, same mechanism the
+    // EMP/RepairDrones/FlakArray tests use), not its equipped special.
+    async function setShipFaction(
+      ships: any,
+      owner: any,
+      shipId: bigint,
+      variant: number,
+    ) {
+      const shipTuple = (await ships.read.ships([shipId])) as ShipTuple;
+      const ship = tupleToShip(shipTuple);
+      ship.traits.variant = variant;
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+      await ships.write.customizeShip([shipId, ship], {
+        account: owner.account,
+      });
+    }
+
+    it("evicts a 0 HP enemy, applies 1 reactor damage to the rammer, and relocates it onto the victim's tile", async function () {
       const {
         creatorLobbies,
         joinerLobbies,
@@ -3891,6 +3905,8 @@ describe("Game", function () {
           ship.traits.serialNumber,
         ]);
       }
+
+      await setShipFaction(ships, owner, 1n, 1);
 
       await ships.write.constructAllMyShips({ account: creator.account });
       await ships.write.constructAllMyShips({ account: joiner.account });
@@ -3930,9 +3946,11 @@ describe("Game", function () {
         (await game.read.getShipAttributes([1n, 1n])).reactorCriticalTimer,
       ).to.equal(0);
 
-      await game.write.moveShip([1n, 1n, 5, 6, ActionType.Pass, 0n], {
-        account: creator.account,
-      });
+      // No-op move (stay at (5,5)), then Ram ship 6 (adjacent, within range 1)
+      await game.write.moveShip(
+        [1n, 1n, 5, 5, ActionType.FactionAbility, 6n],
+        { account: creator.account },
+      );
 
       const attrsAfter = await game.read.getShipAttributes([1n, 1n]);
       expect(attrsAfter.reactorCriticalTimer).to.equal(1);
@@ -3941,6 +3959,156 @@ describe("Game", function () {
       expect(pos1.row).to.equal(5);
       expect(pos1.col).to.equal(6);
       expect(gameAfter.joinerActiveShipIds).to.not.include(6n);
+    });
+
+    it("reverts when a non-faction-1 ship attempts a faction ability", async function () {
+      const {
+        creatorLobbies,
+        joinerLobbies,
+        creator,
+        joiner,
+        ships,
+        game,
+        randomManager,
+        owner,
+      } = await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.fulfillRandomRequest([
+          ship.traits.serialNumber,
+        ]);
+      }
+
+      // Faction 2 (variant 2) — no resolver is registered for it, unlike
+      // faction 1's RamResolver
+      await setShipFaction(ships, owner, 1n, 2);
+
+      await ships.write.constructAllMyShips({ account: creator.account });
+      await ships.write.constructAllMyShips({ account: joiner.account });
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n],
+        generateStartingPositions([1n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n],
+        generateStartingPositions([6n], false),
+      ]);
+
+      await game.write.debugSetShipPosition([1n, 1n, 5, 5], {
+        account: owner.account,
+      });
+      await game.write.debugSetShipPosition([1n, 6n, 5, 6], {
+        account: owner.account,
+      });
+      await (game.write as any).debugSetHullPointsToZero([1n, 6n], {
+        account: owner.account,
+      });
+
+      await expect(
+        game.write.moveShip(
+          [1n, 1n, 5, 5, ActionType.FactionAbility, 6n],
+          { account: creator.account },
+        ),
+      ).to.be.rejectedWith("InvalidMove");
+    });
+
+    it("reverts when ramming a friendly ship at 0 HP", async function () {
+      const {
+        creatorLobbies,
+        joinerLobbies,
+        creator,
+        joiner,
+        ships,
+        game,
+        randomManager,
+        owner,
+      } = await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.fulfillRandomRequest([
+          ship.traits.serialNumber,
+        ]);
+      }
+
+      await setShipFaction(ships, owner, 1n, 1);
+
+      await ships.write.constructAllMyShips({ account: creator.account });
+      await ships.write.constructAllMyShips({ account: joiner.account });
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n, 2n],
+        generateStartingPositions([1n, 2n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n],
+        generateStartingPositions([6n], false),
+      ]);
+
+      await game.write.debugSetShipPosition([1n, 1n, 5, 5], {
+        account: owner.account,
+      });
+      await game.write.debugSetShipPosition([1n, 2n, 5, 6], {
+        account: owner.account,
+      });
+      await (game.write as any).debugSetHullPointsToZero([1n, 2n], {
+        account: owner.account,
+      });
+
+      // Ship 2 is friendly (same side as ship 1) — Ram can only hit the
+      // opposing side, even though ship 2 is at 0 HP.
+      await expect(
+        game.write.moveShip(
+          [1n, 1n, 5, 5, ActionType.FactionAbility, 2n],
+          { account: creator.account },
+        ),
+      ).to.be.rejectedWith("InvalidRamTarget");
     });
 
     it("reverts when destination is occupied by a living enemy", async function () {
@@ -4010,152 +4178,6 @@ describe("Game", function () {
       ).to.be.rejectedWith("InvalidMove");
     });
 
-    it("does not execute the selected action when the move is a ram", async function () {
-      const {
-        creatorLobbies,
-        joinerLobbies,
-        creator,
-        joiner,
-        ships,
-        game,
-        randomManager,
-        owner,
-      } = await loadFixture(deployGameFixture);
-
-      await ships.write.purchaseWithFlow(
-        [creator.account.address, 0n, joiner.account.address, 1],
-        { value: parseEther("4.99") },
-      );
-      await ships.write.purchaseWithFlow(
-        [joiner.account.address, 0n, creator.account.address, 1],
-        { value: parseEther("4.99") },
-      );
-
-      for (let i = 1; i <= 10; i++) {
-        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
-        const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
-          ship.traits.serialNumber,
-        ]);
-      }
-
-      await ships.write.constructAllMyShips({ account: creator.account });
-      await ships.write.constructAllMyShips({ account: joiner.account });
-
-      await creatorLobbies.write.createLobby([
-        1000n,
-        300n,
-        true,
-        0n,
-        100n,
-        zeroAddress,
-      ]);
-      await joinerLobbies.write.joinLobby([1n]);
-
-      await creatorLobbies.write.createFleet([
-        1n,
-        [1n],
-        generateStartingPositions([1n], true),
-      ]);
-      await joinerLobbies.write.createFleet([
-        1n,
-        [6n, 7n],
-        generateStartingPositions([6n, 7n], false),
-      ]);
-
-      await game.write.debugSetShipPosition([1n, 1n, 5, 5], {
-        account: owner.account,
-      });
-      await game.write.debugSetShipPosition([1n, 6n, 5, 6], {
-        account: owner.account,
-      });
-      await game.write.debugSetShipPosition([1n, 7n, 5, 7], {
-        account: owner.account,
-      });
-      await (game.write as any).debugSetHullPointsToZero([1n, 6n], {
-        account: owner.account,
-      });
-
-      const ship7Before = await game.read.getShipAttributes([1n, 7n]);
-
-      // If action executed, ship 7 would take damage. Ram should consume the turn and skip shoot.
-      await game.write.moveShip([1n, 1n, 5, 6, ActionType.Shoot, 7n], {
-        account: creator.account,
-      });
-
-      const ship7After = await game.read.getShipAttributes([1n, 7n]);
-      expect(ship7After.hullPoints).to.equal(ship7Before.hullPoints);
-    });
-
-    it("reverts when ramming a friendly ship at 0 HP", async function () {
-      const {
-        creatorLobbies,
-        joinerLobbies,
-        creator,
-        joiner,
-        ships,
-        game,
-        randomManager,
-        owner,
-      } = await loadFixture(deployGameFixture);
-
-      await ships.write.purchaseWithFlow(
-        [creator.account.address, 0n, joiner.account.address, 1],
-        { value: parseEther("4.99") },
-      );
-      await ships.write.purchaseWithFlow(
-        [joiner.account.address, 0n, creator.account.address, 1],
-        { value: parseEther("4.99") },
-      );
-
-      for (let i = 1; i <= 10; i++) {
-        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
-        const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
-          ship.traits.serialNumber,
-        ]);
-      }
-
-      await ships.write.constructAllMyShips({ account: creator.account });
-      await ships.write.constructAllMyShips({ account: joiner.account });
-
-      await creatorLobbies.write.createLobby([
-        1000n,
-        300n,
-        true,
-        0n,
-        100n,
-        zeroAddress,
-      ]);
-      await joinerLobbies.write.joinLobby([1n]);
-
-      await creatorLobbies.write.createFleet([
-        1n,
-        [1n, 2n],
-        generateStartingPositions([1n, 2n], true),
-      ]);
-      await joinerLobbies.write.createFleet([
-        1n,
-        [6n],
-        generateStartingPositions([6n], false),
-      ]);
-
-      await game.write.debugSetShipPosition([1n, 1n, 5, 5], {
-        account: owner.account,
-      });
-      await game.write.debugSetShipPosition([1n, 2n, 5, 6], {
-        account: owner.account,
-      });
-      await (game.write as any).debugSetHullPointsToZero([1n, 2n], {
-        account: owner.account,
-      });
-
-      await expect(
-        game.write.moveShip([1n, 1n, 5, 6, ActionType.Pass, 0n], {
-          account: creator.account,
-        }),
-      ).to.be.rejectedWith("InvalidMove");
-    });
   });
 
   describe("Reactor Critical Timer", function () {
