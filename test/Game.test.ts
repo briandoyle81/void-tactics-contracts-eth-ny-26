@@ -4111,6 +4111,77 @@ describe("Game", function () {
       ).to.be.rejectedWith("InvalidRamTarget");
     });
 
+    it("reverts before ever reaching the resolver when the target ship doesn't exist", async function () {
+      const {
+        creatorLobbies,
+        joinerLobbies,
+        creator,
+        joiner,
+        ships,
+        game,
+        randomManager,
+        owner,
+      } = await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.fulfillRandomRequest([
+          ship.traits.serialNumber,
+        ]);
+      }
+
+      await setShipFaction(ships, owner, 1n, 1);
+
+      await ships.write.constructAllMyShips({ account: creator.account });
+      await ships.write.constructAllMyShips({ account: joiner.account });
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n],
+        generateStartingPositions([1n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n],
+        generateStartingPositions([6n], false),
+      ]);
+
+      await game.write.debugSetShipPosition([1n, 1n, 5, 5], {
+        account: owner.account,
+      });
+
+      // 9999n was never minted — Game.sol/SpecialEffectsLib must reject this
+      // before ever calling out to RamResolver (defense in depth: Game.sol
+      // guarantees a non-zero target exists, rather than trusting every
+      // resolver to check this itself).
+      await expect(
+        game.write.moveShip(
+          [1n, 1n, 5, 5, ActionType.FactionAbility, 9999n],
+          { account: creator.account },
+        ),
+      ).to.be.rejectedWith("ShipNotFound");
+    });
+
     it("reverts when destination is occupied by a living enemy", async function () {
       const {
         creatorLobbies,

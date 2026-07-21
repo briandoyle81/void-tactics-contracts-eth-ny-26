@@ -1014,10 +1014,12 @@ contract Game is Ownable {
     ) internal {
         address resolver = factionAbilityResolvers[_usingShip.traits.variant];
         if (resolver == address(0)) revert InvalidMove();
+        GameData storage game = games[_gameId];
         SpecialEffectsLib.EffectResults memory results = SpecialEffectsLib
             .resolveAndApply(
-                games[_gameId],
+                game,
                 resolver,
+                ships,
                 SpecialEffectsLib.ResolveContext({
                     gameId: _gameId,
                     shipId: _usingShip.id,
@@ -1039,7 +1041,7 @@ contract Game is Ownable {
             );
         }
         SpecialEffectsLib.applyRelocations(
-            games[_gameId],
+            game,
             results.relocateShipIds,
             results.relocatePositions
         );

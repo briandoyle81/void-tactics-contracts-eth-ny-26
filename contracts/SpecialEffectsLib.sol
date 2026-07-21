@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "./Types.sol";
 import "./IFactionAbilityResolver.sol";
 import "./IShipAttributes.sol";
+import "./IShips.sol";
 
 // Split out of Game.sol — already the tightest-margin contract in the repo —
 // and deployed as a standalone library (an external function taking
@@ -27,6 +28,8 @@ library SpecialEffectsLib {
     int16 constant NO_RELOCATE = type(int16).min;
 
     error InvalidMove();
+    error ShipNotFound();
+    error ShipDestroyed();
 
     // RepairDrones/EMP range + arithmetic, moved here from Game.sol for the
     // same bytecode-headroom reason as everything else in this file — same
@@ -201,8 +204,21 @@ library SpecialEffectsLib {
     function resolveAndApply(
         GameData storage game,
         address resolver,
+        IShips ships,
         ResolveContext memory ctx
     ) external returns (EffectResults memory results) {
+        // Defense in depth: guarantee a non-zero target actually exists and
+        // isn't already destroyed before any resolver ever sees it, the same
+        // as the native RepairDrones/EMP path already does — rather than
+        // relying on every resolver to reimplement this check itself. 0
+        // means "no target" (e.g. a self-centered ability), same convention
+        // FlakArray already uses.
+        if (ctx.targetShipId != 0) {
+            Ship memory targetShip = ships.getShip(ctx.targetShipId);
+            if (targetShip.id == 0) revert ShipNotFound();
+            if (targetShip.shipData.timestampDestroyed != 0) revert ShipDestroyed();
+        }
+
         SpecialEffect[] memory effects = IFactionAbilityResolver(resolver)
             .resolveFactionAbility(
                 ctx.gameId,
