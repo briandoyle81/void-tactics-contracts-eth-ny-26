@@ -3724,15 +3724,19 @@ describe("Game", function () {
       const ship6Before = await game.read.getShipAttributes([1n, 6n]);
       expect(ship6Before.hullPoints).to.be.greaterThan(0);
 
-      // 1) Creator ship 2 damages joiner 6 (leaves HP > 0 so 6 still acts later)
+      // 1) Creator ship 2 passes in round 1 (no damage yet) — ship 6 must
+      // stay alive through round 1 so the "moved then reduced to 0 HP" case
+      // this test targets can land in round 2 instead. Leaving ship 6 at
+      // full HP into round 2 maximizes the damage margin for the two real
+      // shots that finish it off there (ships' gun damage/hull points are
+      // randomly generated per deploy, so relying on an exact hit count
+      // against a partially-damaged target is fragile; two full-power hits
+      // against a full-health target is not).
       const pos2 = findShipPosition(gameData, 2n);
       await game.write.moveShip(
-        [1n, 2n, pos2.row, pos2.col, ActionType.Shoot, 6n],
+        [1n, 2n, pos2.row, pos2.col, ActionType.Pass, 0n],
         { account: creator.account },
       );
-      const ship6Damaged = await game.read.getShipAttributes([1n, 6n]);
-      expect(ship6Damaged.hullPoints).to.be.greaterThan(0);
-      expect(ship6Damaged.hullPoints).to.be.lessThan(ship6Before.hullPoints);
 
       // 2) Joiner 6 passes (now in shipMovedThisRound)
       gameData = (await game.read.getGame([1n])) as GameDataView;
@@ -3742,10 +3746,8 @@ describe("Game", function () {
         { account: joiner.account },
       );
 
-      // 3) Creator ship 3 passes (not a second shot at ship 6) — ship 6 must
-      // stay alive through round 1 so the "moved then reduced to 0 HP" case
-      // this test targets can land in round 2 (step 7 below) instead. Only
-      // ship 2's single round-1 shot has hit ship 6 so far.
+      // 3) Creator ship 3 also passes in round 1 — ship 6 reaches round 2
+      // undamaged.
       gameData = (await game.read.getGame([1n])) as GameDataView;
       const pos3 = findShipPosition(gameData, 3n);
       await game.write.moveShip(
@@ -3783,73 +3785,109 @@ describe("Game", function () {
         joiner.account.address.toLowerCase(),
       );
 
-      // 6) Round 2: joiner ship 6 passes first (now in shipMovedThisRound)...
-      const pos6Round2 = findShipPosition(gameData, 6n);
-      await game.write.moveShip(
-        [1n, 6n, pos6Round2.row, pos6Round2.col, ActionType.Pass, 0n],
-        { account: joiner.account },
-      );
+      // 6) Round 2 onward: joiner ship 6 passes first (entering
+      // shipMovedThisRound), then creator ships 3 and 2 each take a real
+      // shot at it. Ships' gun damage / max hull points are randomly
+      // generated per deploy — and shift with anything that changes the
+      // number of prior on-chain operations, including unrelated test
+      // files — so the exact number of rounds needed to bring ship 6 to 0
+      // HP isn't knowable in advance. Loop, reading actual on-chain hull
+      // points after each shot, until it actually dies (bounded well above
+      // any realistic hit count), then verify round completion doesn't
+      // double-count it in the round the kill actually lands in — the
+      // case under test.
+      //
+      // Who goes first alternates each round (round 1 above was
+      // creator-first; round 2 is joiner-first; round 3 back to
+      // creator-first; ...), so which side's ships act in which slot isn't
+      // fixed — read currentTurn each round and dispatch accordingly. In a
+      // creator-first round, creator's first ship must act before ship 6
+      // has moved, so it's a harmless pass; the real shots always land only
+      // after ship 6's own pass, whichever round shape is in play.
+      async function passAction(shipId: bigint, account: any) {
+        const g = (await game.read.getGame([1n])) as GameDataView;
+        const pos = findShipPosition(g, shipId);
+        await game.write.moveShip(
+          [1n, shipId, pos.row, pos.col, ActionType.Pass, 0n],
+          { account },
+        );
+      }
 
-      // 7) ...then creator ship 3 finishes it off — ship 6 is now in
-      // moved ∩ shipsWithZeroHP, the exact case under test.
+      async function shootShip6(shipId: bigint, account: any) {
+        const g = (await game.read.getGame([1n])) as GameDataView;
+        const pos = findShipPosition(g, shipId);
+        await game.write.moveShip(
+          [1n, shipId, pos.row, pos.col, ActionType.Shoot, 6n],
+          { account },
+        );
+      }
+
+      async function ship6IsDead() {
+        return (
+          (await game.read.getShipAttributes([1n, 6n])).hullPoints === 0
+        );
+      }
+
+      // Asserts the case under test: even though ship 6 is now both
+      // moved-this-round and zero-HP, the round must not complete until
+      // every other active ship also acts.
+      async function assertRoundStillOpen(loopRound: number) {
+        const g = (await game.read.getGame([1n])) as GameDataView;
+        expect(g.turnState.currentRound).to.equal(BigInt(loopRound + 1));
+        expect(g.turnState.currentTurn.toLowerCase()).to.equal(
+          joiner.account.address.toLowerCase(),
+        );
+      }
+
+      const MAX_ROUNDS = 10;
+      let ship6Dead = false;
+      let round = 0;
+      while (!ship6Dead && round < MAX_ROUNDS) {
+        round++;
+
+        gameData = (await game.read.getGame([1n])) as GameDataView;
+        const creatorFirst =
+          gameData.turnState.currentTurn.toLowerCase() ===
+          creator.account.address.toLowerCase();
+
+        if (creatorFirst) {
+          await passAction(3n, creator.account); // ship 6 hasn't moved yet
+          await passAction(6n, joiner.account); // now moved
+          await shootShip6(2n, creator.account); // safe: ship 6 already moved
+          if (await ship6IsDead()) {
+            ship6Dead = true;
+            await assertRoundStillOpen(round);
+          }
+          await passAction(7n, joiner.account);
+          await passAction(8n, joiner.account);
+        } else {
+          await passAction(6n, joiner.account); // moved
+          await shootShip6(3n, creator.account);
+          if (await ship6IsDead()) {
+            ship6Dead = true;
+            await assertRoundStillOpen(round);
+          }
+          await passAction(7n, joiner.account);
+          if (!ship6Dead) {
+            await shootShip6(2n, creator.account);
+            if (await ship6IsDead()) {
+              ship6Dead = true;
+              await assertRoundStillOpen(round);
+            }
+          } else {
+            await passAction(2n, creator.account);
+          }
+          await passAction(8n, joiner.account);
+        }
+      }
+
+      expect(ship6Dead).to.be.true;
+      expect(await ship6IsDead()).to.be.true;
+
+      // Only now, after every remaining ship acted this round, should the
+      // round (and the already-dead ship 6 within it) roll over.
       gameData = (await game.read.getGame([1n])) as GameDataView;
-      expect(gameData.turnState.currentTurn.toLowerCase()).to.equal(
-        creator.account.address.toLowerCase(),
-      );
-      const pos3Round2 = findShipPosition(gameData, 3n);
-      await game.write.moveShip(
-        [1n, 3n, pos3Round2.row, pos3Round2.col, ActionType.Shoot, 6n],
-        { account: creator.account },
-      );
-      expect((await game.read.getShipAttributes([1n, 6n])).hullPoints).to.equal(
-        0,
-      );
-
-      // Round must not complete yet — creator ship 2 and joiner ships 7/8 still
-      // need to act this round.
-      gameData = (await game.read.getGame([1n])) as GameDataView;
-      expect(gameData.turnState.currentRound).to.equal(2n);
-      expect(gameData.turnState.currentTurn.toLowerCase()).to.equal(
-        joiner.account.address.toLowerCase(),
-      );
-
-      // 8) Joiner 7 passes — old formula would double-count dead ship 6 here
-      // (moved ∩ zeroHP) and end the round early.
-      const pos7Round2 = findShipPosition(gameData, 7n);
-      await game.write.moveShip(
-        [1n, 7n, pos7Round2.row, pos7Round2.col, ActionType.Pass, 0n],
-        { account: joiner.account },
-      );
-
-      gameData = (await game.read.getGame([1n])) as GameDataView;
-      expect(gameData.turnState.currentRound).to.equal(2n);
-      expect(gameData.turnState.currentTurn.toLowerCase()).to.equal(
-        creator.account.address.toLowerCase(),
-      );
-
-      // 9) Creator ship 2 still needs to act before the round can complete.
-      const pos2Round2 = findShipPosition(gameData, 2n);
-      await game.write.moveShip(
-        [1n, 2n, pos2Round2.row, pos2Round2.col, ActionType.Pass, 0n],
-        { account: creator.account },
-      );
-
-      gameData = (await game.read.getGame([1n])) as GameDataView;
-      expect(gameData.turnState.currentRound).to.equal(2n);
-      expect(gameData.turnState.currentTurn.toLowerCase()).to.equal(
-        joiner.account.address.toLowerCase(),
-      );
-
-      // 10) Joiner 8 is the last active ship to act — only now should the round
-      // (and the already-dead ship 6 within it) roll over to round 3.
-      const pos8Round2 = findShipPosition(gameData, 8n);
-      await game.write.moveShip(
-        [1n, 8n, pos8Round2.row, pos8Round2.col, ActionType.Pass, 0n],
-        { account: joiner.account },
-      );
-
-      gameData = (await game.read.getGame([1n])) as GameDataView;
-      expect(gameData.turnState.currentRound).to.equal(3n);
+      expect(gameData.turnState.currentRound).to.equal(BigInt(round + 2));
     });
   });
 

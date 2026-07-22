@@ -82,6 +82,14 @@ interface IMaps {
             ScoringPosition[] memory scoringPositions
         );
 
+    // Scoring positions only — for on-chain callers (round-end scoring,
+    // Turtle-archetype AI) that never need blockedPositions and shouldn't
+    // pay for computing it. See Maps.sol for why blockedPositions itself
+    // still needs a full grid scan while this is O(configured tiles).
+    function getGameScoringPositions(
+        uint _gameId
+    ) external view returns (ScoringPosition[] memory);
+
     function setScoringTile(
         uint _gameId,
         int16 _row,

@@ -1,0 +1,482 @@
+import { expect } from "chai";
+import { loadFixture } from "@nomicfoundation/hardhat-toolbox-viem/network-helpers";
+import hre from "hardhat";
+
+// Standalone tests — AIEncounters only depends on Maps (read-only, via
+// mapExists), so this deploys just those two contracts directly rather than
+// the full DeployAndConfig module, matching test/Maps.test.ts's convention.
+describe("AIEncounters", function () {
+  const defaultTraits = {
+    serialNumber: 0n,
+    colors: {
+      h1: 0,
+      s1: 0,
+      l1: 0,
+      h2: 0,
+      s2: 0,
+      l2: 0,
+      h3: 0,
+      s3: 0,
+      l3: 0,
+    },
+    variant: 1,
+    accuracy: 0,
+    hull: 0,
+    speed: 0,
+  };
+
+  const defaultEquipment = {
+    mainWeapon: 0, // Laser
+    armor: 0, // None
+    shields: 0, // None
+    special: 0, // None
+  };
+
+  const defaultArchetype = 0; // Grunt
+
+  async function deployFixture() {
+    const [owner, editor, other] = await hre.viem.getWalletClients();
+
+    const maps = await hre.viem.deployContract("Maps", []);
+    const aiEncounters = await hre.viem.deployContract("AIEncounters", [
+      maps.address,
+    ]);
+
+    const editorAIEncounters = await hre.viem.getContractAt(
+      "AIEncounters",
+      aiEncounters.address,
+      { client: { wallet: editor } },
+    );
+    const otherAIEncounters = await hre.viem.getContractAt(
+      "AIEncounters",
+      aiEncounters.address,
+      { client: { wallet: other } },
+    );
+
+    // A real preset map for placement tests to reference.
+    await maps.write.createPresetMap([[]]);
+
+    return {
+      maps,
+      aiEncounters,
+      editorAIEncounters,
+      otherAIEncounters,
+      owner,
+      editor,
+      other,
+    };
+  }
+
+  describe("Encounter editor role", function () {
+    it("owner can grant and revoke encounter-editor rights", async function () {
+      const { aiEncounters, editor } = await loadFixture(deployFixture);
+
+      expect(await aiEncounters.read.isEncounterEditor([editor.account.address])).to
+        .be.false;
+
+      await aiEncounters.write.setEncounterEditor([
+        editor.account.address,
+        true,
+      ]);
+      expect(await aiEncounters.read.isEncounterEditor([editor.account.address])).to
+        .be.true;
+
+      await aiEncounters.write.setEncounterEditor([
+        editor.account.address,
+        false,
+      ]);
+      expect(await aiEncounters.read.isEncounterEditor([editor.account.address])).to
+        .be.false;
+    });
+
+    it("reverts when a non-owner tries to grant encounter-editor rights", async function () {
+      const { otherAIEncounters, other } = await loadFixture(deployFixture);
+      await expect(
+        otherAIEncounters.write.setEncounterEditor([other.account.address, true]),
+      ).to.be.rejected;
+    });
+
+    it("reverts when a non-owner, non-editor calls an editor-gated function", async function () {
+      const { otherAIEncounters } = await loadFixture(deployFixture);
+      await expect(
+        otherAIEncounters.write.createAIShipConfig([
+          "Test",
+          defaultEquipment,
+          defaultTraits,
+        defaultArchetype,
+        ]),
+      ).to.be.rejectedWith("NotEncounterEditor");
+    });
+
+    it("allows a granted editor (not just the owner) to call editor-gated functions", async function () {
+      const { aiEncounters, editorAIEncounters, editor } =
+        await loadFixture(deployFixture);
+      await aiEncounters.write.setEncounterEditor([
+        editor.account.address,
+        true,
+      ]);
+
+      await expect(
+        editorAIEncounters.write.createAIShipConfig([
+          "Editor Ship",
+          defaultEquipment,
+          defaultTraits,
+        defaultArchetype,
+        ]),
+      ).to.not.be.rejected;
+    });
+  });
+
+  describe("AI ship config registry", function () {
+    it("creates configs with sequential ids and stores fields exactly", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+
+      await aiEncounters.write.createAIShipConfig([
+        "Scout",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+      await aiEncounters.write.createAIShipConfig([
+        "Bruiser",
+        { mainWeapon: 1, armor: 2, shields: 0, special: 1 },
+        { ...defaultTraits, variant: 2, accuracy: 1, hull: 2, speed: 1 },
+        1, // Aggressor
+      ]);
+
+      expect(await aiEncounters.read.aiShipConfigCount()).to.equal(2n);
+
+      const scout = await aiEncounters.read.getAIShipConfig([1n]);
+      expect(scout.id).to.equal(1n);
+      expect(scout.name).to.equal("Scout");
+      expect(scout.equipment.mainWeapon).to.equal(0);
+      expect(scout.traits.variant).to.equal(1);
+
+      const bruiser = await aiEncounters.read.getAIShipConfig([2n]);
+      expect(bruiser.name).to.equal("Bruiser");
+      expect(bruiser.equipment.mainWeapon).to.equal(1);
+      expect(bruiser.equipment.armor).to.equal(2);
+      expect(bruiser.traits.variant).to.equal(2);
+      expect(bruiser.traits.hull).to.equal(2);
+      expect(bruiser.archetype).to.equal(1);
+    });
+
+    it("emits AIShipConfigCreated", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      const hash = await aiEncounters.write.createAIShipConfig([
+        "Scout",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+      const publicClient = await hre.viem.getPublicClient();
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      expect(receipt.status).to.equal("success");
+    });
+
+    it("reverts with InvalidTier when accuracy, hull, or speed exceeds 2", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await expect(
+        aiEncounters.write.createAIShipConfig([
+          "Bad",
+          defaultEquipment,
+          { ...defaultTraits, accuracy: 3 },
+          defaultArchetype,
+        ]),
+      ).to.be.rejectedWith("InvalidTier");
+      await expect(
+        aiEncounters.write.createAIShipConfig([
+          "Bad",
+          defaultEquipment,
+          { ...defaultTraits, hull: 3 },
+          defaultArchetype,
+        ]),
+      ).to.be.rejectedWith("InvalidTier");
+      await expect(
+        aiEncounters.write.createAIShipConfig([
+          "Bad",
+          defaultEquipment,
+          { ...defaultTraits, speed: 3 },
+          defaultArchetype,
+        ]),
+      ).to.be.rejectedWith("InvalidTier");
+    });
+
+    it("reverts with InvalidVariant when variant is 0", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await expect(
+        aiEncounters.write.createAIShipConfig([
+          "Bad",
+          defaultEquipment,
+          { ...defaultTraits, variant: 0 },
+          defaultArchetype,
+        ]),
+      ).to.be.rejectedWith("InvalidVariant");
+    });
+
+    it("updates an existing config in place", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await aiEncounters.write.createAIShipConfig([
+        "Scout",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+
+      await aiEncounters.write.updateAIShipConfig([
+        1n,
+        "Scout Mk2",
+        { ...defaultEquipment, mainWeapon: 2 },
+        { ...defaultTraits, speed: 2 },
+        2, // Sniper
+      ]);
+
+      const updated = await aiEncounters.read.getAIShipConfig([1n]);
+      expect(updated.name).to.equal("Scout Mk2");
+      expect(updated.equipment.mainWeapon).to.equal(2);
+      expect(updated.traits.speed).to.equal(2);
+      expect(updated.archetype).to.equal(2);
+      // id count shouldn't grow from an update
+      expect(await aiEncounters.read.aiShipConfigCount()).to.equal(1n);
+    });
+
+    it("reverts ConfigNotFound when updating id 0 or a nonexistent id", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await expect(
+        aiEncounters.write.updateAIShipConfig([
+          0n,
+          "X",
+          defaultEquipment,
+          defaultTraits,
+          defaultArchetype,
+        ]),
+      ).to.be.rejectedWith("ConfigNotFound");
+      await expect(
+        aiEncounters.write.updateAIShipConfig([
+          999n,
+          "X",
+          defaultEquipment,
+          defaultTraits,
+          defaultArchetype,
+        ]),
+      ).to.be.rejectedWith("ConfigNotFound");
+    });
+
+    it("reverts ConfigNotFound when reading id 0 or a nonexistent id", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await expect(
+        aiEncounters.read.getAIShipConfig([0n]),
+      ).to.be.rejectedWith("ConfigNotFound");
+      await expect(
+        aiEncounters.read.getAIShipConfig([999n]),
+      ).to.be.rejectedWith("ConfigNotFound");
+    });
+
+    it("getAllAIShipConfigs returns every config in id order", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await aiEncounters.write.createAIShipConfig([
+        "First",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+      await aiEncounters.write.createAIShipConfig([
+        "Second",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+
+      const all = await aiEncounters.read.getAllAIShipConfigs();
+      expect(all.length).to.equal(2);
+      expect(all[0].name).to.equal("First");
+      expect(all[1].name).to.equal("Second");
+    });
+  });
+
+  describe("Map placements", function () {
+    it("reverts MapNotFound when the map doesn't exist", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await aiEncounters.write.createAIShipConfig([
+        "Scout",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+      await expect(
+        aiEncounters.write.setMapPlacement([999n, 0, 13, 1n]),
+      ).to.be.rejectedWith("MapNotFound");
+    });
+
+    it("reverts InvalidPosition for out-of-window row/col (each bound independently)", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await aiEncounters.write.createAIShipConfig([
+        "Scout",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+      await expect(
+        aiEncounters.write.setMapPlacement([1n, -1, 13, 1n]),
+      ).to.be.rejectedWith("InvalidPosition");
+      await expect(
+        aiEncounters.write.setMapPlacement([1n, 11, 13, 1n]),
+      ).to.be.rejectedWith("InvalidPosition");
+      await expect(
+        aiEncounters.write.setMapPlacement([1n, 0, 12, 1n]),
+      ).to.be.rejectedWith("InvalidPosition");
+      await expect(
+        aiEncounters.write.setMapPlacement([1n, 0, 17, 1n]),
+      ).to.be.rejectedWith("InvalidPosition");
+    });
+
+    it("reverts ConfigNotFound when placing a nonexistent config id", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await expect(
+        aiEncounters.write.setMapPlacement([1n, 0, 13, 999n]),
+      ).to.be.rejectedWith("ConfigNotFound");
+    });
+
+    it("sets and reads back a single placement", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await aiEncounters.write.createAIShipConfig([
+        "Scout",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+      await aiEncounters.write.setMapPlacement([1n, 3, 14, 1n]);
+
+      expect(await aiEncounters.read.mapPlacements([1n, 3, 14])).to.equal(1n);
+      expect(await aiEncounters.read.mapHasPlacements([1n])).to.be.true;
+
+      const [positions, configIds] = await aiEncounters.read.getMapPlacements([
+        1n,
+      ]);
+      expect(positions.length).to.equal(1);
+      expect(positions[0].row).to.equal(3);
+      expect(positions[0].col).to.equal(14);
+      expect(configIds[0]).to.equal(1n);
+    });
+
+    it("clearing a cell (configId 0) decrements the count and mapHasPlacements goes false", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await aiEncounters.write.createAIShipConfig([
+        "Scout",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+      await aiEncounters.write.setMapPlacement([1n, 3, 14, 1n]);
+      expect(await aiEncounters.read.mapHasPlacements([1n])).to.be.true;
+
+      await aiEncounters.write.setMapPlacement([1n, 3, 14, 0n]);
+      expect(await aiEncounters.read.mapHasPlacements([1n])).to.be.false;
+      const [positions] = await aiEncounters.read.getMapPlacements([1n]);
+      expect(positions.length).to.equal(0);
+    });
+
+    it("overwriting an already-non-zero cell with a different config does not double-count", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await aiEncounters.write.createAIShipConfig([
+        "Scout",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+      await aiEncounters.write.createAIShipConfig([
+        "Bruiser",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+
+      await aiEncounters.write.setMapPlacement([1n, 3, 14, 1n]);
+      await aiEncounters.write.setMapPlacement([1n, 3, 14, 2n]);
+
+      const [positions, configIds] = await aiEncounters.read.getMapPlacements([
+        1n,
+      ]);
+      expect(positions.length).to.equal(1);
+      expect(configIds[0]).to.equal(2n);
+    });
+
+    it("batch setMapPlacements reverts ArrayLengthMismatch on mismatched arrays", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await aiEncounters.write.createAIShipConfig([
+        "Scout",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+      await expect(
+        aiEncounters.write.setMapPlacements([
+          1n,
+          [
+            { row: 0, col: 13 },
+            { row: 1, col: 13 },
+          ],
+          [1n],
+        ]),
+      ).to.be.rejectedWith("ArrayLengthMismatch");
+    });
+
+    it("batch setMapPlacements writes every cell in one call", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await aiEncounters.write.createAIShipConfig([
+        "Scout",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+      await aiEncounters.write.setMapPlacements([
+        1n,
+        [
+          { row: 0, col: 13 },
+          { row: 1, col: 14 },
+          { row: 2, col: 15 },
+        ],
+        [1n, 1n, 1n],
+      ]);
+
+      const [positions] = await aiEncounters.read.getMapPlacements([1n]);
+      expect(positions.length).to.equal(3);
+    });
+
+    it("reverts TooManyPlacements at the 9th distinct cell; the 8th succeeds", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await aiEncounters.write.createAIShipConfig([
+        "Scout",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+
+      // Joiner window is rows 0-10, cols 13-16 -> 8 distinct cells across 2 rows.
+      for (let row = 0; row < 8; row++) {
+        await aiEncounters.write.setMapPlacement([1n, row, 13, 1n]);
+      }
+      expect(await aiEncounters.read.mapPlacementCount([1n])).to.equal(8n);
+
+      await expect(
+        aiEncounters.write.setMapPlacement([1n, 8, 13, 1n]),
+      ).to.be.rejectedWith("TooManyPlacements");
+    });
+
+    it("placements are scoped per map id", async function () {
+      const { aiEncounters, maps } = await loadFixture(deployFixture);
+      await aiEncounters.write.createAIShipConfig([
+        "Scout",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+      await maps.write.createPresetMap([[]]); // map id 2
+
+      await aiEncounters.write.setMapPlacement([1n, 0, 13, 1n]);
+
+      expect(await aiEncounters.read.mapHasPlacements([1n])).to.be.true;
+      expect(await aiEncounters.read.mapHasPlacements([2n])).to.be.false;
+    });
+  });
+});

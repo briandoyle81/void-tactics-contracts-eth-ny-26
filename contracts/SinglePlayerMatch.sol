@@ -8,6 +8,10 @@ import "./Ships.sol";
 import "./Lobbies.sol";
 import "./Game.sol";
 import "./IGameOrchestrator.sol";
+import "./AIEncounters.sol";
+import "./IMaps.sol";
+import "./IShipAttributes.sol";
+import "./AIBehavior.sol";
 
 // Plays single-player matches as an on-chain opponent. A human creates a
 // normal Lobbies lobby reserved for this contract's address; this contract
@@ -20,11 +24,20 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
     Ships public ships;
     Lobbies public lobbies;
     Game public game;
+    AIEncounters public aiEncounters;
+    IMaps public maps;
+    IShipAttributes public shipAttributes;
 
-    // Safety bound on how many of the AI's ships takeAITurn will move in a
-    // single call; generous headroom over AI_FLEET_SIZE.
-    uint private constant MAX_SHIP_MOVES_PER_CALL = 12;
-    uint8 private constant AI_FLEET_SIZE = 3;
+    // Static per-ship info cached at setupAIFleet mint time (from the same
+    // AIShipConfig already fetched there), so takeAITurn's decision engine
+    // never needs an extra Ships/AIEncounters call mid-turn to learn what
+    // archetype/faction/special a ship has.
+    struct AIShipInfo {
+        Archetype archetype;
+        uint16 variant;
+        Special special;
+    }
+    mapping(uint => AIShipInfo) public aiShipInfo;
 
     error NotLobbiesContract();
     error NotGame();
@@ -32,7 +45,7 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
     error LobbyNotReadyForFleet();
     error GameEnded();
     error NotAITurn();
-    error ShipDataNotFound();
+    error NoAIPlacementsConfigured();
 
     event AIFleetCreated(uint indexed lobbyId, uint fleetId);
     event AITurnTaken(
@@ -45,11 +58,17 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
     constructor(
         address _ships,
         address _lobbies,
-        address _game
+        address _game,
+        address _aiEncounters,
+        address _maps,
+        address _shipAttributes
     ) Ownable(msg.sender) {
         ships = Ships(_ships);
         lobbies = Lobbies(_lobbies);
         game = Game(_game);
+        aiEncounters = AIEncounters(_aiEncounters);
+        maps = IMaps(_maps);
+        shipAttributes = IShipAttributes(_shipAttributes);
     }
 
     function setLobbiesAddress(address _lobbies) external onlyOwner {
@@ -58,6 +77,20 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
 
     function setGameAddress(address _game) external onlyOwner {
         game = Game(_game);
+    }
+
+    function setAIEncountersAddress(address _aiEncounters) external onlyOwner {
+        aiEncounters = AIEncounters(_aiEncounters);
+    }
+
+    function setMapsAddress(address _maps) external onlyOwner {
+        maps = IMaps(_maps);
+    }
+
+    function setShipAttributesAddress(
+        address _shipAttributes
+    ) external onlyOwner {
+        shipAttributes = IShipAttributes(_shipAttributes);
     }
 
     // Accepts a lobby reservation naming this contract as the joiner.
@@ -72,23 +105,39 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
     // fleet is minted per match rather than reusing a persistent roster
     // (destroyed ships stay permanently locked in this game, so there's
     // nothing to reuse between matches).
+    //
+    // Fleet composition/placement is driven entirely by AIEncounters: an
+    // admin-curated row/col -> AIShipConfig mapping for the lobby's selected
+    // preset map (contracts/AIEncounters.sol), rather than a hardcoded
+    // template. Fleet size is therefore dynamic (1-8 ships, whatever the
+    // map's admin configured) instead of always exactly 3. A map with no
+    // configured placements — including selectedMapId == 0 — reverts rather
+    // than silently falling back to a default fleet, matching this
+    // codebase's established "fail loud on unconfigured admin data"
+    // precedent (see ShipAttributes' unconfigured-variant reverts).
     function setupAIFleet(uint _lobbyId) external returns (uint fleetId) {
         Lobby memory lobby = lobbies.getLobby(_lobbyId);
         if (lobby.players.joiner != address(this)) revert NotInLobby();
         if (lobby.state.status != LobbyStatus.FleetSelection)
             revert LobbyNotReadyForFleet();
 
-        uint[] memory shipIds = new uint[](AI_FLEET_SIZE);
-        Position[] memory positions = new Position[](AI_FLEET_SIZE);
+        (Position[] memory positions, uint[] memory configIds) = aiEncounters
+            .getMapPlacements(lobby.gameConfig.selectedMapId);
+        if (positions.length == 0) revert NoAIPlacementsConfigured();
 
-        for (uint8 i = 0; i < AI_FLEET_SIZE; i++) {
+        uint[] memory shipIds = new uint[](positions.length);
+        for (uint i = 0; i < positions.length; i++) {
+            AIEncounters.AIShipConfig memory config = aiEncounters
+                .getAIShipConfig(configIds[i]);
             shipIds[i] = ships.createSpecificShip(
                 address(this),
-                _buildAIShipTemplate(i)
+                _buildAIShipFromConfig(config)
             );
-            // Joiner ships must sit in columns 13-16 (Fleets.createFleet's
-            // position validation) — the AI is always the joiner.
-            positions[i] = Position({row: int16(uint16(i)), col: 16});
+            aiShipInfo[shipIds[i]] = AIShipInfo({
+                archetype: config.archetype,
+                variant: config.traits.variant,
+                special: config.equipment.special
+            });
         }
 
         lobbies.createFleet(_lobbyId, shipIds, positions);
@@ -98,37 +147,13 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
         emit AIFleetCreated(_lobbyId, fleetId);
     }
 
-    function _buildAIShipTemplate(
-        uint8 _index
+    function _buildAIShipFromConfig(
+        AIEncounters.AIShipConfig memory _config
     ) internal view returns (Ship memory s) {
-        s.name = "AI Ship";
+        s.name = _config.name;
         s.owner = address(this);
-        s.traits.variant = 1;
-        // Base-tier accuracy/hull/speed and no armor/shields keep every AI
-        // ship cheap, so a 3-ship fleet fits comfortably under any lobby's
-        // cost limit.
-        if (_index == 0) {
-            s.equipment = Equipment({
-                mainWeapon: MainWeapon.Laser,
-                armor: Armor.None,
-                shields: Shields.None,
-                special: Special.EMP
-            });
-        } else if (_index == 1) {
-            s.equipment = Equipment({
-                mainWeapon: MainWeapon.Railgun,
-                armor: Armor.None,
-                shields: Shields.None,
-                special: Special.RepairDrones
-            });
-        } else {
-            s.equipment = Equipment({
-                mainWeapon: MainWeapon.MissileLauncher,
-                armor: Armor.Light,
-                shields: Shields.None,
-                special: Special.FlakArray
-            });
-        }
+        s.equipment = _config.equipment;
+        s.traits = _config.traits;
     }
 
     // Called by Lobbies once both sides' fleets are set; forwards straight
@@ -158,35 +183,29 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
         );
     }
 
-    // Moves every one of the AI's currently-unmoved ships in this round (the
-    // turn only stays with the AI across consecutive ship moves when the
-    // human has none left to move, but handling that case here means a
-    // caller never has to retry in a loop off-chain). Permissionless: a
-    // frontend fires this right after the human's moveShip confirms.
+    // Moves exactly one of the AI's currently-unmoved ships. Permissionless:
+    // a frontend fires this right after the human's moveShip confirms. When
+    // the AI has more ships left to move than the human this round (turn
+    // order alternates ship-by-ship, but stays with whichever side still has
+    // unmoved ships once the other side runs out), the turn stays with the
+    // AI after this call returns — the caller is expected to call
+    // takeAITurn again, once per remaining AI ship, exactly like the human
+    // fires one moveShip transaction per ship. This keeps every call's gas
+    // cost to "decide and move one ship" instead of scaling with fleet size.
     //
-    // v0 scripted behavior per ship (deliberately simple/placeholder, not a
-    // heuristic — more specific rules to come later):
-    //   1. If a player ship already occupies the square one column to the
-    //      left, stay and fire at it.
-    //   2. Otherwise, if not already in column 0, move one square left; if a
-    //      player ship is now one column to the left of the new position,
-    //      fire at it; otherwise just move.
-    //   3. Otherwise (already in column 0, nothing adjacent), Pass.
+    // Decision-making is delegated to AIBehavior, dispatched by the ship's
+    // cached archetype (see decideMove below). Only fetches Maps' scoring
+    // tile positions when this ship is actually Turtle-archetype and would
+    // use them — every other archetype never touches it.
     function takeAITurn(uint _gameId) external {
         GameDataView memory g = game.getGame(_gameId);
         if (g.metadata.ended) revert GameEnded();
         if (g.turnState.currentTurn != address(this)) revert NotAITurn();
 
-        for (uint i = 0; i < MAX_SHIP_MOVES_PER_CALL; i++) {
-            uint shipId = _findUnmovedShip(g);
-            if (shipId == 0) break;
+        uint shipId = _findUnmovedShip(g);
+        if (shipId == 0) return;
 
-            _takeShipTurn(_gameId, g, shipId);
-
-            g = game.getGame(_gameId);
-            if (g.metadata.ended || g.turnState.currentTurn != address(this))
-                break;
-        }
+        _takeShipTurn(_gameId, g, shipId);
     }
 
     function _takeShipTurn(
@@ -194,82 +213,98 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
         GameDataView memory g,
         uint _shipId
     ) internal {
-        (
-            int16 destRow,
-            int16 destCol,
-            ActionType action,
-            uint actionTarget
-        ) = _decideMove(g, _shipId);
+        AIBehavior.Decision memory d = _decideMove(_gameId, g, _shipId);
 
-        game.moveShip(_gameId, _shipId, destRow, destCol, action, actionTarget);
-        emit AITurnTaken(_gameId, _shipId, action, actionTarget);
+        // Defense in depth: a heuristic bug or an edge case the rules
+        // didn't anticipate should degrade to "this ship does nothing this
+        // turn," not abort every other ship's move in this same call.
+        try
+            game.moveShip(
+                _gameId,
+                _shipId,
+                d.destRow,
+                d.destCol,
+                d.action,
+                d.actionTarget
+            )
+        {
+            emit AITurnTaken(_gameId, _shipId, d.action, d.actionTarget);
+        } catch {
+            (Position memory myPos, bool found) = AIBehavior.findPosition(
+                g,
+                _shipId
+            );
+            if (found) {
+                try
+                    game.moveShip(
+                        _gameId,
+                        _shipId,
+                        myPos.row,
+                        myPos.col,
+                        ActionType.Pass,
+                        0
+                    )
+                {
+                    emit AITurnTaken(_gameId, _shipId, ActionType.Pass, 0);
+                } catch {}
+            }
+        }
     }
 
     function _decideMove(
+        uint _gameId,
         GameDataView memory g,
         uint _shipId
-    )
-        internal
-        pure
-        returns (
-            int16 destRow,
-            int16 destCol,
-            ActionType action,
-            uint actionTarget
-        )
-    {
-        Position memory myPos = _findPosition(g, _shipId);
-        destRow = myPos.row;
-        destCol = myPos.col;
-        action = ActionType.Pass;
-
-        // Case 1: a player ship already occupies the square one column left
-        (uint adjacentEnemy, bool adjacentFound) = _findEnemyAt(
+    ) internal view returns (AIBehavior.Decision memory d) {
+        (Position memory myPos, bool posFound) = AIBehavior.findPosition(
             g,
-            myPos.row,
-            myPos.col - 1
+            _shipId
         );
-        if (adjacentFound) {
-            action = ActionType.Shoot;
-            actionTarget = adjacentEnemy;
-            return (destRow, destCol, action, actionTarget);
+        (Attributes memory myAttrs, bool attrsFound) = AIBehavior
+            .findAttributes(g, _shipId);
+        if (!posFound || !attrsFound) {
+            d.destRow = myPos.row;
+            d.destCol = myPos.col;
+            d.action = ActionType.Pass;
+            return d;
         }
 
-        // Case 3: already at the left edge, nothing to do
-        if (myPos.col == 0) {
-            return (destRow, destCol, action, actionTarget);
-        }
+        AIShipInfo memory info = aiShipInfo[_shipId];
+        AIBehavior.Ctx memory ctx = AIBehavior.Ctx({
+            g: g,
+            maps: maps,
+            gameId: _gameId,
+            shipId: _shipId,
+            pos: myPos,
+            attrs: myAttrs
+        });
 
-        // Case 2: move one square left, then fire if a player ship is now
-        // one column to the left of the new position
-        destCol = myPos.col - 1;
-        (uint newAdjacentEnemy, bool newAdjacentFound) = _findEnemyAt(
-            g,
-            destRow,
-            destCol - 1
-        );
-        if (newAdjacentFound) {
-            action = ActionType.Shoot;
-            actionTarget = newAdjacentEnemy;
+        if (info.archetype == Archetype.Sniper) {
+            return
+                AIBehavior.decideSniper(
+                    ctx,
+                    game.GRID_HEIGHT(),
+                    game.GRID_WIDTH()
+                );
+        } else if (info.archetype == Archetype.Support) {
+            return
+                AIBehavior.decideSupport(
+                    ctx,
+                    shipAttributes,
+                    info.special,
+                    info.variant
+                );
+        } else if (info.archetype == Archetype.Turtle) {
+            ScoringPosition[] memory scoringPositions = maps
+                .getGameScoringPositions(_gameId);
+            return AIBehavior.decideTurtle(ctx, scoringPositions);
+        } else if (info.archetype == Archetype.Rammer) {
+            return AIBehavior.decideRammer(ctx, info.variant);
         }
-    }
-
-    // Finds an alive, enemy (non-AI-owned) ship at the exact given position.
-    function _findEnemyAt(
-        GameDataView memory g,
-        int16 _row,
-        int16 _col
-    ) internal pure returns (uint shipId, bool found) {
-        for (uint i = 0; i < g.shipPositions.length; i++) {
-            ShipPosition memory sp = g.shipPositions[i];
-            // The AI is always the joiner, so enemy ships are always the
-            // creator's (isCreator == true).
-            if (sp.status != 0 || !sp.isCreator) continue;
-            if (sp.position.row == _row && sp.position.col == _col) {
-                return (sp.shipId, true);
-            }
-        }
-        return (0, false);
+        // Grunt and Aggressor (and the default for any future archetype
+        // value not yet handled above) share the same engage-or-approach
+        // logic — see AIBehavior's header comment on why.
+        return AIBehavior.decideEngageOrApproach(ctx);
     }
 
     function _findUnmovedShip(
@@ -289,18 +324,6 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
             if (!hasMoved) return active[i];
         }
         return 0;
-    }
-
-    function _findPosition(
-        GameDataView memory g,
-        uint _shipId
-    ) internal pure returns (Position memory) {
-        for (uint i = 0; i < g.shipPositions.length; i++) {
-            if (g.shipPositions[i].shipId == _shipId) {
-                return g.shipPositions[i].position;
-            }
-        }
-        revert ShipDataNotFound();
     }
 
     // IGameOrchestrator: called by core Game.sol whenever a session this

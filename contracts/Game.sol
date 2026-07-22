@@ -337,40 +337,48 @@ contract Game is Ownable {
 
     // Get all ship positions for a game
     // External view, memory use ok
+    //
+    // Reads active ships from playerActiveShipIds + shipPositions instead of
+    // scanning the grid: both are already kept in lockstep with the grid on
+    // every move (moveShip/debugSetShipPosition) and every removal
+    // (_removeShipFromGame atomically clears a ship from the grid AND from
+    // playerActiveShipIds), so a ship in playerActiveShipIds is guaranteed
+    // alive and exactly where shipPositions says it is. That makes an O(grid
+    // size) scan with a per-cell ships.isShipDestroyed call redundant — this
+    // is now O(active ship count), matching the gone-ships loop below, which
+    // already read from shipPositions directly.
     function getAllShipPositions(
         uint _gameId
     ) public view returns (ShipPosition[] memory) {
         _requireGameExists(_gameId);
         GameData storage game = games[_gameId];
 
-        // Allocate for the worst case (every grid cell full, plus all gone ships),
-        // fill in a single pass below, then shrink the array's length word to the
-        // actual count in place. Avoids a second full grid scan just to size the array.
+        EnumerableSet.UintSet storage creatorShipIds = game.playerActiveShipIds[
+            game.metadata.creator
+        ];
+        EnumerableSet.UintSet storage joinerShipIds = game.playerActiveShipIds[
+            game.metadata.joiner
+        ];
+
         ShipPosition[] memory positions = new ShipPosition[](
-            uint(uint16(GRID_HEIGHT)) *
-                uint(uint16(GRID_WIDTH)) +
+            EnumerableSet.length(creatorShipIds) +
+                EnumerableSet.length(joinerShipIds) +
                 game.goneShipIds.length
         );
-        uint index = 0;
-
-        // Iterate through the grid to find all ships
-        for (int16 row = 0; row < GRID_HEIGHT; row++) {
-            for (int16 col = 0; col < GRID_WIDTH; col++) {
-                uint shipId = game.grid[row][col];
-                if (shipId > 0 && !ships.isShipDestroyed(shipId)) {
-                    // Determine if this is a creator or joiner ship
-                    bool isCreator = _isCreatorShip(_gameId, shipId);
-                    // Don't read from existing mapping to avoid lookup costs, just create a new position
-                    positions[index] = ShipPosition({
-                        shipId: shipId,
-                        position: Position({row: row, col: col}),
-                        isCreator: isCreator,
-                        status: 0
-                    });
-                    index++;
-                }
-            }
-        }
+        uint index = _fillActiveShipPositions(
+            game,
+            positions,
+            0,
+            creatorShipIds,
+            true
+        );
+        index = _fillActiveShipPositions(
+            game,
+            positions,
+            index,
+            joinerShipIds,
+            false
+        );
 
         // Iterate through gone ship ids (destroyed or fled; status from storage)
         for (uint i = 0; i < game.goneShipIds.length; i++) {
@@ -385,14 +393,31 @@ contract Game is Ownable {
             index++;
         }
 
-        // The array was allocated for the worst case; shrink its length word down
-        // to the number of entries actually written (index is always <= allocated
-        // length, since it only increments inside the same bounds the array was sized for).
-        assembly {
-            mstore(positions, index)
-        }
-
         return positions;
+    }
+
+    // Shared body for getAllShipPositions' two active-side loops (creator
+    // and joiner), since they're otherwise identical apart from which set
+    // they read and the isCreator flag they stamp on each entry.
+    function _fillActiveShipPositions(
+        GameData storage game,
+        ShipPosition[] memory positions,
+        uint startIndex,
+        EnumerableSet.UintSet storage shipIds,
+        bool isCreator
+    ) private view returns (uint) {
+        uint count = EnumerableSet.length(shipIds);
+        for (uint i = 0; i < count; i++) {
+            uint shipId = EnumerableSet.at(shipIds, i);
+            positions[startIndex] = ShipPosition({
+                shipId: shipId,
+                position: game.shipPositions[shipId].position,
+                isCreator: isCreator,
+                status: 0
+            });
+            startIndex++;
+        }
+        return startIndex;
     }
 
     // Helper function to determine if a ship belongs to the creator
@@ -1327,10 +1352,11 @@ contract Game is Ownable {
     function _handleEndOfRound(uint _gameId) internal {
         GameData storage game = games[_gameId];
 
-        // End-of-round scoring: award points for ships on scoring tiles
-        (, ScoringPosition[] memory scoringPositions) = maps.getGameMapState(
-            _gameId
-        );
+        // End-of-round scoring: award points for ships on scoring tiles.
+        // getGameScoringPositions (not getGameMapState) since blockedTiles
+        // isn't needed here — no reason to pay for computing it.
+        ScoringPosition[] memory scoringPositions = maps
+            .getGameScoringPositions(_gameId);
         uint scoringCount = scoringPositions.length;
         uint creatorRoundPoints = 0;
         uint joinerRoundPoints = 0;

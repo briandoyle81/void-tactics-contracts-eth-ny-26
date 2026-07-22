@@ -24,6 +24,20 @@ const TOURNAMENT_WORLD_ID_GROUP = 1n;
 const TOURNAMENT_EXTERNAL_NULLIFIER =
   318078722027557965998987370672697888390534537434722412480399796468873891570n;
 
+// Cosmetic only (no validation on colors) — reused across every starter AI
+// ship config below so they're not each repeating all nine fields.
+const AI_SHIP_COLORS = {
+  h1: 0,
+  s1: 0,
+  l1: 0,
+  h2: 0,
+  s2: 0,
+  l2: 0,
+  h3: 0,
+  s3: 0,
+  l3: 0,
+};
+
 const DeployModule = buildModule("DeployModule", (m) => {
   // Deploy helper contracts first
   const randomManager = m.contract("RandomManager");
@@ -138,6 +152,11 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // Deploy Maps contract
   const maps = m.contract("Maps");
 
+  // Deploy AIEncounters: admin-curated single-player AI ship configs +
+  // per-preset-map row/col placements, consumed by SinglePlayerMatch to
+  // build the AI's fleet instead of a hardcoded template.
+  const aiEncounters = m.contract("AIEncounters", [maps]);
+
   // Deploy GameResults contract
   const gameResults = m.contract("GameResults");
 
@@ -169,6 +188,9 @@ const DeployModule = buildModule("DeployModule", (m) => {
     ships,
     lobbies,
     game,
+    aiEncounters,
+    maps,
+    shipAttributes,
   ]);
 
   const tutorialClaim = m.contract("TutorialClaim", [ships, gameResults]);
@@ -218,6 +240,218 @@ const DeployModule = buildModule("DeployModule", (m) => {
   m.call(maps, "setMapEditor", [MAP_EDITOR, true], {
     id: "AllowMapEditor",
   });
+
+  // Reuse the same map-editor wallet as the AI-encounters content admin
+  m.call(aiEncounters, "setEncounterEditor", [MAP_EDITOR, true], {
+    id: "AllowAIEncounterEditor",
+  });
+
+  // --- Starter single-player content ------------------------------------
+  // Neither preset maps nor AIEncounters ship configs are otherwise seeded
+  // anywhere — both are meant to be curated post-deploy by the MAP_EDITOR
+  // wallet via the permission calls just above. Without at least one of
+  // each, a fresh deployment has zero maps and zero AI configs, so
+  // single-player is unusable (setupAIFleet always reverts with
+  // NoAIPlacementsConfigured) until someone manually creates content. This
+  // seeds just enough for single-player to work out of the box: one small
+  // preset map with a scoring tile, and one AI ship config per behavior
+  // archetype placed on it. MAP_EDITOR can still add/replace maps and
+  // configs afterward — this isn't exclusive of that.
+  // createPresetScoringMap rather than the overloaded createPresetMap:
+  // Hardhat Ignition can't disambiguate an overload whose signature
+  // contains a struct/tuple array (its function-name validator rejects the
+  // nested parens before it ever reaches ABI resolution), and there's
+  // nothing to disambiguate here anyway since createPresetScoringMap is the
+  // only function with that name — it creates a map with no blocked tiles,
+  // which is exactly what's wanted.
+  const starterMapCall = m.call(
+    maps,
+    "createPresetScoringMap",
+    [[{ row: 5, col: 8, points: 5, onlyOnce: false }]], // gives Turtle a real objective
+    { id: "CreateStarterSinglePlayerMap" },
+  );
+  // createPresetScoringMap doesn't emit its new id and isn't a view
+  // function, so there's no event/staticCall to read it from — but it's
+  // safe to hardcode as 1 since this is the only map-creation call in this
+  // module and mapCount always starts at 0 on a fresh Maps deployment.
+  const starterMapId = 1n;
+
+  const gruntConfigCall = m.call(
+    aiEncounters,
+    "createAIShipConfig",
+    [
+      "AI Grunt",
+      { mainWeapon: 0, armor: 0, shields: 0, special: 0 }, // Laser, unarmored
+      {
+        serialNumber: 0n,
+        colors: AI_SHIP_COLORS,
+        variant: 1,
+        accuracy: 0,
+        hull: 0,
+        speed: 0,
+      },
+      0, // Archetype.Grunt
+    ],
+    { id: "CreateGruntAIShipConfig" },
+  );
+  const gruntConfigId = m.readEventArgument(
+    gruntConfigCall,
+    "AIShipConfigCreated",
+    "configId",
+    { emitter: aiEncounters, id: "ReadGruntConfigId" },
+  );
+
+  const aggressorConfigCall = m.call(
+    aiEncounters,
+    "createAIShipConfig",
+    [
+      "AI Aggressor",
+      { mainWeapon: 2, armor: 1, shields: 0, special: 0 }, // MissileLauncher, Light armor
+      {
+        serialNumber: 0n,
+        colors: AI_SHIP_COLORS,
+        variant: 1,
+        accuracy: 0,
+        hull: 1,
+        speed: 1,
+      },
+      1, // Archetype.Aggressor
+    ],
+    { id: "CreateAggressorAIShipConfig" },
+  );
+  const aggressorConfigId = m.readEventArgument(
+    aggressorConfigCall,
+    "AIShipConfigCreated",
+    "configId",
+    { emitter: aiEncounters, id: "ReadAggressorConfigId" },
+  );
+
+  const sniperConfigCall = m.call(
+    aiEncounters,
+    "createAIShipConfig",
+    [
+      "AI Sniper",
+      { mainWeapon: 1, armor: 0, shields: 0, special: 0 }, // Railgun (longest range)
+      {
+        serialNumber: 0n,
+        colors: AI_SHIP_COLORS,
+        variant: 1,
+        accuracy: 1,
+        hull: 0,
+        speed: 0,
+      },
+      2, // Archetype.Sniper
+    ],
+    { id: "CreateSniperAIShipConfig" },
+  );
+  const sniperConfigId = m.readEventArgument(
+    sniperConfigCall,
+    "AIShipConfigCreated",
+    "configId",
+    { emitter: aiEncounters, id: "ReadSniperConfigId" },
+  );
+
+  const supportConfigCall = m.call(
+    aiEncounters,
+    "createAIShipConfig",
+    [
+      "AI Support",
+      { mainWeapon: 0, armor: 0, shields: 1, special: 2 }, // Laser, Light shields, RepairDrones
+      {
+        serialNumber: 0n,
+        colors: AI_SHIP_COLORS,
+        variant: 1,
+        accuracy: 0,
+        hull: 0,
+        speed: 0,
+      },
+      3, // Archetype.Support
+    ],
+    { id: "CreateSupportAIShipConfig" },
+  );
+  const supportConfigId = m.readEventArgument(
+    supportConfigCall,
+    "AIShipConfigCreated",
+    "configId",
+    { emitter: aiEncounters, id: "ReadSupportConfigId" },
+  );
+
+  const turtleConfigCall = m.call(
+    aiEncounters,
+    "createAIShipConfig",
+    [
+      "AI Turtle",
+      { mainWeapon: 0, armor: 1, shields: 0, special: 0 }, // Laser, Light armor
+      {
+        serialNumber: 0n,
+        colors: AI_SHIP_COLORS,
+        variant: 1,
+        accuracy: 0,
+        hull: 1,
+        speed: 0,
+      },
+      4, // Archetype.Turtle
+    ],
+    { id: "CreateTurtleAIShipConfig" },
+  );
+  const turtleConfigId = m.readEventArgument(
+    turtleConfigCall,
+    "AIShipConfigCreated",
+    "configId",
+    { emitter: aiEncounters, id: "ReadTurtleConfigId" },
+  );
+
+  const rammerConfigCall = m.call(
+    aiEncounters,
+    "createAIShipConfig",
+    [
+      "AI Rammer",
+      { mainWeapon: 3, armor: 3, shields: 0, special: 0 }, // PlasmaCannon, Heavy armor
+      {
+        serialNumber: 0n,
+        colors: AI_SHIP_COLORS,
+        variant: 1, // Rammer only attempts Ram when variant == 1 (faction 1)
+        accuracy: 0,
+        hull: 1,
+        speed: 1,
+      },
+      5, // Archetype.Rammer
+    ],
+    { id: "CreateRammerAIShipConfig" },
+  );
+  const rammerConfigId = m.readEventArgument(
+    rammerConfigCall,
+    "AIShipConfigCreated",
+    "configId",
+    { emitter: aiEncounters, id: "ReadRammerConfigId" },
+  );
+
+  // Row-major placement across the joiner's allowed columns (13-16),
+  // matching AIEncounters' placement constraints.
+  m.call(
+    aiEncounters,
+    "setMapPlacements",
+    [
+      starterMapId,
+      [
+        { row: 0, col: 13 },
+        { row: 0, col: 14 },
+        { row: 0, col: 15 },
+        { row: 0, col: 16 },
+        { row: 1, col: 13 },
+        { row: 1, col: 14 },
+      ],
+      [
+        gruntConfigId,
+        aggressorConfigId,
+        sniperConfigId,
+        supportConfigId,
+        turtleConfigId,
+        rammerConfigId,
+      ],
+    ],
+    { id: "PlaceStarterAIFleet", after: [starterMapCall] },
+  );
 
   // Set PvPMatch address in Lobbies contract
   m.call(lobbies, "setPvpMatchAddress", [pvpMatch]);
@@ -410,6 +644,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
     gameBlobRegistry,
     specialEffectsLib,
     ramResolver,
+    aiEncounters,
   };
 });
 

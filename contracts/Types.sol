@@ -49,6 +49,18 @@ enum Special {
     future4
 }
 
+// Single-player AI behavior tag, assigned per AIShipConfig (AIEncounters.sol)
+// and looked up per minted AI ship (SinglePlayerMatch.shipArchetype) to pick
+// which ordered priority-list of rules takeAITurn applies to that ship.
+enum Archetype {
+    Grunt, // shoot what's in range, else close distance
+    Aggressor, // prioritize kills over safety, closes distance hard
+    Sniper, // shoots at range, retreats rather than engaging adjacent
+    Support, // heals the weakest ally in range (RepairDrones), hangs back
+    Turtle, // seeks/holds scoring tiles, fights only opportunistically
+    Rammer // faction-1 only: hunts 0-HP enemies to Ram, else shoots
+}
+
 // Declarative outcome of a resolver-backed faction ability (see
 // IFactionAbilityResolver), applied by Game.sol without re-validating
 // anything — the resolver owns all pre-dispatch checks for its ability.
