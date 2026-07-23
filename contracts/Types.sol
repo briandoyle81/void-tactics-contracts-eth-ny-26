@@ -376,6 +376,7 @@ struct PlayerLobbyState {
     bool hasActiveLobby;
     uint kickCount;
     uint lastKickTime;
+    uint activeAILobbiesCount; // Unresolved (not yet InGame) vs-AI lobbies
 }
 
 enum ActionType {

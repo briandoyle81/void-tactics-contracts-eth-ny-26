@@ -73,6 +73,7 @@ describe("Lobbies", function () {
       randomManager: deployed.randomManager,
       universalCredits: deployed.universalCredits,
       shipPurchaser: deployed.shipPurchaser,
+      singlePlayerMatch: deployed.singlePlayerMatch,
       owner,
       creator,
       joiner,
@@ -1778,7 +1779,7 @@ describe("Lobbies", function () {
         universalCredits.address,
       ]);
 
-      // Give creator some UTC by purchasing directly (tier 1 = 9.99 UTC, enough for 1 UTC reservation)
+      // Give creator some UTC by purchasing directly (tier 1 = 1.1 UTC, enough for 1 UTC reservation)
       await shipPurchaser.write.purchaseUTCWithFlow(
         [creator.account.address, 1n],
         { value: parseEther("9.99"), account: creator.account }
@@ -2111,6 +2112,162 @@ describe("Lobbies", function () {
           joiner.account.address,
         ])
       ).to.be.rejected;
+    });
+  });
+
+  describe("AI Lobby Reservation Fee", function () {
+    it("should not charge a UTC fee for the first vs-AI lobby reservation", async function () {
+      const { creatorLobbies, creator, universalCredits, singlePlayerMatch } =
+        await loadFixture(deployLobbiesFixture);
+
+      const initialBalance = await universalCredits.read.balanceOf([
+        creator.account.address,
+      ]);
+      expect(initialBalance).to.equal(0n);
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        singlePlayerMatch.address,
+      ]);
+
+      const finalBalance = await universalCredits.read.balanceOf([
+        creator.account.address,
+      ]);
+      expect(finalBalance).to.equal(0n);
+
+      const playerState = (await creatorLobbies.read.getPlayerState([
+        creator.account.address,
+      ])) as unknown as PlayerLobbyState;
+      expect(playerState.activeAILobbiesCount).to.equal(1n);
+    });
+
+    it("should revert a second concurrent vs-AI lobby reservation without UTC", async function () {
+      const { creatorLobbies, singlePlayerMatch } = await loadFixture(
+        deployLobbiesFixture
+      );
+
+      // First vs-AI lobby is free and left unresolved (still Open)
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        singlePlayerMatch.address,
+      ]);
+
+      // A second concurrent vs-AI reservation is charged like a human
+      // reservation, so it reverts without UTC/allowance
+      await expect(
+        creatorLobbies.write.createLobby([
+          1000n,
+          300n,
+          true,
+          0n,
+          100n,
+          singlePlayerMatch.address,
+        ])
+      ).to.be.rejected;
+    });
+
+    it("should charge exactly 1 UTC for a second concurrent vs-AI lobby reservation", async function () {
+      const {
+        creatorLobbies,
+        creator,
+        universalCredits,
+        singlePlayerMatch,
+        shipPurchaser,
+        lobbies,
+      } = await loadFixture(deployLobbiesFixture);
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        singlePlayerMatch.address,
+      ]);
+
+      // Fund with tier 4 (6 UTC) and approve the reservation fee
+      await shipPurchaser.write.purchaseUTCWithFlow(
+        [creator.account.address, 4n],
+        { value: parseEther("49.99"), account: creator.account }
+      );
+      await universalCredits.write.approve(
+        [lobbies.address, parseEther("1")],
+        { account: creator.account }
+      );
+
+      const balanceBeforeSecond = await universalCredits.read.balanceOf([
+        creator.account.address,
+      ]);
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        singlePlayerMatch.address,
+      ]);
+
+      const balanceAfterSecond = await universalCredits.read.balanceOf([
+        creator.account.address,
+      ]);
+      expect(balanceBeforeSecond - balanceAfterSecond).to.equal(
+        parseEther("1")
+      );
+
+      const playerState = (await creatorLobbies.read.getPlayerState([
+        creator.account.address,
+      ])) as unknown as PlayerLobbyState;
+      expect(playerState.activeAILobbiesCount).to.equal(2n);
+    });
+
+    it("should allow a free vs-AI lobby again after leaving the unresolved one", async function () {
+      const { creatorLobbies, creator, universalCredits, singlePlayerMatch } =
+        await loadFixture(deployLobbiesFixture);
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        singlePlayerMatch.address,
+      ]);
+
+      await creatorLobbies.write.leaveLobby([1n]);
+
+      let playerState = (await creatorLobbies.read.getPlayerState([
+        creator.account.address,
+      ])) as unknown as PlayerLobbyState;
+      expect(playerState.activeAILobbiesCount).to.equal(0n);
+
+      // Should be free again, even with zero UTC balance
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        singlePlayerMatch.address,
+      ]);
+
+      const balance = await universalCredits.read.balanceOf([
+        creator.account.address,
+      ]);
+      expect(balance).to.equal(0n);
+
+      playerState = (await creatorLobbies.read.getPlayerState([
+        creator.account.address,
+      ])) as unknown as PlayerLobbyState;
+      expect(playerState.activeAILobbiesCount).to.equal(1n);
     });
   });
 });

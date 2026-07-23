@@ -233,6 +233,14 @@ describe("SinglePlayerMatch", function () {
     lobby = (await lobbies.read.getLobby([lobbyId])) as any;
     expect(lobby.players.joinerFleetId).to.not.equal(0n);
 
+    // Both fleets are now set, so the lobby reached InGame in this same tx —
+    // the human's unresolved-AI-lobby counter should be back to 0, freeing
+    // up another no-fee vs-AI reservation.
+    const humanState = (await lobbies.read.getPlayerState([
+      human.account.address,
+    ])) as any;
+    expect(humanState.activeAILobbiesCount).to.equal(0n);
+
     const gameId = lobbyId;
     let gameData = (await game.read.getGame([gameId])) as GameDataView;
     expect(gameData.metadata.ended).to.equal(false);

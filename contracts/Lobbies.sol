@@ -185,6 +185,13 @@ contract Lobbies is Ownable, ReentrancyGuard {
         PlayerLobbyState storage state = playerStates[msg.sender];
         if (state.activeLobbyId != _lobbyId) revert NotInLobby();
 
+        // Was this an unresolved AI reservation made by the leaving creator?
+        // Checked before any mutation below: reservedJoiner holds the AI
+        // orchestrator address before it accepts, joiner holds it after.
+        bool leavingAIReservation = msg.sender == lobby.basic.creator &&
+            (isSinglePlayerOrchestrator[lobby.players.reservedJoiner] ||
+                isSinglePlayerOrchestrator[lobby.players.joiner]);
+
         // If player is creator, delete the lobby
         if (msg.sender == lobby.basic.creator) {
             // Clear creator's fleet if they have one
@@ -240,6 +247,9 @@ contract Lobbies is Ownable, ReentrancyGuard {
         if (state.activeLobbiesCount > 0) {
             state.activeLobbiesCount--;
         }
+        if (leavingAIReservation && state.activeAILobbiesCount > 0) {
+            state.activeAILobbiesCount--;
+        }
     }
 
     function createLobby(
@@ -270,17 +280,27 @@ contract Lobbies is Ownable, ReentrancyGuard {
             if (block.timestamp < timeoutEnd) revert PlayerInTimeout();
         }
 
-        // If reserving for a specific player, charge 1 UTC (no ETH involved)
+        // If reserving for a specific player, charge 1 UTC (no ETH involved).
+        // Exception: reserving for an AI opponent is free for a player's
+        // first unresolved AI lobby; a UTC fee applies from the second
+        // concurrent (not yet InGame) AI lobby onward, same as a human
+        // reservation.
+        bool isAIReservation = isSinglePlayerOrchestrator[_reservedJoiner];
         if (_reservedJoiner != address(0)) {
             if (msg.value != 0) revert InsufficientFee();
-            if (address(universalCredits) == address(0)) revert UTCTransferFailed();
-            uint reservationFee = 1 ether; // 1 UTC
-            uint balance = universalCredits.balanceOf(msg.sender);
-            if (balance < reservationFee) revert InsufficientUTC();
-            require(
-                universalCredits.transferFrom(msg.sender, address(this), reservationFee),
-                "UTC transfer failed"
-            );
+            if (!isAIReservation || state.activeAILobbiesCount > 0) {
+                if (address(universalCredits) == address(0)) revert UTCTransferFailed();
+                uint reservationFee = 1 ether; // 1 UTC
+                uint balance = universalCredits.balanceOf(msg.sender);
+                if (balance < reservationFee) revert InsufficientUTC();
+                require(
+                    universalCredits.transferFrom(msg.sender, address(this), reservationFee),
+                    "UTC transfer failed"
+                );
+            }
+            if (isAIReservation) {
+                state.activeAILobbiesCount++;
+            }
         } else {
             // Check if player needs to pay for additional lobbies (FLOW payment)
             if (state.activeLobbiesCount >= freeGamesPerAddress) {
@@ -549,6 +569,12 @@ contract Lobbies is Ownable, ReentrancyGuard {
             ];
             if (creatorState.activeLobbiesCount > 0) {
                 creatorState.activeLobbiesCount--;
+            }
+            if (
+                isSinglePlayerOrchestrator[lobby.players.joiner] &&
+                creatorState.activeAILobbiesCount > 0
+            ) {
+                creatorState.activeAILobbiesCount--;
             }
             if (joinerState.activeLobbiesCount > 0) {
                 joinerState.activeLobbiesCount--;

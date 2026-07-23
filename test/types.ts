@@ -136,6 +136,7 @@ export interface PlayerLobbyState {
   hasActiveLobby: boolean;
   kickCount: bigint;
   lastKickTime: bigint;
+  activeAILobbiesCount: bigint;
 }
 
 export interface Attributes {
@@ -221,6 +222,7 @@ export type PlayerLobbyStateTuple = [
   boolean, // hasActiveLobby
   bigint, // kickCount
   bigint, // lastKickTime
+  bigint, // activeAILobbiesCount
 ];
 
 export type GameDataTuple = [
@@ -284,6 +286,7 @@ export function tupleToPlayerLobbyState(
     hasActiveLobby: tuple[2],
     kickCount: tuple[3],
     lastKickTime: tuple[4],
+    activeAILobbiesCount: tuple[5],
   };
 }
 

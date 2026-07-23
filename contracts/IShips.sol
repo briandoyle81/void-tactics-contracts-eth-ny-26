@@ -22,4 +22,6 @@ interface IShips {
     ) external;
 
     function maxVariant() external view returns (uint16);
+
+    function recycleReward() external view returns (uint);
 }

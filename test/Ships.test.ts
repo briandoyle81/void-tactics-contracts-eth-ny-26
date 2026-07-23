@@ -2426,7 +2426,7 @@ describe("Ships", function () {
   });
 
   describe("Direct UTC Purchase with Flow", function () {
-    it("Should purchase UTC for tier 0 (4.99 UC for 4.99 FLOW)", async function () {
+    it("Should purchase UTC for tier 0 (0.5 UC for 4.99 FLOW, matching 5 ships recycled)", async function () {
       const { shipPurchaser, universalCredits, user1, publicClient } =
         await loadFixture(deployShipsFixture);
 
@@ -2449,15 +2449,15 @@ describe("Ships", function () {
         address: shipPurchaser.address,
       });
 
-      // Check that 4.99 UC was minted (1:1 with FLOW price)
-      expect(finalBalance - initialBalance).to.equal(parseEther("4.99"));
+      // Check that 0.5 UC was minted (5 ships x 0.1 recycle reward)
+      expect(finalBalance - initialBalance).to.equal(parseEther("0.5"));
       // Check that FLOW was received by contract
       expect(finalContractBalance - initialContractBalance).to.equal(
         parseEther("4.99"),
       );
     });
 
-    it("Should purchase UTC for tier 1 (9.99 UC for 9.99 FLOW)", async function () {
+    it("Should purchase UTC for tier 1 (1.1 UC for 9.99 FLOW, matching 11 ships recycled)", async function () {
       const { shipPurchaser, universalCredits, user1 } =
         await loadFixture(deployShipsFixture);
 
@@ -2474,11 +2474,11 @@ describe("Ships", function () {
         user1.account.address,
       ]);
 
-      // Check that 9.99 UC was minted (1:1 with FLOW price)
-      expect(finalBalance - initialBalance).to.equal(parseEther("9.99"));
+      // Check that 1.1 UC was minted (11 ships x 0.1 recycle reward)
+      expect(finalBalance - initialBalance).to.equal(parseEther("1.1"));
     });
 
-    it("Should purchase UTC for tier 2 (19.99 UC for 19.99 FLOW)", async function () {
+    it("Should purchase UTC for tier 2 (2.2 UC for 19.99 FLOW, matching 22 ships recycled)", async function () {
       const { shipPurchaser, universalCredits, user1 } =
         await loadFixture(deployShipsFixture);
 
@@ -2495,11 +2495,11 @@ describe("Ships", function () {
         user1.account.address,
       ]);
 
-      // Check that 19.99 UC was minted (1:1 with FLOW price)
-      expect(finalBalance - initialBalance).to.equal(parseEther("19.99"));
+      // Check that 2.2 UC was minted (22 ships x 0.1 recycle reward)
+      expect(finalBalance - initialBalance).to.equal(parseEther("2.2"));
     });
 
-    it("Should purchase UTC for tier 3 (34.99 UC for 34.99 FLOW)", async function () {
+    it("Should purchase UTC for tier 3 (4 UC for 34.99 FLOW, matching 40 ships recycled)", async function () {
       const { shipPurchaser, universalCredits, user1 } =
         await loadFixture(deployShipsFixture);
 
@@ -2516,11 +2516,11 @@ describe("Ships", function () {
         user1.account.address,
       ]);
 
-      // Check that 34.99 UC was minted (1:1 with FLOW price)
-      expect(finalBalance - initialBalance).to.equal(parseEther("34.99"));
+      // Check that 4 UC was minted (40 ships x 0.1 recycle reward)
+      expect(finalBalance - initialBalance).to.equal(parseEther("4"));
     });
 
-    it("Should purchase UTC for tier 4 (49.99 UC for 49.99 FLOW)", async function () {
+    it("Should purchase UTC for tier 4 (6 UC for 49.99 FLOW, matching 60 ships recycled)", async function () {
       const { shipPurchaser, universalCredits, user1 } =
         await loadFixture(deployShipsFixture);
 
@@ -2537,11 +2537,11 @@ describe("Ships", function () {
         user1.account.address,
       ]);
 
-      // Check that 49.99 UC was minted (1:1 with FLOW price)
-      expect(finalBalance - initialBalance).to.equal(parseEther("49.99"));
+      // Check that 6 UC was minted (60 ships x 0.1 recycle reward)
+      expect(finalBalance - initialBalance).to.equal(parseEther("6"));
     });
 
-    it("Should compare direct UTC purchase vs ship purchase + recycle (tier 4)", async function () {
+    it("Should mint the same UTC as ship purchase + recycle (tier 4)", async function () {
       const {
         ships,
         shipPurchaser,
@@ -2689,10 +2689,11 @@ describe("Ships", function () {
       ]);
       const utcReceivedRecycle = finalBalanceRecycle - initialBalanceRecycle;
 
-      // Direct purchase gives 1:1 UTC (49.99 UTC for 49.99 FLOW)
-      expect(utcReceivedDirect).to.equal(parseEther("49.99"));
-      // Recycle gives 6 UTC (60 ships × 0.1 UC recycle reward)
+      // Direct purchase mints the same UTC a player would net from buying +
+      // recycling tier 4's 60 ships (60 x 0.1 UC recycle reward)
+      expect(utcReceivedDirect).to.equal(parseEther("6"));
       expect(utcReceivedRecycle).to.equal(parseEther("6"));
+      expect(utcReceivedDirect).to.equal(utcReceivedRecycle);
 
       // Direct purchase gives owner full FLOW (49.99 FLOW)
       expect(flowReceivedDirect).to.equal(parseEther("49.99"));
@@ -2801,8 +2802,8 @@ describe("Ships", function () {
         user1.account.address,
       ]);
 
-      // Should have 9.98 UC total (4.99 + 4.99)
-      expect(finalBalance - initialBalance).to.equal(parseEther("9.98"));
+      // Should have 1 UC total (0.5 + 0.5, tier 0's 5 ships x 0.1 recycle reward, twice)
+      expect(finalBalance - initialBalance).to.equal(parseEther("1"));
     });
 
     it("Should mint UTC to correct address", async function () {
@@ -2823,9 +2824,9 @@ describe("Ships", function () {
         user2.account.address,
       ]);
 
-      // User2 should receive the UTC (49.99 UC for tier 4, 1:1 with FLOW price)
+      // User2 should receive the UTC (6 UC for tier 4, 60 ships x 0.1 recycle reward)
       expect(finalBalanceUser2 - initialBalanceUser2).to.equal(
-        parseEther("49.99"),
+        parseEther("6"),
       );
     });
   });
