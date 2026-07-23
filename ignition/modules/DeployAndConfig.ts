@@ -4,6 +4,15 @@
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
 import { parseEther } from "viem";
 
+// Set to true only for a real production deploy. Every test fixture deploys
+// this same module via hre.ignition.deploy(DeployModule), and steps gated
+// behind this flag (e.g. transferring contract ownership away from the
+// deployer) would break owner-gated test setup if they ran unconditionally
+// — this is a plain build-time boolean (not an Ignition parameter) so gated
+// m.call(...) invocations are simply never added to the deployment graph
+// when false, rather than being skipped at execution time.
+const PRODUCTION = false;
+
 // Address allowed to mint ships from the Firebase Flow backend, with the same
 // rights as ShipPurchaser.
 const FIREBASE_FLOW_MINTER = "0x7f9dc2D68FF842EC79DA722B68E3ca7e5aa31CCb";
@@ -111,20 +120,23 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // Deploy MetadataRenderer with ImageRenderer
   const metadataRenderer = m.contract("RenderMetadata", [imageRenderer]);
 
-  // Mock for local/tests — Ignition + viem require a contract future, not a string address.
-  const shipNames = m.contract("MockOnchainRandomShipNames");
+  let shipNames: any;
+  if (!PRODUCTION) {
+    // Mock for local/tests — Ignition + viem require a contract future, not a string address.
+    shipNames = m.contract("MockOnchainRandomShipNames");
+  } else {
+    // For Flow testnet use
+    // shipNames = "0x9E433A07D283d56E8243EA25b7358521b1922df5";
 
-  // For Flow testnet use
-  // const shipNames = "0x9E433A07D283d56E8243EA25b7358521b1922df5";
+    // For Ronin Saigon testnet use
+    // shipNames = "0x3866a81241Ec61414a3A7A99486f6652fFd0743C";
 
-  // For Ronin Saigon testnet use
-  // const shipNames = "0x3866a81241Ec61414a3A7A99486f6652fFd0743C";
+    // For XAI testnet use
+    // shipNames = "0xe7266c681ce3F8CD8853141139574F2CA70AA165";
 
-  // For XAI testnet use
-  // const shipNames = "0xe7266c681ce3F8CD8853141139574F2CA70AA165";
-
-  // For Base Sepolia testnet use
-  // const shipNames = "0x2b6C2e73D7D8B9dd49aF848B7A19FF003ED0d779";
+    // For Base Sepolia testnet use
+    shipNames = "0x2b6C2e73D7D8B9dd49aF848B7A19FF003ED0d779";
+  }
 
   // Deploy GenerateNewShip with ship names
   const generateNewShip = m.contract("GenerateNewShip", [shipNames]);
@@ -202,7 +214,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
   const ramResolver = m.contract("RamResolver", [game]);
 
   // Set all config values in a single call
-  m.call(ships, "setConfig", [
+  const setShipsConfigCall = m.call(ships, "setConfig", [
     game, // gameAddress
     lobbies, // lobbyAddress
     fleets, // fleetsAddress
@@ -215,36 +227,57 @@ const DeployModule = buildModule("DeployModule", (m) => {
 
   // Set all addresses in Game contract (Fleets/Maps/ShipAttributes stay core
   // dependencies; Lobbies/GameResults moved to PvPMatch)
-  m.call(game, "setAddresses", [maps, fleets, shipAttributes]);
+  const setGameAddressesCall = m.call(game, "setAddresses", [
+    maps,
+    fleets,
+    shipAttributes,
+  ]);
 
   // Authorize PvPMatch and SinglePlayerMatch to start/force-end sessions on
   // core Game.sol
-  m.call(game, "setIsAllowedToStartGames", [pvpMatch, true], {
-    id: "AllowPvPMatchToStartGames",
-  });
-  m.call(game, "setIsAllowedToStartGames", [singlePlayerMatch, true], {
-    id: "AllowSinglePlayerMatchToStartGames",
-  });
+  const allowPvPMatchToStartGamesCall = m.call(
+    game,
+    "setIsAllowedToStartGames",
+    [pvpMatch, true],
+    { id: "AllowPvPMatchToStartGames" },
+  );
+  const allowSinglePlayerMatchToStartGamesCall = m.call(
+    game,
+    "setIsAllowedToStartGames",
+    [singlePlayerMatch, true],
+    { id: "AllowSinglePlayerMatchToStartGames" },
+  );
 
   // Wire RamResolver in as the faction ability resolver for faction 1
-  m.call(game, "setFactionAbilityResolver", [1, ramResolver]);
+  const setFactionAbilityResolverCall = m.call(
+    game,
+    "setFactionAbilityResolver",
+    [1, ramResolver],
+  );
 
   // Set PvPMatch contract address in GameResults contract (PvPMatch now
   // records PvP results, not core Game.sol)
-  m.call(gameResults, "setGameContract", [pvpMatch]);
+  const setGameResultsGameContractCall = m.call(
+    gameResults,
+    "setGameContract",
+    [pvpMatch],
+  );
 
   // Set Game address in Maps contract
-  m.call(maps, "setGameAddress", [game]);
+  const setMapsGameAddressCall = m.call(maps, "setGameAddress", [game]);
 
   // Allow the designated map editor wallet to create/edit preset maps
-  m.call(maps, "setMapEditor", [MAP_EDITOR, true], {
+  const allowMapEditorCall = m.call(maps, "setMapEditor", [MAP_EDITOR, true], {
     id: "AllowMapEditor",
   });
 
   // Reuse the same map-editor wallet as the AI-encounters content admin
-  m.call(aiEncounters, "setEncounterEditor", [MAP_EDITOR, true], {
-    id: "AllowAIEncounterEditor",
-  });
+  const allowAIEncounterEditorCall = m.call(
+    aiEncounters,
+    "setEncounterEditor",
+    [MAP_EDITOR, true],
+    { id: "AllowAIEncounterEditor" },
+  );
 
   // --- Starter single-player content ------------------------------------
   // Neither preset maps nor AIEncounters ship configs are otherwise seeded
@@ -428,7 +461,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
 
   // Row-major placement across the joiner's allowed columns (13-16),
   // matching AIEncounters' placement constraints.
-  m.call(
+  const placeStarterAIFleetCall = m.call(
     aiEncounters,
     "setMapPlacements",
     [
@@ -454,78 +487,131 @@ const DeployModule = buildModule("DeployModule", (m) => {
   );
 
   // Set PvPMatch address in Lobbies contract
-  m.call(lobbies, "setPvpMatchAddress", [pvpMatch]);
+  const setLobbiesPvpMatchAddressCall = m.call(lobbies, "setPvpMatchAddress", [
+    pvpMatch,
+  ]);
 
   // Set Lobbies address in PvPMatch contract
-  m.call(pvpMatch, "setLobbiesAddress", [lobbies]);
+  const setPvpMatchLobbiesAddressCall = m.call(pvpMatch, "setLobbiesAddress", [
+    lobbies,
+  ]);
 
   // Set SinglePlayerMatch address in Lobbies contract, and recognize it as a
   // single-player orchestrator (createFleet dispatches to it instead of
   // PvPMatch when a lobby's joiner is this address)
-  m.call(lobbies, "setSinglePlayerMatchAddress", [singlePlayerMatch]);
-  m.call(lobbies, "setIsSinglePlayerOrchestrator", [singlePlayerMatch, true], {
-    id: "RecognizeSinglePlayerMatch",
-  });
+  const setLobbiesSinglePlayerMatchAddressCall = m.call(
+    lobbies,
+    "setSinglePlayerMatchAddress",
+    [singlePlayerMatch],
+  );
+  const recognizeSinglePlayerMatchCall = m.call(
+    lobbies,
+    "setIsSinglePlayerOrchestrator",
+    [singlePlayerMatch, true],
+    { id: "RecognizeSinglePlayerMatch" },
+  );
 
   // Allow SinglePlayerMatch to mint/construct its own fleet
-  m.call(ships, "setIsAllowedToCreateShips", [singlePlayerMatch, true], {
-    id: "AllowSinglePlayerMatchToCreateShips",
-  });
+  const allowSinglePlayerMatchToCreateShipsCall = m.call(
+    ships,
+    "setIsAllowedToCreateShips",
+    [singlePlayerMatch, true],
+    { id: "AllowSinglePlayerMatchToCreateShips" },
+  );
 
   // Set Fleets address in Lobbies contract
-  m.call(lobbies, "setFleetsAddress", [fleets]);
+  const setLobbiesFleetsAddressCall = m.call(lobbies, "setFleetsAddress", [
+    fleets,
+  ]);
 
   // Set Maps address in Lobbies contract
-  m.call(lobbies, "setMapsAddress", [maps]);
+  const setLobbiesMapsAddressCall = m.call(lobbies, "setMapsAddress", [maps]);
 
   // Set UniversalCredits address in Lobbies contract
-  m.call(lobbies, "setUniversalCreditsAddress", [universalCredits]);
+  const setLobbiesUniversalCreditsAddressCall = m.call(
+    lobbies,
+    "setUniversalCreditsAddress",
+    [universalCredits],
+  );
 
   // Set Lobbies address in Fleets contract
-  m.call(fleets, "setLobbiesAddress", [lobbies]);
+  const setFleetsLobbiesAddressCall = m.call(fleets, "setLobbiesAddress", [
+    lobbies,
+  ]);
 
   // Set Game address in Fleets contract
-  m.call(fleets, "setGameAddress", [game]);
+  const setFleetsGameAddressCall = m.call(fleets, "setGameAddress", [game]);
 
   // Set ShipAttributes address in Fleets contract
-  m.call(fleets, "setShipAttributes", [shipAttributes]);
+  const setFleetsShipAttributesCall = m.call(fleets, "setShipAttributes", [
+    shipAttributes,
+  ]);
 
   // Allow ShipPurchaser to create ships
-  m.call(ships, "setIsAllowedToCreateShips", [shipPurchaser, true]);
+  const allowShipPurchaserToCreateShipsCall = m.call(
+    ships,
+    "setIsAllowedToCreateShips",
+    [shipPurchaser, true],
+  );
 
   // Allow DroneYard to modify ships
-  m.call(ships, "setIsAllowedToCreateShips", [droneYard, true], {
-    id: "AllowDroneYardToModifyShips",
-  });
+  const allowDroneYardToModifyShipsCall = m.call(
+    ships,
+    "setIsAllowedToCreateShips",
+    [droneYard, true],
+    { id: "AllowDroneYardToModifyShips" },
+  );
 
-  m.call(ships, "setIsAllowedToCreateShips", [tutorialClaim, true], {
-    id: "AllowTutorialClaimToCreateShips",
-  });
+  const allowTutorialClaimToCreateShipsCall = m.call(
+    ships,
+    "setIsAllowedToCreateShips",
+    [tutorialClaim, true],
+    { id: "AllowTutorialClaimToCreateShips" },
+  );
 
   // Allow the Firebase Flow backend minter to create ships (same as ShipPurchaser)
-  m.call(ships, "setIsAllowedToCreateShips", [FIREBASE_FLOW_MINTER, true], {
-    id: "AllowFirebaseFlowMinterToCreateShips",
-  });
+  const allowFirebaseFlowMinterToCreateShipsCall = m.call(
+    ships,
+    "setIsAllowedToCreateShips",
+    [FIREBASE_FLOW_MINTER, true],
+    { id: "AllowFirebaseFlowMinterToCreateShips" },
+  );
 
-  m.call(gameResults, "setTutorialClaimContract", [tutorialClaim], {
-    id: "SetTutorialClaimOnGameResults",
-  });
+  const setTutorialClaimOnGameResultsCall = m.call(
+    gameResults,
+    "setTutorialClaimContract",
+    [tutorialClaim],
+    { id: "SetTutorialClaimOnGameResults" },
+  );
 
   // Tutorial ships use trait variants 1–3; default maxVariant is 1
-  m.call(ships, "setMaxVariant", [3], {
-    id: "SetMaxVariantForTutorialShips",
-  });
+  const setMaxVariantForTutorialShipsCall = m.call(
+    ships,
+    "setMaxVariant",
+    [3],
+    {
+      id: "SetMaxVariantForTutorialShips",
+    },
+  );
 
   // Enable minting for UniversalCredits
-  m.call(universalCredits, "setMintIsActive", [true]);
+  const setMintIsActiveCall = m.call(universalCredits, "setMintIsActive", [
+    true,
+  ]);
 
   // Allow ShipPurchaser and Ships to mint UniversalCredits
-  m.call(universalCredits, "setAuthorizedToMint", [shipPurchaser, true], {
-    id: "AuthorizeShipPurchaserToMint",
-  });
-  m.call(universalCredits, "setAuthorizedToMint", [ships, true], {
-    id: "AuthorizeShipsToMint",
-  });
+  const authorizeShipPurchaserToMintCall = m.call(
+    universalCredits,
+    "setAuthorizedToMint",
+    [shipPurchaser, true],
+    { id: "AuthorizeShipPurchaserToMint" },
+  );
+  const authorizeShipsToMintCall = m.call(
+    universalCredits,
+    "setAuthorizedToMint",
+    [ships, true],
+    { id: "AuthorizeShipsToMint" },
+  );
 
   // WARNING: This works for deploying but breaks the tests for some reason.
   // Purchase tier 4 for the deployer
@@ -575,9 +661,14 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // `shipNames` above):
   //   - Local / tests: deploy the mock (no real proofs available).
   //   - Real network:  comment the mock, uncomment the router address so the
+  let worldId: any;
   //                     Tournament is deployed pointing at the real router.
   // Base Sepolia (chain 84532) testnet WorldIDRouter, verified against World ID docs.
-  const worldId = m.contract("MockWorldID");
+  if (!PRODUCTION) {
+    worldId = m.contract("MockWorldID");
+  } else {
+    worldId = "0x42FF98C4E85212a5D31358ACbFe76a621b50fC02";
+  }
   // const worldId = "0x42FF98C4E85212a5D31358ACbFe76a621b50fC02";
 
   const tournament = m.contract("Tournament", [
@@ -594,6 +685,132 @@ const DeployModule = buildModule("DeployModule", (m) => {
     gameResults,
     FIREBASE_FLOW_MINTER,
   ]);
+
+  if (PRODUCTION) {
+    // --- Ownership handover ------------------------------------------------
+    // Every Ownable contract above defaults to Ownable(msg.sender) — the
+    // deployer. As the very last step of a real deploy, transfer owner() on
+    // all of them to the designated production wallet (reusing MAP_EDITOR's
+    // address). Ignition does not guarantee execution order between
+    // independent calls on the same contract — only real dependency edges do
+    // (see PlaceStarterAIFleet's `after` above) — so each transferOwnership
+    // call explicitly depends on every owner-gated call already made against
+    // that contract, guaranteeing it lands after all of them instead of
+    // racing in the same batch.
+    //
+    // Note: RamResolver has its own hand-rolled owner (not OpenZeppelin's
+    // Ownable) and has no setOwner/transferOwnership function at all, so it
+    // can't be included here — its ownership isn't transferable in the
+    // contract as written.
+    m.call(ships, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferShipsOwnership",
+      after: [
+        setShipsConfigCall,
+        allowSinglePlayerMatchToCreateShipsCall,
+        allowShipPurchaserToCreateShipsCall,
+        allowDroneYardToModifyShipsCall,
+        allowTutorialClaimToCreateShipsCall,
+        allowFirebaseFlowMinterToCreateShipsCall,
+        setMaxVariantForTutorialShipsCall,
+      ],
+    });
+
+    m.call(shipAttributes, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferShipAttributesOwnership",
+    });
+
+    m.call(shipPurchaser, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferShipPurchaserOwnership",
+    });
+
+    m.call(droneYard, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferDroneYardOwnership",
+    });
+
+    m.call(maps, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferMapsOwnership",
+      after: [setMapsGameAddressCall, allowMapEditorCall, starterMapCall],
+    });
+
+    m.call(aiEncounters, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferAIEncountersOwnership",
+      after: [
+        allowAIEncounterEditorCall,
+        gruntConfigCall,
+        aggressorConfigCall,
+        sniperConfigCall,
+        supportConfigCall,
+        turtleConfigCall,
+        rammerConfigCall,
+        placeStarterAIFleetCall,
+      ],
+    });
+
+    m.call(gameResults, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferGameResultsOwnership",
+      after: [
+        setGameResultsGameContractCall,
+        setTutorialClaimOnGameResultsCall,
+      ],
+    });
+
+    m.call(game, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferGameOwnership",
+      after: [
+        setGameAddressesCall,
+        allowPvPMatchToStartGamesCall,
+        allowSinglePlayerMatchToStartGamesCall,
+        setFactionAbilityResolverCall,
+      ],
+    });
+
+    m.call(fleets, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferFleetsOwnership",
+      after: [
+        setFleetsLobbiesAddressCall,
+        setFleetsGameAddressCall,
+        setFleetsShipAttributesCall,
+      ],
+    });
+
+    m.call(lobbies, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferLobbiesOwnership",
+      after: [
+        setLobbiesPvpMatchAddressCall,
+        setLobbiesSinglePlayerMatchAddressCall,
+        recognizeSinglePlayerMatchCall,
+        setLobbiesFleetsAddressCall,
+        setLobbiesMapsAddressCall,
+        setLobbiesUniversalCreditsAddressCall,
+      ],
+    });
+
+    m.call(pvpMatch, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferPvPMatchOwnership",
+      after: [setPvpMatchLobbiesAddressCall],
+    });
+
+    m.call(singlePlayerMatch, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferSinglePlayerMatchOwnership",
+    });
+
+    m.call(universalCredits, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferUniversalCreditsOwnership",
+      after: [
+        setMintIsActiveCall,
+        authorizeShipPurchaserToMintCall,
+        authorizeShipsToMintCall,
+      ],
+    });
+
+    m.call(tournament, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferTournamentOwnership",
+    });
+
+    m.call(gameBlobRegistry, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferGameBlobRegistryOwnership",
+    });
+  }
 
   return {
     randomManager,
