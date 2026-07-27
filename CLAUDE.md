@@ -10,6 +10,12 @@ You are **never** allowed to turn on or enable "ignore contract size" (or equiva
 
 This applies to any config that would ignore or suppress contract size warnings/errors (e.g. `ignoreContractSizeLimit`, `ignoreSizeLimit`, or similar).
 
+## Deployment Safety
+
+- **Never delete folders/directories.** If a directory needs to be removed, tell the user and let them do it themselves.
+- To validate contract or deploy-script changes, use the test suite (`npx hardhat test`) and the ephemeral in-memory deploys it performs via `loadFixture`/`hre.ignition.deploy(...)`.
+- **Never run `npx hardhat ignition deploy` (or equivalent) against any network other than the local ephemeral `hardhat` network.** Do not deploy to `base-sepolia` or any other real/live network unless the user explicitly directs you to do that specific deploy.
+
 ## Rules Sync
 
 Rules are maintained in two places — keep them in sync:

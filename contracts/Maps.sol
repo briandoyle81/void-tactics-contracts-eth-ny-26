@@ -138,6 +138,25 @@ contract Maps is Ownable {
     }
 
     /**
+     * @dev Create a new preset map with both blocked and scoring tiles, under
+     * a name unique in this contract. createPresetMap is overloaded (with a
+     * blocked-only variant), and Hardhat Ignition's function-name validator
+     * cannot disambiguate an overload whose signature contains a struct/
+     * tuple array (same reason createPresetScoringMap exists instead of the
+     * scoring-only createPresetMap overload — see DeployAndConfig.ts) — so
+     * deploy scripts that need to seed both blocked and scoring tiles in one
+     * call must go through this function instead.
+     * @param _blockedPositions Array of blocked positions
+     * @param _scoringPositions Array of scoring positions with point values
+     */
+    function createFullPresetMap(
+        Position[] memory _blockedPositions,
+        ScoringPosition[] memory _scoringPositions
+    ) external onlyMapEditor {
+        _createPresetMapInternal(_blockedPositions, _scoringPositions);
+    }
+
+    /**
      * @dev Internal function to create a preset map with both blocked and scoring tiles
      * @param _blockedPositions Array of blocked positions
      * @param _scoringPositions Array of scoring positions with point values

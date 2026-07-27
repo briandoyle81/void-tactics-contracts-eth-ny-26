@@ -1,0 +1,10 @@
+---
+description: Never delete folders; validate via the test suite; never deploy outside the local hardhat network
+alwaysApply: true
+---
+
+# Deployment safety
+
+- **Never delete folders/directories.** If a directory needs to be removed, tell the user and let them do it themselves.
+- To validate contract or deploy-script changes, use the test suite (`npx hardhat test`) and the ephemeral in-memory deploys it performs via `loadFixture`/`hre.ignition.deploy(...)`.
+- **Never run `npx hardhat ignition deploy` (or equivalent) against any network other than the local ephemeral `hardhat` network.** Do not deploy to `base-sepolia` or any other real/live network unless the user explicitly directs you to do that specific deploy.

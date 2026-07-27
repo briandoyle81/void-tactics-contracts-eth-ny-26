@@ -95,6 +95,7 @@ describe("Ships", function () {
         "0x0000000000000000000000000000000000000000", // metadataRenderer
         "0x0000000000000000000000000000000000000000", // shipAttributes
         "0x0000000000000000000000000000000000000000", // universalCredits
+        "0x0000000000000000000000000000000000000000", // droneEnergyCores
       ]);
 
       const config = await ships.read.config();
@@ -397,6 +398,7 @@ describe("Ships", function () {
         "0x0000000000000000000000000000000000000000", // metadataRenderer
         "0x0000000000000000000000000000000000000000", // shipAttributes
         "0x0000000000000000000000000000000000000000", // universalCredits
+        "0x0000000000000000000000000000000000000000", // droneEnergyCores
       ]);
 
       const config = await ships.read.config();
@@ -2017,6 +2019,7 @@ describe("Ships", function () {
           metadataRenderer.address, // metadataRenderer - use actual
           shipAttributes.address, // shipAttributes - use actual
           universalCredits.address, // universalCredits - use actual
+          "0x0000000000000000000000000000000000000000", // droneEnergyCores
         ],
         {
           account: owner.account,

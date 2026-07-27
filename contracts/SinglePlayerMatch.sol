@@ -12,6 +12,7 @@ import "./AIEncounters.sol";
 import "./IMaps.sol";
 import "./IShipAttributes.sol";
 import "./AIBehavior.sol";
+import "./IUniversalCredits.sol";
 
 // Plays single-player matches as an on-chain opponent. A human creates a
 // normal Lobbies lobby reserved for this contract's address; this contract
@@ -27,6 +28,7 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
     AIEncounters public aiEncounters;
     IMaps public maps;
     IShipAttributes public shipAttributes;
+    IUniversalCredits public universalCredits;
 
     // Static per-ship info cached at setupAIFleet mint time (from the same
     // AIShipConfig already fetched there), so takeAITurn's decision engine
@@ -91,6 +93,25 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
         address _shipAttributes
     ) external onlyOwner {
         shipAttributes = IShipAttributes(_shipAttributes);
+    }
+
+    function setUniversalCreditsAddress(
+        address _universalCredits
+    ) external onlyOwner {
+        universalCredits = IUniversalCredits(_universalCredits);
+    }
+
+    // The AI's own ships are owned by address(this), so whenever the AI
+    // destroys a human ship, Ships.setTimestampDestroyed's kill reward
+    // mints UTC here (unlike a human destroying an AI ship, which now pays
+    // out in DEC instead — see DestroyRewardLib) with no way for this
+    // contract to otherwise spend or move it. Lets the owner claim it out.
+    function withdrawUC() external onlyOwner {
+        uint balance = universalCredits.balanceOf(address(this));
+        require(
+            universalCredits.transfer(owner(), balance),
+            "UC withdrawal failed"
+        );
     }
 
     // Accepts a lobby reservation naming this contract as the joiner.
@@ -202,10 +223,40 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
         if (g.metadata.ended) revert GameEnded();
         if (g.turnState.currentTurn != address(this)) revert NotAITurn();
 
+        // If every one of the AI's remaining ships is at 0 HP (destroyed in
+        // combat but still mid the 3-round reactor-critical grace period —
+        // see Game.sol's shipsWithZeroHP), it has nothing left it can
+        // meaningfully do. Moving on would just repeat the deadlock this
+        // whole function used to hit: round-completion/turn-switching only
+        // run inside a *successful* moveShip call, and nothing else can
+        // trigger one while it's still the AI's turn — a human can always
+        // manually Retreat their own last 0-HP ship, but the AI has no
+        // decision to make there, so just surrender instead. Same mechanism
+        // PvPMatch uses for a human flee/timeout — SinglePlayerMatch is the
+        // orchestrator of its own games (Game.startGame set it at kickoff),
+        // so it's equally entitled to call forceEndSession.
+        if (!_hasAnyLiveShip(g)) {
+            game.forceEndSession(_gameId, g.metadata.creator, address(this));
+            return;
+        }
+
         uint shipId = _findUnmovedShip(g);
         if (shipId == 0) return;
 
         _takeShipTurn(_gameId, g, shipId);
+    }
+
+    function _hasAnyLiveShip(
+        GameDataView memory g
+    ) internal pure returns (bool) {
+        for (uint i = 0; i < g.joinerActiveShipIds.length; i++) {
+            (Attributes memory attrs, bool found) = AIBehavior.findAttributes(
+                g,
+                g.joinerActiveShipIds[i]
+            );
+            if (found && attrs.hullPoints > 0) return true;
+        }
+        return false;
     }
 
     function _takeShipTurn(
@@ -298,12 +349,12 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
             ScoringPosition[] memory scoringPositions = maps
                 .getGameScoringPositions(_gameId);
             return AIBehavior.decideTurtle(ctx, scoringPositions);
-        } else if (info.archetype == Archetype.Rammer) {
-            return AIBehavior.decideRammer(ctx, info.variant);
         }
-        // Grunt and Aggressor (and the default for any future archetype
-        // value not yet handled above) share the same engage-or-approach
-        // logic — see AIBehavior's header comment on why.
+        // Grunt and Aggressor share this engage-or-approach logic — see
+        // AIBehavior's header comment on why. Rammer has no AI decision
+        // path (the AI never rams; player-controlled Rammer ships are
+        // unaffected — see RamResolver), so it falls through to the same
+        // default as any future archetype not yet handled above.
         return AIBehavior.decideEngageOrApproach(ctx);
     }
 
@@ -321,7 +372,27 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
                     break;
                 }
             }
-            if (!hasMoved) return active[i];
+            if (hasMoved) continue;
+
+            // A 0-HP ship's only legal moveShip action is Retreat (see
+            // Game.sol's hullPoints==0 guard) — _takeShipTurn never
+            // attempts that, so picking it here would revert every time
+            // and this ship would never enter joinerMovedShipIds. Since
+            // this loop always returns the *first* unmoved ship, that
+            // would permanently block every other ship behind it too,
+            // and — because currentTurn only advances inside a
+            // successful moveShip — deadlock the whole match. Game.sol's
+            // own round-completion math already treats a 0-HP ship as
+            // accounted for without requiring it to move (shipsWithZeroHP
+            // / _setShipHPToZero), so mirror that here: skip it and keep
+            // looking for a ship that can actually act.
+            (Attributes memory attrs, bool found) = AIBehavior.findAttributes(
+                g,
+                active[i]
+            );
+            if (found && attrs.hullPoints == 0) continue;
+
+            return active[i];
         }
         return 0;
     }

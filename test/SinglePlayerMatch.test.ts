@@ -55,6 +55,7 @@ describe("SinglePlayerMatch", function () {
       singlePlayerMatch: deployed.singlePlayerMatch,
       aiEncounters: deployed.aiEncounters,
       universalCredits: deployed.universalCredits,
+      droneEnergyCores: deployed.droneEnergyCores,
       shipPurchaser: deployed.shipPurchaser,
       randomManager: deployed.randomManager,
       humanLobbies,
@@ -631,6 +632,51 @@ describe("SinglePlayerMatch", function () {
     }
   });
 
+  describe("Deploy-seeded starter maps", function () {
+    it("seeds two starter maps with AI fleets clustered at column 13, closest to the human's side", async function () {
+      const { maps, aiEncounters } = await loadFixture(deploySinglePlayerFixture);
+
+      expect(await maps.read.mapCount()).to.equal(2n);
+
+      // Map 1: original starter map — no blocked tiles, one scoring tile
+      const map1Blocked = await maps.read.getPresetMap([1n]);
+      expect(map1Blocked.length).to.equal(0);
+      const map1Scoring = await maps.read.getPresetScoringMap([1n]);
+      expect(map1Scoring.length).to.equal(1);
+
+      const [map1Positions] = await aiEncounters.read.getMapPlacements([1n]);
+      expect(map1Positions.length).to.equal(5); // no Rammer — AI has no ram decision path
+      for (const pos of map1Positions as any[]) {
+        expect(pos.col).to.equal(13);
+      }
+      const map1Rows = (map1Positions as any[])
+        .map((p) => p.row)
+        .sort((a, b) => a - b);
+      expect(map1Rows).to.deep.equal([3, 4, 5, 6, 7]);
+
+      // Map 2: nebula map — 52 blocked tiles, 5 scoring tiles
+      const map2Blocked = await maps.read.getPresetMap([2n]);
+      expect(map2Blocked.length).to.equal(52);
+      const map2Scoring = await maps.read.getPresetScoringMap([2n]);
+      expect(map2Scoring.length).to.equal(5);
+
+      const [map2Positions] = await aiEncounters.read.getMapPlacements([2n]);
+      expect(map2Positions.length).to.equal(5); // no Rammer — AI has no ram decision path
+      for (const pos of map2Positions as any[]) {
+        expect(pos.col).to.equal(13);
+        // None of these spawn points should land on a blocked (nebula) tile
+        const isBlocked = (map2Blocked as any[]).some(
+          (b) => b.row === pos.row && b.col === pos.col,
+        );
+        expect(isBlocked).to.equal(false);
+      }
+      const map2Rows = (map2Positions as any[])
+        .map((p) => p.row)
+        .sort((a, b) => a - b);
+      expect(map2Rows).to.deep.equal([4, 5, 6, 7, 8]);
+    });
+  });
+
   describe("AI behavior archetypes", function () {
     // Mints/constructs the human's single ship (ids 1-5 from the tier-0
     // purchase) and creates their fleet with ship 1 — same boilerplate
@@ -1069,153 +1115,6 @@ describe("SinglePlayerMatch", function () {
       expect(distAfter).to.be.lessThan(distBefore);
     });
 
-    it("Rammer archetype Rams an adjacent 0-HP enemy when its faction is 1", async function () {
-      const {
-        ships,
-        lobbies,
-        game,
-        maps,
-        singlePlayerMatch,
-        aiEncounters,
-        universalCredits,
-        shipPurchaser,
-        randomManager,
-        humanLobbies,
-        humanShips,
-        humanGame,
-        humanUniversalCredits,
-        singlePlayerMatchOther,
-        human,
-        owner,
-        publicClient,
-      } = await loadFixture(deploySinglePlayerFixture);
-
-      await maps.write.createPresetMap([[]]);
-      const mapId = await maps.read.mapCount();
-      await aiEncounters.write.createAIShipConfig([
-        "Rammer Ship",
-        defaultEquipment,
-        { ...defaultTraits, variant: 1 },
-        5, // Rammer
-      ]);
-      const configId = await aiEncounters.read.aiShipConfigCount();
-      await aiEncounters.write.setMapPlacement([mapId, 0, 16, configId]);
-
-      await createReservedLobby(
-        ships,
-        lobbies,
-        humanLobbies,
-        humanUniversalCredits,
-        shipPurchaser,
-        universalCredits,
-        singlePlayerMatch,
-        human,
-        mapId,
-      );
-
-      const lobbyId = 1n;
-      await singlePlayerMatchOther.write.acceptMatch([lobbyId]);
-      await setupHumanShip(ships, randomManager, humanShips, humanLobbies, human, lobbyId);
-      await singlePlayerMatchOther.write.setupAIFleet([lobbyId]);
-
-      const aiShipId = 6n;
-
-      // Human ship takes its own turn at full HP first (a 0-HP ship can
-      // only Retreat, not Pass), then gets zeroed and moved adjacent.
-      await humanGame.write.moveShip([lobbyId, 1n, 0, 0, ActionType.Pass, 0n], {
-        account: human.account,
-      });
-      await game.write.debugSetHullPointsToZero([lobbyId, 1n], {
-        account: owner.account,
-      });
-      await game.write.debugSetShipPosition([lobbyId, 1n, 0, 15], {
-        account: owner.account,
-      });
-
-      const hash = await singlePlayerMatchOther.write.takeAITurn([lobbyId]);
-      const events = await getAITurnTakenEvents(
-        publicClient,
-        singlePlayerMatch.abi,
-        hash,
-      );
-      const ev = events.find((e: any) => e.args.shipId === aiShipId);
-      expect(ev).to.not.be.undefined;
-      expect(ev!.args.actionType).to.equal(ActionType.FactionAbility);
-      expect(ev!.args.targetShipId).to.equal(1n);
-    });
-
-    it("Rammer archetype never attempts Ram when its faction isn't 1", async function () {
-      const {
-        ships,
-        lobbies,
-        game,
-        maps,
-        singlePlayerMatch,
-        aiEncounters,
-        universalCredits,
-        shipPurchaser,
-        randomManager,
-        humanLobbies,
-        humanShips,
-        humanGame,
-        humanUniversalCredits,
-        singlePlayerMatchOther,
-        human,
-        owner,
-        publicClient,
-      } = await loadFixture(deploySinglePlayerFixture);
-
-      await maps.write.createPresetMap([[]]);
-      const mapId = await maps.read.mapCount();
-      await aiEncounters.write.createAIShipConfig([
-        "Not-Faction-1 Rammer",
-        defaultEquipment,
-        { ...defaultTraits, variant: 2 },
-        5, // Rammer
-      ]);
-      const configId = await aiEncounters.read.aiShipConfigCount();
-      await aiEncounters.write.setMapPlacement([mapId, 0, 16, configId]);
-
-      await createReservedLobby(
-        ships,
-        lobbies,
-        humanLobbies,
-        humanUniversalCredits,
-        shipPurchaser,
-        universalCredits,
-        singlePlayerMatch,
-        human,
-        mapId,
-      );
-
-      const lobbyId = 1n;
-      await singlePlayerMatchOther.write.acceptMatch([lobbyId]);
-      await setupHumanShip(ships, randomManager, humanShips, humanLobbies, human, lobbyId);
-      await singlePlayerMatchOther.write.setupAIFleet([lobbyId]);
-
-      const aiShipId = 6n;
-
-      await humanGame.write.moveShip([lobbyId, 1n, 0, 0, ActionType.Pass, 0n], {
-        account: human.account,
-      });
-      await game.write.debugSetHullPointsToZero([lobbyId, 1n], {
-        account: owner.account,
-      });
-      await game.write.debugSetShipPosition([lobbyId, 1n, 0, 15], {
-        account: owner.account,
-      });
-
-      const hash = await singlePlayerMatchOther.write.takeAITurn([lobbyId]);
-      const events = await getAITurnTakenEvents(
-        publicClient,
-        singlePlayerMatch.abi,
-        hash,
-      );
-      const ev = events.find((e: any) => e.args.shipId === aiShipId);
-      expect(ev).to.not.be.undefined;
-      expect(ev!.args.actionType).to.not.equal(ActionType.FactionAbility);
-    });
-
     it("falls back to Pass without reverting the whole turn when the decided move is illegal", async function () {
       const {
         ships,
@@ -1295,6 +1194,327 @@ describe("SinglePlayerMatch", function () {
       const pos = findShipPosition(gameData, aiShipId);
       expect(pos.row).to.equal(0);
       expect(pos.col).to.equal(16);
+    });
+
+    it("skips a 0-HP ship and moves the next one instead of getting stuck (regression: this used to deadlock the whole match)", async function () {
+      const {
+        ships,
+        lobbies,
+        game,
+        maps,
+        singlePlayerMatch,
+        aiEncounters,
+        universalCredits,
+        shipPurchaser,
+        randomManager,
+        humanLobbies,
+        humanShips,
+        humanGame,
+        humanUniversalCredits,
+        singlePlayerMatchOther,
+        human,
+        owner,
+        publicClient,
+      } = await loadFixture(deploySinglePlayerFixture);
+
+      // Two AI ships on this map instead of one, so there's a live ship
+      // behind the zeroed-out one for the AI to reach.
+      await maps.write.createPresetMap([[]]);
+      const mapId = await maps.read.mapCount();
+      await aiEncounters.write.createAIShipConfig([
+        "AI Grunt A",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+      const config1 = await aiEncounters.read.aiShipConfigCount();
+      await aiEncounters.write.createAIShipConfig([
+        "AI Grunt B",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+      const config2 = await aiEncounters.read.aiShipConfigCount();
+      await aiEncounters.write.setMapPlacements([
+        mapId,
+        [
+          { row: 0, col: 16 },
+          { row: 1, col: 16 },
+        ],
+        [config1, config2],
+      ]);
+
+      await createReservedLobby(
+        ships,
+        lobbies,
+        humanLobbies,
+        humanUniversalCredits,
+        shipPurchaser,
+        universalCredits,
+        singlePlayerMatch,
+        human,
+        mapId,
+      );
+
+      const lobbyId = 1n;
+      await singlePlayerMatchOther.write.acceptMatch([lobbyId]);
+      await setupHumanShip(
+        ships,
+        randomManager,
+        humanShips,
+        humanLobbies,
+        human,
+        lobbyId,
+      );
+      await singlePlayerMatchOther.write.setupAIFleet([lobbyId]);
+
+      const deadAiShipId = 6n;
+      const liveAiShipId = 7n;
+
+      // Human passes in place, handing the turn to the AI
+      await humanGame.write.moveShip(
+        [lobbyId, 1n, 0, 0, ActionType.Pass, 0n],
+        { account: human.account },
+      );
+
+      // Simulate the first AI ship having already been shot down to 0 HP
+      // (mid reactor-critical grace period, not yet removed) — exactly the
+      // state that used to permanently deadlock the AI's turn, since
+      // _findUnmovedShip always picked this ship first (it's the first
+      // unmoved ship in joinerActiveShipIds) and it could never
+      // successfully move (moveShip reverts ShipDestroyed for any
+      // non-Retreat action at 0 HP), so it never entered
+      // joinerMovedShipIds and every other ship behind it was unreachable.
+      await game.write.debugSetHullPointsToZero([lobbyId, deadAiShipId], {
+        account: owner.account,
+      });
+
+      const preGameData = (await game.read.getGame([lobbyId])) as GameDataView;
+      const preRound = preGameData.turnState.currentRound;
+
+      // Must not get stuck: the AI should skip the dead ship and
+      // successfully move the live one instead. This was the human's ship
+      // (1), the AI's dead ship (accounted for via shipsWithZeroHP, no
+      // move needed) and the AI's live ship (7) — every active ship this
+      // round, so a successful move here also completes the round, which
+      // is the clearest possible proof the deadlock is gone: before this
+      // fix, this call would silently do nothing and the round (and the
+      // whole match) would never progress past this point.
+      const hash = await singlePlayerMatchOther.write.takeAITurn([lobbyId]);
+      const events = await getAITurnTakenEvents(
+        publicClient,
+        singlePlayerMatch.abi,
+        hash,
+      );
+      expect(events.length).to.equal(1);
+      const ev = events.find((e: any) => e.args.shipId === liveAiShipId);
+      expect(ev).to.not.be.undefined;
+
+      const gameData = (await game.read.getGame([lobbyId])) as GameDataView;
+      expect(gameData.turnState.currentRound).to.equal(preRound + 1n);
+    });
+
+    it("surrenders (human wins) when every one of the AI's ships is at 0 HP", async function () {
+      const {
+        ships,
+        lobbies,
+        game,
+        maps,
+        singlePlayerMatch,
+        aiEncounters,
+        universalCredits,
+        shipPurchaser,
+        randomManager,
+        humanLobbies,
+        humanShips,
+        humanGame,
+        humanUniversalCredits,
+        singlePlayerMatchOther,
+        human,
+        owner,
+      } = await loadFixture(deploySinglePlayerFixture);
+
+      const mapId = await setupBasicAIEncounter(maps, aiEncounters);
+
+      await createReservedLobby(
+        ships,
+        lobbies,
+        humanLobbies,
+        humanUniversalCredits,
+        shipPurchaser,
+        universalCredits,
+        singlePlayerMatch,
+        human,
+        mapId,
+      );
+
+      const lobbyId = 1n;
+      await singlePlayerMatchOther.write.acceptMatch([lobbyId]);
+      await setupHumanShip(
+        ships,
+        randomManager,
+        humanShips,
+        humanLobbies,
+        human,
+        lobbyId,
+      );
+      await singlePlayerMatchOther.write.setupAIFleet([lobbyId]);
+
+      const aiShipId = 6n;
+
+      // Human passes in place, handing the turn to the AI
+      await humanGame.write.moveShip(
+        [lobbyId, 1n, 0, 0, ActionType.Pass, 0n],
+        { account: human.account },
+      );
+
+      // The AI's only ship is at 0 HP -- it has nothing left it can
+      // meaningfully do (its only legal action, Retreat, isn't a decision
+      // worth making — see takeAITurn's comment), so it should surrender
+      // rather than deadlock the match.
+      await game.write.debugSetHullPointsToZero([lobbyId, aiShipId], {
+        account: owner.account,
+      });
+
+      await singlePlayerMatchOther.write.takeAITurn([lobbyId]);
+
+      const gameData = (await game.read.getGame([lobbyId])) as GameDataView;
+      expect(gameData.metadata.ended).to.equal(true);
+      expect(gameData.metadata.winner.toLowerCase()).to.equal(
+        human.account.address.toLowerCase(),
+      );
+    });
+  });
+
+  describe("Kill rewards", function () {
+    // setTimestampDestroyed is exactly what Game.sol calls mid-combat to
+    // attribute a kill — it's also directly callable by the Ships owner
+    // (that's how Game.sol itself is authorized to call it: `msg.sender ==
+    // owner() || msg.sender == config.gameAddress`). Using it directly here
+    // tests DestroyRewardLib's UTC-vs-DEC branching without needing to
+    // reproduce Game.sol's deterministic-but-opaque damage math just to
+    // force a real one-shot kill in combat.
+    async function setUpOneAIShip(fixture: any) {
+      const {
+        ships,
+        lobbies,
+        maps,
+        singlePlayerMatch,
+        aiEncounters,
+        universalCredits,
+        shipPurchaser,
+        randomManager,
+        humanLobbies,
+        humanShips,
+        humanUniversalCredits,
+        singlePlayerMatchOther,
+        human,
+      } = fixture;
+
+      const mapId = await setupBasicAIEncounter(maps, aiEncounters);
+      await createReservedLobby(
+        ships,
+        lobbies,
+        humanLobbies,
+        humanUniversalCredits,
+        shipPurchaser,
+        universalCredits,
+        singlePlayerMatch,
+        human,
+        mapId,
+      );
+
+      const lobbyId = 1n;
+      await singlePlayerMatchOther.write.acceptMatch([lobbyId]);
+      await ships.write.purchaseWithFlow(
+        [human.account.address, 0n, human.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      for (let i = 1; i <= 5; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.fulfillRandomRequest([
+          ship.traits.serialNumber,
+        ]);
+      }
+      await humanShips.write.constructAllMyShips({ account: human.account });
+      await humanLobbies.write.createFleet(
+        [lobbyId, [1n], [{ row: 0, col: 0 }]],
+        { account: human.account },
+      );
+      await singlePlayerMatchOther.write.setupAIFleet([lobbyId]);
+
+      return { lobbyId, humanShipId: 1n, aiShipId: 6n };
+    }
+
+    it("pays the human DEC (not UTC) for destroying an AI-owned ship", async function () {
+      const fixture = await loadFixture(deploySinglePlayerFixture);
+      const { ships, universalCredits, droneEnergyCores, owner, human } =
+        fixture;
+      const { humanShipId, aiShipId } = await setUpOneAIShip(fixture);
+
+      const [utcBefore, decBefore, recycleReward] = await Promise.all([
+        universalCredits.read.balanceOf([human.account.address]),
+        droneEnergyCores.read.balanceOf([human.account.address]),
+        ships.read.recycleReward(),
+      ]);
+
+      await ships.write.setTimestampDestroyed([aiShipId, humanShipId], {
+        account: owner.account,
+      });
+
+      const [utcAfter, decAfter] = await Promise.all([
+        universalCredits.read.balanceOf([human.account.address]),
+        droneEnergyCores.read.balanceOf([human.account.address]),
+      ]);
+
+      expect(decAfter - decBefore).to.equal(recycleReward >> 2n);
+      expect(utcAfter).to.equal(utcBefore);
+    });
+
+    it("pays UTC to SinglePlayerMatch (not the human) when the AI destroys a human ship, and the owner can withdraw it", async function () {
+      const fixture = await loadFixture(deploySinglePlayerFixture);
+      const {
+        ships,
+        universalCredits,
+        droneEnergyCores,
+        singlePlayerMatch,
+        owner,
+        human,
+      } = fixture;
+      const { humanShipId, aiShipId } = await setUpOneAIShip(fixture);
+
+      await ships.write.setTimestampDestroyed([humanShipId, aiShipId], {
+        account: owner.account,
+      });
+
+      const recycleReward = await ships.read.recycleReward();
+      const contractUtcBalance = await universalCredits.read.balanceOf([
+        singlePlayerMatch.address,
+      ]);
+      expect(contractUtcBalance).to.equal(recycleReward >> 2n);
+
+      // Human's own DEC balance is untouched by this — DEC only pays out
+      // the other direction (a human destroying an AI ship).
+      expect(
+        await droneEnergyCores.read.balanceOf([human.account.address]),
+      ).to.equal(0n);
+
+      await expect(
+        singlePlayerMatch.write.withdrawUC({ account: human.account }),
+      ).to.be.rejectedWith("OwnableUnauthorizedAccount");
+
+      const ownerUtcBefore = await universalCredits.read.balanceOf([
+        owner.account.address,
+      ]);
+      await singlePlayerMatch.write.withdrawUC({ account: owner.account });
+
+      expect(
+        await universalCredits.read.balanceOf([singlePlayerMatch.address]),
+      ).to.equal(0n);
+      expect(
+        await universalCredits.read.balanceOf([owner.account.address]),
+      ).to.equal(ownerUtcBefore + contractUtcBalance);
     });
   });
 });

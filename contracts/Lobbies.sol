@@ -200,8 +200,17 @@ contract Lobbies is Ownable, ReentrancyGuard {
                 lobby.players.creatorFleetId = 0;
             }
 
-            // If joiner exists, they become the new creator
-            if (lobby.players.joiner != address(0)) {
+            // If a human joiner exists, they become the new creator so the
+            // lobby isn't wasted. An AI orchestrator joiner can never fill
+            // that role — nothing in this contract gives it a creator-side
+            // flow, and single-player dispatch only ever checks
+            // isSinglePlayerOrchestrator[joiner], never creator — so treat a
+            // vs-AI lobby the creator abandons the same as a fully unjoined
+            // one: close it outright instead of promoting the AI.
+            if (
+                lobby.players.joiner != address(0) &&
+                !isSinglePlayerOrchestrator[lobby.players.joiner]
+            ) {
                 address newCreator = lobby.players.joiner;
                 lobby.basic.creator = newCreator;
                 lobby.players.joiner = address(0);
@@ -219,8 +228,21 @@ contract Lobbies is Ownable, ReentrancyGuard {
 
                 emit LobbyReset(_lobbyId, newCreator);
             } else {
-                // Lobby is completely abandoned, clean up all sets
+                // Lobby is completely abandoned: either no joiner, or the
+                // joiner is an AI orchestrator that can't become creator.
+                // Clear the AI's fleet too, in case it had already called
+                // setupAIFleet before the creator left.
+                if (lobby.players.joinerFleetId != 0) {
+                    fleets.clearFleet(lobby.players.joinerFleetId);
+                    lobby.players.joinerFleetId = 0;
+                }
+                // Cleanup must run while joiner still holds its real value
+                // (possibly the AI orchestrator) — it's what tells
+                // _cleanupLobbyFromAllSets whose tracking-set entry to
+                // remove. Only reset joiner/status afterward.
                 _cleanupLobbyFromAllSets(_lobbyId);
+                lobby.players.joiner = address(0);
+                lobby.state.status = LobbyStatus.Open;
                 emit LobbyAbandoned(_lobbyId, msg.sender);
             }
         } else {
@@ -468,12 +490,19 @@ contract Lobbies is Ownable, ReentrancyGuard {
             block.timestamp < lobby.players.joinedAt + lobby.gameConfig.turnTime
         ) revert TimeoutNotReached();
 
-        // Update joiner's kick state
+        // Update joiner's kick state. For a vs-AI lobby, "the joiner" is
+        // the single shared SinglePlayerMatch contract address used by
+        // every player's AI match — applying a kick penalty to it would
+        // lock every other player out of accepting an AI match
+        // platform-wide. Only a real human joiner gets kicked; an AI
+        // orchestrator's timeout just resets the lobby.
         PlayerLobbyState storage joinerState = playerStates[
             lobby.players.joiner
         ];
-        joinerState.kickCount++;
-        joinerState.lastKickTime = block.timestamp;
+        if (!isSinglePlayerOrchestrator[lobby.players.joiner]) {
+            joinerState.kickCount++;
+            joinerState.lastKickTime = block.timestamp;
+        }
         joinerState.hasActiveLobby = false;
         joinerState.activeLobbyId = 0;
 

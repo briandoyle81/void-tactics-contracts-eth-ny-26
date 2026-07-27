@@ -179,30 +179,12 @@ library AIBehavior {
         }
     }
 
-    // Enemy at exactly 0 HP, adjacent (Ram's fixed range — see
-    // SinglePlayerMatch's header comment on why this isn't discovered
-    // dynamically from RamResolver). LOS is guaranteed at distance 1
-    // (mirrors Game._performShoot's own "can always see adjacent" rule), so
-    // no Maps call needed here.
-    function _zeroHPEnemyAdjacent(
-        Ctx memory ctx
-    ) private pure returns (uint targetId, bool found) {
-        for (uint i = 0; i < ctx.g.shipPositions.length; i++) {
-            ShipPosition memory sp = ctx.g.shipPositions[i];
-            if (sp.shipId == ctx.shipId || sp.status != 0 || !sp.isCreator)
-                continue;
-            if (_manhattan(ctx.pos, sp.position) != 1) continue;
-            (Attributes memory attrs, bool attrsFound) = findAttributes(
-                ctx.g,
-                sp.shipId
-            );
-            if (attrsFound && attrs.hullPoints == 0) return (sp.shipId, true);
-        }
-    }
-
     // Nearest enemy position, anywhere on the board (any HP). preferZeroHP
-    // makes this look only at 0-HP enemies first (for Rammer beelining
-    // toward a ram opportunity), falling back to any enemy if none exist.
+    // makes this look only at 0-HP enemies first, falling back to any enemy
+    // if none exist — kept as a general targeting option even though no
+    // archetype currently passes true (Rammer, the only caller that did,
+    // was removed) — e.g. a future assassin-style archetype beelining for
+    // a finishing blow would want this exact behavior.
     function _nearestEnemyPosition(
         Ctx memory ctx,
         bool preferZeroHP
@@ -530,58 +512,4 @@ library AIBehavior {
         d.destCol = newPos.col;
     }
 
-    // Faction-1 only: Rams an adjacent 0-HP enemy if variant is 1; otherwise
-    // behaves like Grunt/Aggressor, but beelines toward a 0-HP enemy
-    // anywhere on the board when nothing's in range, to set up the next
-    // ram opportunity.
-    function decideRammer(
-        Ctx memory ctx,
-        uint16 myVariant
-    ) internal view returns (Decision memory d) {
-        d.destRow = ctx.pos.row;
-        d.destCol = ctx.pos.col;
-        d.action = ActionType.Pass;
-
-        if (myVariant == 1) {
-            (uint ramTarget, bool ramFound) = _zeroHPEnemyAdjacent(ctx);
-            if (ramFound) {
-                d.action = ActionType.FactionAbility;
-                d.actionTarget = ramTarget;
-                return d;
-            }
-        }
-
-        (uint target, bool found) = _bestEnemyInRange(
-            ctx,
-            ctx.pos,
-            ctx.attrs.range
-        );
-        if (found) {
-            d.action = ActionType.Shoot;
-            d.actionTarget = target;
-            return d;
-        }
-
-        (Position memory enemyPos, bool enemyFound) = _nearestEnemyPosition(
-            ctx,
-            true
-        );
-        if (!enemyFound) return d;
-        Position memory newPos = _stepToward(
-            ctx.pos,
-            enemyPos,
-            ctx.attrs.movement
-        );
-        d.destRow = newPos.row;
-        d.destCol = newPos.col;
-        (uint target2, bool found2) = _bestEnemyInRange(
-            ctx,
-            newPos,
-            ctx.attrs.range
-        );
-        if (found2) {
-            d.action = ActionType.Shoot;
-            d.actionTarget = target2;
-        }
-    }
 }

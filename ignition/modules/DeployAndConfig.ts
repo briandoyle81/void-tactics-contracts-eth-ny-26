@@ -11,7 +11,7 @@ import { parseEther } from "viem";
 // — this is a plain build-time boolean (not an Ignition parameter) so gated
 // m.call(...) invocations are simply never added to the deployment graph
 // when false, rather than being skipped at execution time.
-const PRODUCTION = false;
+const PRODUCTION = true;
 
 // Address allowed to mint ships from the Firebase Flow backend, with the same
 // rights as ShipPurchaser.
@@ -144,8 +144,25 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // Deploy UniversalCredits token
   const universalCredits = m.contract("UniversalCredits");
 
+  // Deploy DroneEnergyCores ("DEC"): soulbound reward token minted when a
+  // player destroys an AI-owned ship (Ships.setTimestampDestroyed via
+  // DestroyRewardLib), instead of UTC.
+  const droneEnergyCores = m.contract("DroneEnergyCores");
+
+  // Deploy DroneStorefront: stub — does nothing yet beyond existing as
+  // DEC's transferExemptAddress, so DEC has somewhere to be spent later
+  // instead of being fully soulbound.
+  const droneStorefront = m.contract("DroneStorefront", [droneEnergyCores]);
+
+  // Deploy DestroyRewardLib: decides UTC vs DEC for a kill reward, split
+  // out of Ships.sol purely for bytecode headroom (same reasoning as
+  // SpecialEffectsLib below) — linked into Ships at deploy time.
+  const destroyRewardLib = m.library("DestroyRewardLib");
+
   // Finally deploy Ships with all dependencies
-  const ships = m.contract("Ships", [metadataRenderer]);
+  const ships = m.contract("Ships", [metadataRenderer], {
+    libraries: { DestroyRewardLib: destroyRewardLib },
+  });
 
   // Deploy ShipAttributes contract
   const shipAttributes = m.contract("ShipAttributes", [ships]);
@@ -223,6 +240,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
     metadataRenderer,
     shipAttributes, // shipAttributes
     universalCredits, // universalCredits
+    droneEnergyCores, // droneEnergyCores
   ]);
 
   // Set all addresses in Game contract (Fleets/Maps/ShipAttributes stay core
@@ -434,45 +452,27 @@ const DeployModule = buildModule("DeployModule", (m) => {
     { emitter: aiEncounters, id: "ReadTurtleConfigId" },
   );
 
-  const rammerConfigCall = m.call(
-    aiEncounters,
-    "createAIShipConfig",
-    [
-      "AI Rammer",
-      { mainWeapon: 3, armor: 3, shields: 0, special: 0 }, // PlasmaCannon, Heavy armor
-      {
-        serialNumber: 0n,
-        colors: AI_SHIP_COLORS,
-        variant: 1, // Rammer only attempts Ram when variant == 1 (faction 1)
-        accuracy: 0,
-        hull: 1,
-        speed: 1,
-      },
-      5, // Archetype.Rammer
-    ],
-    { id: "CreateRammerAIShipConfig" },
-  );
-  const rammerConfigId = m.readEventArgument(
-    rammerConfigCall,
-    "AIShipConfigCreated",
-    "configId",
-    { emitter: aiEncounters, id: "ReadRammerConfigId" },
-  );
+  // No AI Rammer config: the AI has no decision path for Archetype.Rammer
+  // (SinglePlayerMatch._decideMove falls through to the default
+  // engage-or-approach logic for it, same as any unhandled archetype) —
+  // player-controlled Rammer ships and RamResolver are unaffected.
 
-  // Row-major placement across the joiner's allowed columns (13-16),
-  // matching AIEncounters' placement constraints.
+  // Clustered vertically at column 13 — the leftmost (closest to the
+  // human's side, columns 0-3) column in the joiner's legal 13-16 window —
+  // centered exactly on the grid's vertical middle (row 5 of 0-10) across
+  // these five rows, so the AI fleet spawns as close as possible to the
+  // human rather than spread across the top of its zone.
   const placeStarterAIFleetCall = m.call(
     aiEncounters,
     "setMapPlacements",
     [
       starterMapId,
       [
-        { row: 0, col: 13 },
-        { row: 0, col: 14 },
-        { row: 0, col: 15 },
-        { row: 0, col: 16 },
-        { row: 1, col: 13 },
-        { row: 1, col: 14 },
+        { row: 3, col: 13 },
+        { row: 4, col: 13 },
+        { row: 5, col: 13 },
+        { row: 6, col: 13 },
+        { row: 7, col: 13 },
       ],
       [
         gruntConfigId,
@@ -480,10 +480,121 @@ const DeployModule = buildModule("DeployModule", (m) => {
         sniperConfigId,
         supportConfigId,
         turtleConfigId,
-        rammerConfigId,
       ],
     ],
     { id: "PlaceStarterAIFleet", after: [starterMapCall] },
+  );
+
+  // --- Second starter map (nebula field) ----------------------------------
+  // A second default single-player map, laid out with blocked "nebula"
+  // tiles and five scoring tiles. createFullPresetMap (not the overloaded
+  // createPresetMap) for the same Ignition-disambiguation reason
+  // createPresetScoringMap exists above — see Maps.sol's comment on it.
+  const nebulaMapCall = m.call(
+    maps,
+    "createFullPresetMap",
+    [
+      [
+        { row: 0, col: 1 },
+        { row: 0, col: 2 },
+        { row: 0, col: 3 },
+        { row: 0, col: 13 },
+        { row: 0, col: 14 },
+        { row: 0, col: 15 },
+        { row: 0, col: 16 },
+        { row: 1, col: 1 },
+        { row: 1, col: 2 },
+        { row: 1, col: 13 },
+        { row: 1, col: 14 },
+        { row: 1, col: 15 },
+        { row: 1, col: 16 },
+        { row: 2, col: 1 },
+        { row: 2, col: 2 },
+        { row: 2, col: 13 },
+        { row: 2, col: 14 },
+        { row: 2, col: 15 },
+        { row: 3, col: 2 },
+        { row: 3, col: 8 },
+        { row: 3, col: 9 },
+        { row: 3, col: 11 },
+        { row: 3, col: 12 },
+        { row: 3, col: 13 },
+        { row: 4, col: 2 },
+        { row: 4, col: 9 },
+        { row: 6, col: 7 },
+        { row: 6, col: 14 },
+        { row: 7, col: 3 },
+        { row: 7, col: 4 },
+        { row: 7, col: 5 },
+        { row: 7, col: 7 },
+        { row: 7, col: 8 },
+        { row: 7, col: 14 },
+        { row: 8, col: 1 },
+        { row: 8, col: 2 },
+        { row: 8, col: 3 },
+        { row: 8, col: 14 },
+        { row: 8, col: 15 },
+        { row: 9, col: 0 },
+        { row: 9, col: 1 },
+        { row: 9, col: 2 },
+        { row: 9, col: 3 },
+        { row: 9, col: 14 },
+        { row: 9, col: 15 },
+        { row: 10, col: 0 },
+        { row: 10, col: 1 },
+        { row: 10, col: 2 },
+        { row: 10, col: 3 },
+        { row: 10, col: 13 },
+        { row: 10, col: 14 },
+        { row: 10, col: 15 },
+      ],
+      [
+        { row: 0, col: 9, points: 10, onlyOnce: false },
+        { row: 1, col: 3, points: 10, onlyOnce: false },
+        { row: 5, col: 8, points: 10, onlyOnce: false },
+        { row: 9, col: 13, points: 10, onlyOnce: false },
+        { row: 10, col: 7, points: 10, onlyOnce: false },
+      ],
+    ],
+    // Ignition doesn't guarantee execution order between independent calls
+    // (see the leaveLobby/timeoutJoiner comments elsewhere in this repo for
+    // the same lesson) — force this after starterMapCall so mapCount is
+    // deterministically 1 (starter) then 2 (nebula), matching nebulaMapId
+    // below. Without this, the two calls could execute in either order and
+    // swap which map ends up as id 1 vs 2.
+    { id: "CreateNebulaSinglePlayerMap", after: [starterMapCall] },
+  );
+  // Same reasoning as starterMapId: no event/staticCall to read the new id
+  // from, but this is the second map-creation call in the module against a
+  // fresh Maps deployment, so mapCount is 2 once this executes.
+  const nebulaMapId = 2n;
+
+  // Clustered the same way as the starter map's fleet: column 13 is
+  // nebula-blocked at rows 0-3 and 10 on this map (see the blocked list
+  // above), so rows 4-8 — the best-centered 5-row window inside the only
+  // fully-open band (4-9) at that column — is used instead of the starter
+  // map's exactly-centered 3-7.
+  const placeNebulaAIFleetCall = m.call(
+    aiEncounters,
+    "setMapPlacements",
+    [
+      nebulaMapId,
+      [
+        { row: 4, col: 13 },
+        { row: 5, col: 13 },
+        { row: 6, col: 13 },
+        { row: 7, col: 13 },
+        { row: 8, col: 13 },
+      ],
+      [
+        gruntConfigId,
+        aggressorConfigId,
+        sniperConfigId,
+        supportConfigId,
+        turtleConfigId,
+      ],
+    ],
+    { id: "PlaceNebulaAIFleet", after: [nebulaMapCall] },
   );
 
   // Set PvPMatch address in Lobbies contract
@@ -613,6 +724,35 @@ const DeployModule = buildModule("DeployModule", (m) => {
     { id: "AuthorizeShipsToMint" },
   );
 
+  // Enable minting for DroneEnergyCores and allow Ships (via
+  // DestroyRewardLib) to mint it
+  const setDecMintIsActiveCall = m.call(droneEnergyCores, "setMintIsActive", [
+    true,
+  ]);
+  const authorizeShipsToMintDecCall = m.call(
+    droneEnergyCores,
+    "setAuthorizedToMint",
+    [ships, true],
+    { id: "AuthorizeShipsToMintDec" },
+  );
+
+  // DEC is soulbound except to/from this address — makes it spendable at
+  // DroneStorefront (a stub for now) instead of fully unspendable.
+  const setDecTransferExemptAddressCall = m.call(
+    droneEnergyCores,
+    "setTransferExemptAddress",
+    [droneStorefront],
+  );
+
+  // Let SinglePlayerMatch withdraw the UTC it accumulates whenever the AI
+  // (owner of its own ships) destroys a human ship — DestroyRewardLib only
+  // pays DEC for the reverse case (a player destroying an AI ship).
+  const setSinglePlayerMatchUniversalCreditsAddressCall = m.call(
+    singlePlayerMatch,
+    "setUniversalCreditsAddress",
+    [universalCredits],
+  );
+
   // WARNING: This works for deploying but breaks the tests for some reason.
   // Purchase tier 4 for the deployer
   // m.call(
@@ -729,7 +869,12 @@ const DeployModule = buildModule("DeployModule", (m) => {
 
     m.call(maps, "transferOwnership", [MAP_EDITOR], {
       id: "TransferMapsOwnership",
-      after: [setMapsGameAddressCall, allowMapEditorCall, starterMapCall],
+      after: [
+        setMapsGameAddressCall,
+        allowMapEditorCall,
+        starterMapCall,
+        nebulaMapCall,
+      ],
     });
 
     m.call(aiEncounters, "transferOwnership", [MAP_EDITOR], {
@@ -741,8 +886,8 @@ const DeployModule = buildModule("DeployModule", (m) => {
         sniperConfigCall,
         supportConfigCall,
         turtleConfigCall,
-        rammerConfigCall,
         placeStarterAIFleetCall,
+        placeNebulaAIFleetCall,
       ],
     });
 
@@ -792,6 +937,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
 
     m.call(singlePlayerMatch, "transferOwnership", [MAP_EDITOR], {
       id: "TransferSinglePlayerMatchOwnership",
+      after: [setSinglePlayerMatchUniversalCreditsAddressCall],
     });
 
     m.call(universalCredits, "transferOwnership", [MAP_EDITOR], {
@@ -801,6 +947,19 @@ const DeployModule = buildModule("DeployModule", (m) => {
         authorizeShipPurchaserToMintCall,
         authorizeShipsToMintCall,
       ],
+    });
+
+    m.call(droneEnergyCores, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferDroneEnergyCoresOwnership",
+      after: [
+        setDecMintIsActiveCall,
+        authorizeShipsToMintDecCall,
+        setDecTransferExemptAddressCall,
+      ],
+    });
+
+    m.call(droneStorefront, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferDroneStorefrontOwnership",
     });
 
     m.call(tournament, "transferOwnership", [MAP_EDITOR], {
@@ -846,6 +1005,8 @@ const DeployModule = buildModule("DeployModule", (m) => {
     ships,
     shipAttributes,
     universalCredits,
+    droneEnergyCores,
+    droneStorefront,
     shipPurchaser,
     droneYard,
     maps,
@@ -860,6 +1021,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
     tournament,
     gameBlobRegistry,
     specialEffectsLib,
+    destroyRewardLib,
     ramResolver,
     aiEncounters,
   };

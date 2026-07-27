@@ -16,6 +16,8 @@ import "./IRandomManager.sol";
 import "./IGenerateNewShip.sol";
 import "./IUniversalCredits.sol";
 import "./IShipAttributes.sol";
+import "./IDroneEnergyCores.sol";
+import "./DestroyRewardLib.sol";
 
 contract Ships is ERC721, Ownable, ReentrancyGuard {
     using EnumerableSet for EnumerableSet.UintSet;
@@ -83,6 +85,7 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
     // TODO: Should variants have different weapons or props?
 
     IUniversalCredits public universalCredits;
+    IDroneEnergyCores public droneEnergyCores;
     uint public recycleReward = 0.1 ether; // 0.1 UC tokens
 
     // Only Owner TODO
@@ -548,10 +551,20 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
 
         ships[_destroyerId].shipData.shipsDestroyed++;
 
-        // Pay the destroyer 1/4 of salvage value (base recycleReward)
+        // Pay the destroyer 1/4 of salvage value (base recycleReward) — in
+        // soulbound DEC if the destroyed ship was AI-owned, otherwise UTC
+        // as before (see DestroyRewardLib for why this is a separately
+        // deployed library call rather than inline logic here).
         address destroyerOwner = ships[_destroyerId].owner;
         if (destroyerOwner != address(0)) {
-            universalCredits.mint(destroyerOwner, recycleReward >> 2); // Division by 4
+            DestroyRewardLib.payDestroyReward(
+                config.lobbyAddress,
+                ships[_id].owner,
+                destroyerOwner,
+                recycleReward >> 2, // Division by 4
+                universalCredits,
+                droneEnergyCores
+            );
         }
 
         emit MetadataUpdate(_id);
@@ -576,7 +589,8 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         address _randomManager,
         address _metadataRenderer,
         address _shipAttributes,
-        address _universalCredits
+        address _universalCredits,
+        address _droneEnergyCores
     ) public onlyOwner {
         config.gameAddress = _gameAddress;
         config.lobbyAddress = _lobbyAddress;
@@ -586,6 +600,7 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         config.metadataRenderer = IRenderMetadata(_metadataRenderer);
         config.shipAttributes = IShipAttributes(_shipAttributes);
         universalCredits = IUniversalCredits(_universalCredits);
+        droneEnergyCores = IDroneEnergyCores(_droneEnergyCores);
     }
 
     function setPaused(bool _paused) external onlyOwner {
