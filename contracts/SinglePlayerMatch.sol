@@ -2,9 +2,8 @@
 pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "./Types.sol";
-import "./Ships.sol";
+import "./AIShips.sol";
 import "./Lobbies.sol";
 import "./Game.sol";
 import "./IGameOrchestrator.sol";
@@ -13,22 +12,40 @@ import "./IMaps.sol";
 import "./IShipAttributes.sol";
 import "./AIBehavior.sol";
 import "./IUniversalCredits.sol";
+import "./NodeMap.sol";
+import "./IFleets.sol";
 
-// Plays single-player matches as an on-chain opponent. A human creates a
-// normal Lobbies lobby reserved for this contract's address; this contract
-// accepts it (acceptMatch) and builds its own fleet (setupAIFleet) through
-// the exact same Lobbies flow a human would use — fees, timeouts, and fleet
-// creation are all shared with PvP, per Lobbies.isSinglePlayerOrchestrator.
-// Once both fleets are set, Lobbies calls this contract's startGame, which
-// forwards straight to core Game.sol, exactly like PvPMatch does for PvP.
-contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
-    Ships public ships;
+// Plays single-player matches as an on-chain opponent. Players enter via a
+// node-graph campaign (NodeMap) rather than the Lobbies UI: startNodeMatch
+// mints both fleets directly through Fleets and kicks off Game.sol in one
+// call, with no lobby involved. gameId is offset into a range disjoint from
+// Lobbies-sourced (PvP) game ids so the two id spaces never collide (see
+// NODE_MATCH_ID_OFFSET). `lobbies` is kept only as a legacy reference —
+// nothing in this flow depends on it.
+contract SinglePlayerMatch is Ownable, IGameOrchestrator {
+    AIShips public ships;
     Lobbies public lobbies;
     Game public game;
     AIEncounters public aiEncounters;
     IMaps public maps;
     IShipAttributes public shipAttributes;
     IUniversalCredits public universalCredits;
+    NodeMap public nodeMap;
+    IFleets public fleets;
+
+    // Node-match game ids live in a disjoint range above Lobbies.lobbyCount
+    // (PvP's id source), so Game.sol's gameId == lobbyId scheme can never
+    // collide between a PvP game and a node-match game.
+    uint private constant NODE_MATCH_ID_OFFSET = 2 ** 128;
+    uint public nodeMatchCount;
+    mapping(uint => uint) public gameIdToNodeId;
+    mapping(uint => address) public gameIdToHuman;
+    // Full AI roster minted for a game, recorded at mint time so it can be
+    // released back to AIShips' pool as a whole at game end — surviving
+    // *and* destroyed ships alike, since destroyed ships are spliced out of
+    // Game.sol's playerActiveShipIds mid-match and can't be reconstructed
+    // from that set alone.
+    mapping(uint => uint[]) public gameIdToAiShipIds;
 
     // Static per-ship info cached at setupAIFleet mint time (from the same
     // AIShipConfig already fetched there), so takeAITurn's decision engine
@@ -41,15 +58,18 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
     }
     mapping(uint => AIShipInfo) public aiShipInfo;
 
-    error NotLobbiesContract();
     error NotGame();
-    error NotInLobby();
-    error LobbyNotReadyForFleet();
     error GameEnded();
     error NotAITurn();
     error NoAIPlacementsConfigured();
+    error NodeNotUnlocked();
 
-    event AIFleetCreated(uint indexed lobbyId, uint fleetId);
+    event AIFleetCreated(uint indexed gameId, uint fleetId);
+    event NodeMatchStarted(
+        uint indexed gameId,
+        uint indexed nodeId,
+        address indexed human
+    );
     event AITurnTaken(
         uint indexed gameId,
         uint shipId,
@@ -63,14 +83,18 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
         address _game,
         address _aiEncounters,
         address _maps,
-        address _shipAttributes
+        address _shipAttributes,
+        address _nodeMap,
+        address _fleets
     ) Ownable(msg.sender) {
-        ships = Ships(_ships);
+        ships = AIShips(_ships);
         lobbies = Lobbies(_lobbies);
         game = Game(_game);
         aiEncounters = AIEncounters(_aiEncounters);
         maps = IMaps(_maps);
         shipAttributes = IShipAttributes(_shipAttributes);
+        nodeMap = NodeMap(_nodeMap);
+        fleets = IFleets(_fleets);
     }
 
     function setLobbiesAddress(address _lobbies) external onlyOwner {
@@ -101,8 +125,16 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
         universalCredits = IUniversalCredits(_universalCredits);
     }
 
+    function setNodeMapAddress(address _nodeMap) external onlyOwner {
+        nodeMap = NodeMap(_nodeMap);
+    }
+
+    function setFleetsAddress(address _fleets) external onlyOwner {
+        fleets = IFleets(_fleets);
+    }
+
     // The AI's own ships are owned by address(this), so whenever the AI
-    // destroys a human ship, Ships.setTimestampDestroyed's kill reward
+    // destroys a human ship, ShipsRouter.setTimestampDestroyed's kill reward
     // mints UTC here (unlike a human destroying an AI ship, which now pays
     // out in DEC instead — see DestroyRewardLib) with no way for this
     // contract to otherwise spend or move it. Lets the owner claim it out.
@@ -114,43 +146,84 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
         );
     }
 
-    // Accepts a lobby reservation naming this contract as the joiner.
-    // Permissionless — anyone can trigger it once the human has reserved a
-    // lobby for this contract; there's no funds/state at risk in doing so.
-    function acceptMatch(uint _lobbyId) external {
-        lobbies.acceptGame(_lobbyId);
+    // Entry point into a vs-AI match: no Lobbies involved. _nodeId must be
+    // unlocked for msg.sender (NodeMap.isNodeUnlocked — a root node, or any
+    // one of its prerequisites already completed by this player). Every
+    // other parameter of the match (map, fleet cost ceiling, turn time, max
+    // score, who goes first) is curated on the node itself rather than
+    // player-supplied, matching how AIEncounters already curates AI
+    // loadouts per map — a campaign node is a fixed, pre-designed encounter.
+    function startNodeMatch(
+        uint _nodeId,
+        uint[] calldata _shipIds,
+        Position[] calldata _positions
+    ) external returns (uint gameId) {
+        if (!nodeMap.isNodeUnlocked(msg.sender, _nodeId))
+            revert NodeNotUnlocked();
+
+        NodeMap.CampaignNode memory node = nodeMap.getNode(_nodeId);
+
+        nodeMatchCount++;
+        gameId = NODE_MATCH_ID_OFFSET + nodeMatchCount;
+
+        uint humanFleetId = fleets.createFleet(
+            gameId,
+            msg.sender,
+            _shipIds,
+            _positions,
+            node.costLimit,
+            true
+        );
+
+        uint aiFleetId = _mintAIFleet(node.mapId, node.costLimit, gameId);
+
+        gameIdToNodeId[gameId] = _nodeId;
+        gameIdToHuman[gameId] = msg.sender;
+
+        game.startGame(
+            gameId,
+            msg.sender,
+            address(this),
+            humanFleetId,
+            aiFleetId,
+            node.creatorGoesFirst,
+            node.turnTime,
+            node.mapId,
+            node.maxScore
+        );
+
+        emit NodeMatchStarted(gameId, _nodeId, msg.sender);
     }
 
-    // Mints a fresh, fully-constructed fleet for this contract and registers
-    // it with Lobbies. Permissionless, same reasoning as acceptMatch. A new
-    // fleet is minted per match rather than reusing a persistent roster
-    // (destroyed ships stay permanently locked in this game, so there's
-    // nothing to reuse between matches).
+    // Allocates a fleet from AIShips' pool for this contract and registers
+    // it with Fleets directly. Ships come from AIShips.allocateShip, which
+    // reuses a slot released by a previously-finished match (see
+    // onGameEnded/releaseShips below) when one is available, rather than
+    // minting a fresh token every match.
     //
     // Fleet composition/placement is driven entirely by AIEncounters: an
-    // admin-curated row/col -> AIShipConfig mapping for the lobby's selected
-    // preset map (contracts/AIEncounters.sol), rather than a hardcoded
-    // template. Fleet size is therefore dynamic (1-8 ships, whatever the
-    // map's admin configured) instead of always exactly 3. A map with no
-    // configured placements — including selectedMapId == 0 — reverts rather
-    // than silently falling back to a default fleet, matching this
-    // codebase's established "fail loud on unconfigured admin data"
-    // precedent (see ShipAttributes' unconfigured-variant reverts).
-    function setupAIFleet(uint _lobbyId) external returns (uint fleetId) {
-        Lobby memory lobby = lobbies.getLobby(_lobbyId);
-        if (lobby.players.joiner != address(this)) revert NotInLobby();
-        if (lobby.state.status != LobbyStatus.FleetSelection)
-            revert LobbyNotReadyForFleet();
-
+    // admin-curated row/col -> AIShipConfig mapping for the node's map
+    // (contracts/AIEncounters.sol), rather than a hardcoded template. Fleet
+    // size is therefore dynamic (1-8 ships, whatever the map's admin
+    // configured) instead of always exactly 3. A map with no configured
+    // placements reverts rather than silently falling back to a default
+    // fleet, matching this codebase's established "fail loud on
+    // unconfigured admin data" precedent (see ShipAttributes' unconfigured-
+    // variant reverts).
+    function _mintAIFleet(
+        uint _mapId,
+        uint _costLimit,
+        uint _gameId
+    ) internal returns (uint fleetId) {
         (Position[] memory positions, uint[] memory configIds) = aiEncounters
-            .getMapPlacements(lobby.gameConfig.selectedMapId);
+            .getMapPlacements(_mapId);
         if (positions.length == 0) revert NoAIPlacementsConfigured();
 
         uint[] memory shipIds = new uint[](positions.length);
         for (uint i = 0; i < positions.length; i++) {
             AIEncounters.AIShipConfig memory config = aiEncounters
                 .getAIShipConfig(configIds[i]);
-            shipIds[i] = ships.createSpecificShip(
+            shipIds[i] = ships.allocateShip(
                 address(this),
                 _buildAIShipFromConfig(config)
             );
@@ -160,12 +233,17 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
                 special: config.equipment.special
             });
         }
+        gameIdToAiShipIds[_gameId] = shipIds;
 
-        lobbies.createFleet(_lobbyId, shipIds, positions);
-
-        lobby = lobbies.getLobby(_lobbyId);
-        fleetId = lobby.players.joinerFleetId;
-        emit AIFleetCreated(_lobbyId, fleetId);
+        fleetId = fleets.createFleet(
+            _gameId,
+            address(this),
+            shipIds,
+            positions,
+            _costLimit,
+            false
+        );
+        emit AIFleetCreated(_gameId, fleetId);
     }
 
     function _buildAIShipFromConfig(
@@ -175,33 +253,6 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
         s.owner = address(this);
         s.equipment = _config.equipment;
         s.traits = _config.traits;
-    }
-
-    // Called by Lobbies once both sides' fleets are set; forwards straight
-    // through to core Game.sol, exactly like PvPMatch.startGame.
-    function startGame(
-        uint _lobbyId,
-        address _creator,
-        address _joiner,
-        uint _creatorFleetId,
-        uint _joinerFleetId,
-        bool _creatorGoesFirst,
-        uint _turnTime,
-        uint _selectedMapId,
-        uint _maxScore
-    ) external {
-        if (msg.sender != address(lobbies)) revert NotLobbiesContract();
-        game.startGame(
-            _lobbyId,
-            _creator,
-            _joiner,
-            _creatorFleetId,
-            _joinerFleetId,
-            _creatorGoesFirst,
-            _turnTime,
-            _selectedMapId,
-            _maxScore
-        );
     }
 
     // Moves exactly one of the AI's currently-unmoved ships. Permissionless:
@@ -398,22 +449,34 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator, IERC721Receiver {
     }
 
     // IGameOrchestrator: called by core Game.sol whenever a session this
-    // contract started ends. No leaderboard/fleet bookkeeping needed here —
-    // fleet cleanup already happens unconditionally inside core
-    // Game._endGame; single-player result tracking is a separate concern for
-    // later.
-    function onGameEnded(uint, address, address) external view {
+    // contract started ends. Fleet cleanup already happens unconditionally
+    // inside core Game._endGame. Releases this game's full AI roster back
+    // to AIShips' pool exactly once here — win, loss, or draw — rather than
+    // per-ship-destroyed mid-match, so a slot is never touched while its
+    // game might still reference it. If this was a node match and the
+    // human won, also records the node as completed so it counts as a
+    // prerequisite for unlocking other nodes — never on an AI win or draw.
+    function onGameEnded(uint _gameId, address _winner, address) external {
         if (msg.sender != address(game)) revert NotGame();
+
+        ships.releaseShips(gameIdToAiShipIds[_gameId]);
+        delete gameIdToAiShipIds[_gameId];
+
+        uint nodeId = gameIdToNodeId[_gameId];
+        if (nodeId != 0 && _winner == gameIdToHuman[_gameId]) {
+            nodeMap.recordCompletion(_winner, nodeId);
+        }
     }
 
-    // Ships are ERC-721 tokens minted directly to this contract (its own AI
-    // fleet), so it must accept them via the safe-transfer receiver hook.
-    function onERC721Received(
-        address,
-        address,
-        uint256,
-        bytes calldata
-    ) external pure override returns (bytes4) {
-        return IERC721Receiver.onERC721Received.selector;
+    // ILobbiesOrchestratorCheck: ShipsRouter.setTimestampDestroyed (via
+    // DestroyRewardLib) calls this — through config.lobbyAddress, now
+    // pointed at this contract instead of Lobbies — to tell an AI-owned
+    // ship from a player-owned one. AI ships are always allocated to
+    // address(this) (see _mintAIFleet), so a plain identity check replaces
+    // Lobbies' old address=>bool mapping exactly.
+    function isSinglePlayerOrchestrator(
+        address _address
+    ) external view returns (bool) {
+        return _address == address(this);
     }
 }

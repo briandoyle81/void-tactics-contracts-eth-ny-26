@@ -71,6 +71,7 @@ contract Game is Ownable {
     error ShipAlreadyMoved();
     error InvalidMove();
     error ShipDestroyed();
+    error GameAlreadyExists();
 
     constructor(address _ships, address _shipAttributes) Ownable(msg.sender) {
         ships = IShips(_ships);
@@ -118,6 +119,7 @@ contract Game is Ownable {
         // lobby id is a unique key for the game. `gameCount` is kept only as a
         // tally of games started (no longer the id source).
         uint gameId = _lobbyId;
+        if (games[gameId].metadata.gameId != 0) revert GameAlreadyExists();
         gameCount++;
         GameData storage game = games[gameId];
 

@@ -56,7 +56,7 @@ contract Tournament is Ownable, ReentrancyGuard {
         address player1;
         address player2; // address(0) == bye / not-yet-determined
         address winner;
-        uint256 gameId; // == lobbyId of the played game (0 until assigned)
+        uint256 gameId; // == lobbyId of the played PvP game (0 until assigned)
         uint256 readyAt; // block.timestamp both player1 and player2 were set
         bytes32 walrusBlobId; // opaque match-record pointer
         bool resolved;
@@ -354,9 +354,10 @@ contract Tournament is Ownable, ReentrancyGuard {
             (gr.winner == m.player2 && gr.loser == m.player1);
         if (!ok) revert WinnerNotInMatch();
         // T-02: participant matching alone isn't enough — gameId is a shared,
-        // permanent global id space (== lobbyId), so without this a stale game the
-        // same two players happened to play before this specific pairing even
-        // existed would otherwise pass. Requiring the result to postdate the
+        // permanent id space for PvP games (== lobbyId; single-player node
+        // matches use a disjoint id range and never appear here), so without
+        // this a stale game the same two players happened to play before
+        // this specific pairing even existed would otherwise pass. Requiring the result to postdate the
         // moment both players were determined for this match (readyAt) closes the
         // replay-an-old-game path (residual risk: the two players could still
         // collude to play a fresh, off-bracket game after that point — this can't

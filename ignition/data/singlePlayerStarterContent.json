@@ -1,0 +1,330 @@
+{
+  "aiShipColors": {
+    "h1": 0, "s1": 0, "l1": 0,
+    "h2": 0, "s2": 0, "l2": 0,
+    "h3": 0, "s3": 0, "l3": 0
+  },
+  "aiShipConfigs": [
+    {
+      "key": "grunt",
+      "name": "AI Grunt",
+      "equipment": { "mainWeapon": 0, "armor": 0, "shields": 0, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 0, "hull": 0, "speed": 0 },
+      "archetype": 0
+    },
+    {
+      "key": "aggressor",
+      "name": "AI Aggressor",
+      "equipment": { "mainWeapon": 2, "armor": 1, "shields": 0, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 0, "hull": 1, "speed": 1 },
+      "archetype": 1
+    },
+    {
+      "key": "sniper",
+      "name": "AI Sniper",
+      "equipment": { "mainWeapon": 1, "armor": 0, "shields": 0, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 1, "hull": 0, "speed": 0 },
+      "archetype": 2
+    },
+    {
+      "key": "support",
+      "name": "AI Support",
+      "equipment": { "mainWeapon": 0, "armor": 0, "shields": 1, "special": 2 },
+      "traits": { "variant": 1, "accuracy": 0, "hull": 0, "speed": 0 },
+      "archetype": 3
+    },
+    {
+      "key": "turtle",
+      "name": "AI Turtle",
+      "equipment": { "mainWeapon": 0, "armor": 1, "shields": 0, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 0, "hull": 1, "speed": 0 },
+      "archetype": 4
+    }
+  ],
+  "maps": [
+    {
+      "key": "starter",
+      "type": "scoring",
+      "scoringTiles": [{ "row": 5, "col": 8, "points": 5, "onlyOnce": false }]
+    },
+    {
+      "key": "nebula",
+      "type": "full",
+      "blockedTiles": [
+        { "row": 0, "col": 1 }, { "row": 0, "col": 2 }, { "row": 0, "col": 3 },
+        { "row": 0, "col": 13 }, { "row": 0, "col": 14 }, { "row": 0, "col": 15 }, { "row": 0, "col": 16 },
+        { "row": 1, "col": 1 }, { "row": 1, "col": 2 },
+        { "row": 1, "col": 13 }, { "row": 1, "col": 14 }, { "row": 1, "col": 15 }, { "row": 1, "col": 16 },
+        { "row": 2, "col": 1 }, { "row": 2, "col": 2 },
+        { "row": 2, "col": 13 }, { "row": 2, "col": 14 }, { "row": 2, "col": 15 },
+        { "row": 3, "col": 2 }, { "row": 3, "col": 8 }, { "row": 3, "col": 9 },
+        { "row": 3, "col": 11 }, { "row": 3, "col": 12 }, { "row": 3, "col": 13 },
+        { "row": 4, "col": 2 }, { "row": 4, "col": 9 },
+        { "row": 6, "col": 7 }, { "row": 6, "col": 14 },
+        { "row": 7, "col": 3 }, { "row": 7, "col": 4 }, { "row": 7, "col": 5 },
+        { "row": 7, "col": 7 }, { "row": 7, "col": 8 }, { "row": 7, "col": 14 },
+        { "row": 8, "col": 1 }, { "row": 8, "col": 2 }, { "row": 8, "col": 3 },
+        { "row": 8, "col": 14 }, { "row": 8, "col": 15 },
+        { "row": 9, "col": 0 }, { "row": 9, "col": 1 }, { "row": 9, "col": 2 }, { "row": 9, "col": 3 },
+        { "row": 9, "col": 14 }, { "row": 9, "col": 15 },
+        { "row": 10, "col": 0 }, { "row": 10, "col": 1 }, { "row": 10, "col": 2 }, { "row": 10, "col": 3 },
+        { "row": 10, "col": 13 }, { "row": 10, "col": 14 }, { "row": 10, "col": 15 }
+      ],
+      "scoringTiles": [
+        { "row": 0, "col": 9, "points": 10, "onlyOnce": false },
+        { "row": 1, "col": 3, "points": 10, "onlyOnce": false },
+        { "row": 5, "col": 8, "points": 10, "onlyOnce": false },
+        { "row": 9, "col": 13, "points": 10, "onlyOnce": false },
+        { "row": 10, "col": 7, "points": 10, "onlyOnce": false }
+      ]
+    },
+    {
+      "key": "outpost",
+      "type": "scoring",
+      "scoringTiles": [{ "row": 5, "col": 8, "points": 10, "onlyOnce": false }]
+    },
+    {
+      "key": "junkyard",
+      "type": "scoring",
+      "scoringTiles": [
+        { "row": 3, "col": 6, "points": 10, "onlyOnce": false },
+        { "row": 7, "col": 10, "points": 10, "onlyOnce": false }
+      ]
+    },
+    {
+      "key": "asteroidField",
+      "type": "full",
+      "blockedTiles": [
+        { "row": 4, "col": 6 }, { "row": 4, "col": 7 },
+        { "row": 5, "col": 6 }, { "row": 5, "col": 7 },
+        { "row": 6, "col": 6 }, { "row": 6, "col": 7 },
+        { "row": 2, "col": 9 }, { "row": 8, "col": 9 }
+      ],
+      "scoringTiles": [
+        { "row": 2, "col": 5, "points": 10, "onlyOnce": false },
+        { "row": 8, "col": 5, "points": 10, "onlyOnce": false }
+      ]
+    },
+    {
+      "key": "driftWreck",
+      "type": "scoring",
+      "scoringTiles": [{ "row": 5, "col": 8, "points": 5, "onlyOnce": false }]
+    },
+    {
+      "key": "silentHulk",
+      "type": "scoring",
+      "scoringTiles": [{ "row": 5, "col": 8, "points": 15, "onlyOnce": false }]
+    },
+    {
+      "key": "warlordsRedoubt",
+      "type": "full",
+      "blockedTiles": [
+        { "row": 0, "col": 10 }, { "row": 1, "col": 10 }, { "row": 2, "col": 10 }, { "row": 3, "col": 10 },
+        { "row": 7, "col": 10 }, { "row": 8, "col": 10 }, { "row": 9, "col": 10 }, { "row": 10, "col": 10 }
+      ],
+      "scoringTiles": [{ "row": 5, "col": 8, "points": 20, "onlyOnce": false }]
+    },
+    {
+      "key": "gauntlet",
+      "type": "full",
+      "blockedTiles": [
+        { "row": 0, "col": 6 }, { "row": 1, "col": 6 }, { "row": 2, "col": 6 }, { "row": 3, "col": 6 }, { "row": 4, "col": 6 },
+        { "row": 6, "col": 6 }, { "row": 7, "col": 6 }, { "row": 8, "col": 6 }, { "row": 9, "col": 6 }, { "row": 10, "col": 6 }
+      ],
+      "scoringTiles": [
+        { "row": 5, "col": 3, "points": 10, "onlyOnce": false },
+        { "row": 5, "col": 12, "points": 10, "onlyOnce": false }
+      ]
+    },
+    {
+      "key": "bastion",
+      "type": "full",
+      "blockedTiles": [
+        { "row": 0, "col": 1 }, { "row": 0, "col": 2 }, { "row": 1, "col": 1 }, { "row": 1, "col": 2 },
+        { "row": 9, "col": 14 }, { "row": 9, "col": 15 }, { "row": 10, "col": 14 }, { "row": 10, "col": 15 }
+      ],
+      "scoringTiles": [
+        { "row": 1, "col": 8, "points": 10, "onlyOnce": false },
+        { "row": 5, "col": 8, "points": 15, "onlyOnce": false },
+        { "row": 9, "col": 8, "points": 10, "onlyOnce": false }
+      ]
+    }
+  ],
+  "mapPlacements": [
+    {
+      "mapKey": "starter",
+      "positions": [
+        { "row": 3, "col": 13 },
+        { "row": 4, "col": 13 },
+        { "row": 5, "col": 13 },
+        { "row": 6, "col": 13 },
+        { "row": 7, "col": 13 }
+      ],
+      "configKeys": ["grunt", "aggressor", "sniper", "support", "turtle"]
+    },
+    {
+      "mapKey": "nebula",
+      "positions": [
+        { "row": 4, "col": 13 },
+        { "row": 5, "col": 13 },
+        { "row": 6, "col": 13 },
+        { "row": 7, "col": 13 },
+        { "row": 8, "col": 13 }
+      ],
+      "configKeys": ["grunt", "aggressor", "sniper", "support", "turtle"]
+    },
+    {
+      "mapKey": "outpost",
+      "positions": [{ "row": 4, "col": 13 }, { "row": 6, "col": 13 }],
+      "configKeys": ["grunt", "aggressor"]
+    },
+    {
+      "mapKey": "junkyard",
+      "positions": [{ "row": 4, "col": 13 }, { "row": 6, "col": 13 }],
+      "configKeys": ["sniper", "support"]
+    },
+    {
+      "mapKey": "asteroidField",
+      "positions": [
+        { "row": 4, "col": 16 },
+        { "row": 5, "col": 16 },
+        { "row": 6, "col": 16 }
+      ],
+      "configKeys": ["grunt", "aggressor", "turtle"]
+    },
+    {
+      "mapKey": "driftWreck",
+      "positions": [{ "row": 5, "col": 13 }],
+      "configKeys": ["grunt"]
+    },
+    {
+      "mapKey": "silentHulk",
+      "positions": [{ "row": 4, "col": 13 }, { "row": 6, "col": 13 }],
+      "configKeys": ["aggressor", "sniper"]
+    },
+    {
+      "mapKey": "warlordsRedoubt",
+      "positions": [
+        { "row": 3, "col": 13 },
+        { "row": 4, "col": 13 },
+        { "row": 5, "col": 13 },
+        { "row": 6, "col": 13 },
+        { "row": 7, "col": 13 }
+      ],
+      "configKeys": ["grunt", "aggressor", "sniper", "support", "turtle"]
+    },
+    {
+      "mapKey": "gauntlet",
+      "positions": [
+        { "row": 3, "col": 13 },
+        { "row": 4, "col": 13 },
+        { "row": 6, "col": 13 },
+        { "row": 7, "col": 13 }
+      ],
+      "configKeys": ["grunt", "aggressor", "sniper", "turtle"]
+    },
+    {
+      "mapKey": "bastion",
+      "positions": [
+        { "row": 2, "col": 13 },
+        { "row": 4, "col": 13 },
+        { "row": 5, "col": 13 },
+        { "row": 6, "col": 13 },
+        { "row": 8, "col": 13 }
+      ],
+      "configKeys": ["grunt", "aggressor", "sniper", "support", "turtle"]
+    }
+  ],
+  "campaignNodes": [
+    {
+      "key": "node1",
+      "mapKey": "starter",
+      "prerequisites": [],
+      "costLimit": 2000,
+      "turnTime": 600,
+      "maxScore": 15,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "node2",
+      "mapKey": "nebula",
+      "prerequisites": ["node1"],
+      "costLimit": 2000,
+      "turnTime": 600,
+      "maxScore": 30,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "outpost",
+      "mapKey": "outpost",
+      "prerequisites": ["node2"],
+      "costLimit": 2200,
+      "turnTime": 600,
+      "maxScore": 20,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "junkyard",
+      "mapKey": "junkyard",
+      "prerequisites": ["outpost"],
+      "costLimit": 2200,
+      "turnTime": 600,
+      "maxScore": 20,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "asteroidField",
+      "mapKey": "asteroidField",
+      "prerequisites": ["junkyard"],
+      "costLimit": 2400,
+      "turnTime": 600,
+      "maxScore": 25,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "driftWreck",
+      "mapKey": "driftWreck",
+      "prerequisites": ["node2"],
+      "costLimit": 1800,
+      "turnTime": 600,
+      "maxScore": 10,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "silentHulk",
+      "mapKey": "silentHulk",
+      "prerequisites": ["driftWreck"],
+      "costLimit": 2000,
+      "turnTime": 600,
+      "maxScore": 15,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "warlordsRedoubt",
+      "mapKey": "warlordsRedoubt",
+      "prerequisites": ["node2"],
+      "costLimit": 2200,
+      "turnTime": 900,
+      "maxScore": 40,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "gauntlet",
+      "mapKey": "gauntlet",
+      "prerequisites": ["asteroidField", "warlordsRedoubt"],
+      "costLimit": 2400,
+      "turnTime": 600,
+      "maxScore": 30,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "bastion",
+      "mapKey": "bastion",
+      "prerequisites": ["gauntlet"],
+      "costLimit": 2600,
+      "turnTime": 600,
+      "maxScore": 35,
+      "creatorGoesFirst": true
+    }
+  ]
+}

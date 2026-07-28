@@ -3,6 +3,7 @@
 
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
 import { parseEther } from "viem";
+import starterContent from "../data/singlePlayerStarterContent.json";
 
 // Set to true only for a real production deploy. Every test fixture deploys
 // this same module via hre.ignition.deploy(DeployModule), and steps gated
@@ -32,20 +33,6 @@ const TOURNAMENT_WORLD_ID_GROUP = 1n;
 // changes, recompute and update this, or call Tournament.setExternalNullifier(...).
 const TOURNAMENT_EXTERNAL_NULLIFIER =
   318078722027557965998987370672697888390534537434722412480399796468873891570n;
-
-// Cosmetic only (no validation on colors) — reused across every starter AI
-// ship config below so they're not each repeating all nine fields.
-const AI_SHIP_COLORS = {
-  h1: 0,
-  s1: 0,
-  l1: 0,
-  h2: 0,
-  s2: 0,
-  l2: 0,
-  h3: 0,
-  s3: 0,
-  l3: 0,
-};
 
 const DeployModule = buildModule("DeployModule", (m) => {
   // Deploy helper contracts first
@@ -155,17 +142,51 @@ const DeployModule = buildModule("DeployModule", (m) => {
   const droneStorefront = m.contract("DroneStorefront", [droneEnergyCores]);
 
   // Deploy DestroyRewardLib: decides UTC vs DEC for a kill reward, split
-  // out of Ships.sol purely for bytecode headroom (same reasoning as
-  // SpecialEffectsLib below) — linked into Ships at deploy time.
+  // out for bytecode headroom (same reasoning as SpecialEffectsLib below)
+  // — linked into ShipsRouter at deploy time, since that's the only
+  // contract that can see both ships' owners regardless of whether they're
+  // human (Ships.sol) or AI (AIShips.sol).
   const destroyRewardLib = m.library("DestroyRewardLib");
 
   // Finally deploy Ships with all dependencies
-  const ships = m.contract("Ships", [metadataRenderer], {
-    libraries: { DestroyRewardLib: destroyRewardLib },
-  });
+  const ships = m.contract("Ships", [metadataRenderer]);
 
-  // Deploy ShipAttributes contract
+  // Deploy AIShips: non-NFT, poolable store for single-player AI ships,
+  // sitting behind ShipsRouter below instead of Ships.sol. AI ships are
+  // never owned/traded by players, so this has no ERC-721/mint machinery —
+  // allocateShip reuses a slot released by a previously-finished match when
+  // one is available (see ShipsRouter/AIShips.sol header comments).
+  const aiShips = m.contract("AIShips");
+
+  // Deploy ShipAttributes contract (constructor arg stays Ships.sol's own
+  // address; repointed at ShipsRouter below once it's deployed, since
+  // single-player fleet-attribute lookups need to resolve both human and
+  // AI ship ids)
   const shipAttributes = m.contract("ShipAttributes", [ships]);
+
+  const setAiShipsShipAttributesCall = m.call(
+    aiShips,
+    "setShipAttributesAddress",
+    [shipAttributes],
+  );
+
+  // Deploy ShipsRouter: the facade Game.sol/Fleets.sol/ShipAttributes talk
+  // to instead of Ships.sol directly, so a single shipId space can resolve
+  // against both Ships.sol (human) and AIShips.sol (AI) — see the
+  // contract's header comment.
+  const shipsRouter = m.contract(
+    "ShipsRouter",
+    [ships, aiShips, universalCredits, droneEnergyCores],
+    { libraries: { DestroyRewardLib: destroyRewardLib } },
+  );
+
+  const setAiShipsRouterCall = m.call(aiShips, "setRouter", [shipsRouter]);
+
+  const setShipAttributesShipsAddressCall = m.call(
+    shipAttributes,
+    "setShipsAddress",
+    [shipsRouter],
+  );
 
   // Deploy ShipPurchaser
   const shipPurchaser = m.contract("ShipPurchaser", [ships, universalCredits]);
@@ -186,6 +207,13 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // build the AI's fleet instead of a hardcoded template.
   const aiEncounters = m.contract("AIEncounters", [maps]);
 
+  // Deploy NodeMap: admin-curated campaign graph for vs-AI matches — each
+  // node curates its own map/costLimit/turnTime/maxScore/creatorGoesFirst,
+  // with ANY-of prerequisite unlock semantics so branches/shortcuts are
+  // possible. Entry point is SinglePlayerMatch.startNodeMatch; no Lobbies
+  // involved.
+  const nodeMap = m.contract("NodeMap", [maps]);
+
   // Deploy GameResults contract
   const gameResults = m.contract("GameResults");
 
@@ -195,13 +223,16 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // at deploy time.
   const specialEffectsLib = m.library("SpecialEffectsLib");
 
-  // Deploy Game contract with ShipAttributes
-  const game = m.contract("Game", [ships, shipAttributes], {
+  // Deploy Game contract with ShipAttributes. `ships` arg points at
+  // ShipsRouter (not Ships.sol directly) so shipId resolution covers both
+  // human and AI ships — Game.sol itself needs no source changes for this,
+  // since it was already IShips-typed.
+  const game = m.contract("Game", [shipsRouter, shipAttributes], {
     libraries: { SpecialEffectsLib: specialEffectsLib },
   });
 
-  // Deploy Fleets contract
-  const fleets = m.contract("Fleets", [ships]);
+  // Deploy Fleets contract, also pointed at ShipsRouter for the same reason
+  const fleets = m.contract("Fleets", [shipsRouter]);
 
   // Deploy Lobbies contract
   const lobbies = m.contract("Lobbies", [ships]);
@@ -212,14 +243,19 @@ const DeployModule = buildModule("DeployModule", (m) => {
   const pvpMatch = m.contract("PvPMatch", [game, gameResults]);
 
   // Deploy SinglePlayerMatch: plays single-player matches as an on-chain AI
-  // opponent, through the exact same Lobbies flow as a human joiner.
+  // opponent, entered via NodeMap's campaign graph (startNodeMatch) — no
+  // Lobbies involved. `lobbies` is kept as a legacy constructor arg only
+  // (see the contract's header comment). First arg is AIShips.sol, not
+  // Ships.sol — this contract's AI fleets are allocated from AIShips' pool.
   const singlePlayerMatch = m.contract("SinglePlayerMatch", [
-    ships,
+    aiShips,
     lobbies,
     game,
     aiEncounters,
     maps,
     shipAttributes,
+    nodeMap,
+    fleets,
   ]);
 
   const tutorialClaim = m.contract("TutorialClaim", [ships, gameResults]);
@@ -230,11 +266,18 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // automatic-side-effect-of-movement ramming mechanic.
   const ramResolver = m.contract("RamResolver", [game]);
 
-  // Set all config values in a single call
+  // Set all config values in a single call. gameAddress/fleetsAddress are
+  // ShipsRouter's address, not Game.sol's/Fleets.sol's directly — Game.sol
+  // and Fleets.sol now call ShipsRouter instead of Ships.sol, so Ships.sol
+  // only ever gets called BY the router post-migration, and must whitelist
+  // it accordingly (see markDestroyed/recordKill/setInFleet's auth checks).
   const setShipsConfigCall = m.call(ships, "setConfig", [
-    game, // gameAddress
-    lobbies, // lobbyAddress
-    fleets, // fleetsAddress
+    shipsRouter, // gameAddress
+    singlePlayerMatch, // lobbyAddress — DestroyRewardLib uses this purely to
+    // identify the AI orchestrator address for kill-reward routing (UTC vs
+    // DEC); see Ships.sol's comment on this param and
+    // SinglePlayerMatch.isSinglePlayerOrchestrator.
+    shipsRouter, // fleetsAddress
     generateNewShip,
     randomManager,
     metadataRenderer,
@@ -242,6 +285,24 @@ const DeployModule = buildModule("DeployModule", (m) => {
     universalCredits, // universalCredits
     droneEnergyCores, // droneEnergyCores
   ]);
+
+  // ShipsRouter's own auth config: gameAddress/fleetsAddress gate its
+  // setTimestampDestroyed/setInFleet the same way Ships.sol used to gate
+  // them directly against Game.sol/Fleets.sol. lobbyAddress feeds
+  // DestroyRewardLib the same way it did when called from inside Ships.sol.
+  const setShipsRouterGameAddressCall = m.call(shipsRouter, "setGameAddress", [
+    game,
+  ]);
+  const setShipsRouterFleetsAddressCall = m.call(
+    shipsRouter,
+    "setFleetsAddress",
+    [fleets],
+  );
+  const setShipsRouterLobbyAddressCall = m.call(
+    shipsRouter,
+    "setLobbyAddress",
+    [singlePlayerMatch],
+  );
 
   // Set all addresses in Game contract (Fleets/Maps/ShipAttributes stay core
   // dependencies; Lobbies/GameResults moved to PvPMatch)
@@ -297,305 +358,167 @@ const DeployModule = buildModule("DeployModule", (m) => {
     { id: "AllowAIEncounterEditor" },
   );
 
-  // --- Starter single-player content ------------------------------------
+  // Reuse the same map-editor wallet as the campaign-node graph admin
+  const allowNodeEditorCall = m.call(
+    nodeMap,
+    "setNodeEditor",
+    [MAP_EDITOR, true],
+    { id: "AllowNodeEditor" },
+  );
+
+  // Let SinglePlayerMatch record node completions on a human win
+  const allowSinglePlayerMatchToCompleteNodesCall = m.call(
+    nodeMap,
+    "setIsAllowedToCompleteNodes",
+    [singlePlayerMatch, true],
+    { id: "AllowSinglePlayerMatchToCompleteNodes" },
+  );
+
+  // --- Starter single-player content --------------------------------------
   // Neither preset maps nor AIEncounters ship configs are otherwise seeded
   // anywhere — both are meant to be curated post-deploy by the MAP_EDITOR
   // wallet via the permission calls just above. Without at least one of
   // each, a fresh deployment has zero maps and zero AI configs, so
   // single-player is unusable (setupAIFleet always reverts with
-  // NoAIPlacementsConfigured) until someone manually creates content. This
-  // seeds just enough for single-player to work out of the box: one small
-  // preset map with a scoring tile, and one AI ship config per behavior
-  // archetype placed on it. MAP_EDITOR can still add/replace maps and
-  // configs afterward — this isn't exclusive of that.
-  // createPresetScoringMap rather than the overloaded createPresetMap:
-  // Hardhat Ignition can't disambiguate an overload whose signature
-  // contains a struct/tuple array (its function-name validator rejects the
-  // nested parens before it ever reaches ABI resolution), and there's
-  // nothing to disambiguate here anyway since createPresetScoringMap is the
-  // only function with that name — it creates a map with no blocked tiles,
-  // which is exactly what's wanted.
-  const starterMapCall = m.call(
-    maps,
-    "createPresetScoringMap",
-    [[{ row: 5, col: 8, points: 5, onlyOnce: false }]], // gives Turtle a real objective
-    { id: "CreateStarterSinglePlayerMap" },
-  );
-  // createPresetScoringMap doesn't emit its new id and isn't a view
-  // function, so there's no event/staticCall to read it from — but it's
-  // safe to hardcode as 1 since this is the only map-creation call in this
-  // module and mapCount always starts at 0 on a fresh Maps deployment.
-  const starterMapId = 1n;
+  // NoAIPlacementsConfigured) until someone manually creates content. The
+  // actual content (maps, AI ship configs, placements, campaign nodes)
+  // lives in ignition/data/singlePlayerStarterContent.json so it can be
+  // edited without touching this file; this block just walks that data and
+  // issues the same calls the old hardcoded version did. MAP_EDITOR can
+  // still add/replace maps and configs post-deploy — this isn't exclusive
+  // of that.
+  //
+  // No AI Rammer config in the JSON: the AI has no decision path for
+  // Archetype.Rammer (SinglePlayerMatch._decideMove falls through to the
+  // default engage-or-approach logic for it, same as any unhandled
+  // archetype) — player-controlled Rammer ships and RamResolver are
+  // unaffected.
 
-  const gruntConfigCall = m.call(
-    aiEncounters,
-    "createAIShipConfig",
-    [
-      "AI Grunt",
-      { mainWeapon: 0, armor: 0, shields: 0, special: 0 }, // Laser, unarmored
+  // createPresetScoringMap/createFullPresetMap rather than the overloaded
+  // createPresetMap: Hardhat Ignition can't disambiguate an overload whose
+  // signature contains a struct/tuple array (its function-name validator
+  // rejects the nested parens before it ever reaches ABI resolution), and
+  // there's nothing to disambiguate here anyway since each of these is the
+  // only function with that name.
+  //
+  // Neither call emits its new id and neither is a view function, so
+  // there's no event/staticCall to read an id from — but each map's id is
+  // safe to compute as its 1-indexed position in the JSON array, since
+  // these are the only map-creation calls in this module, mapCount starts
+  // at 0 on a fresh Maps deployment, and each call is forced (via `after`)
+  // to run strictly after the previous one so they can't land out of order.
+  const mapCalls: Record<string, ReturnType<typeof m.call>> = {};
+  const mapIds: Record<string, bigint> = {};
+  starterContent.maps.forEach((map, i) => {
+    const mapId = BigInt(i + 1);
+    const previousMapCall =
+      i > 0 ? mapCalls[starterContent.maps[i - 1].key] : undefined;
+    const call =
+      map.type === "scoring"
+        ? m.call(maps, "createPresetScoringMap", [map.scoringTiles], {
+            id: `Create${map.key[0].toUpperCase()}${map.key.slice(1)}Map`,
+            ...(previousMapCall ? { after: [previousMapCall] } : {}),
+          })
+        : m.call(
+            maps,
+            "createFullPresetMap",
+            [map.blockedTiles ?? [], map.scoringTiles],
+            {
+              id: `Create${map.key[0].toUpperCase()}${map.key.slice(1)}Map`,
+              ...(previousMapCall ? { after: [previousMapCall] } : {}),
+            },
+          );
+    mapCalls[map.key] = call;
+    mapIds[map.key] = mapId;
+  });
+
+  const aiConfigCalls: ReturnType<typeof m.call>[] = [];
+  const aiConfigIds: Record<
+    string,
+    ReturnType<typeof m.readEventArgument>
+  > = {};
+  for (const config of starterContent.aiShipConfigs) {
+    const capitalizedKey = `${config.key[0].toUpperCase()}${config.key.slice(1)}`;
+    const call = m.call(
+      aiEncounters,
+      "createAIShipConfig",
+      [
+        config.name,
+        config.equipment,
+        {
+          serialNumber: 0n,
+          colors: starterContent.aiShipColors,
+          ...config.traits,
+        },
+        config.archetype,
+      ],
+      { id: `Create${capitalizedKey}AIShipConfig` },
+    );
+    aiConfigCalls.push(call);
+    aiConfigIds[config.key] = m.readEventArgument(
+      call,
+      "AIShipConfigCreated",
+      "configId",
+      { emitter: aiEncounters, id: `Read${capitalizedKey}ConfigId` },
+    );
+  }
+
+  const placementCalls: ReturnType<typeof m.call>[] = [];
+  for (const placement of starterContent.mapPlacements) {
+    const capitalizedKey = `${placement.mapKey[0].toUpperCase()}${placement.mapKey.slice(1)}`;
+    placementCalls.push(
+      m.call(
+        aiEncounters,
+        "setMapPlacements",
+        [
+          mapIds[placement.mapKey],
+          placement.positions,
+          placement.configKeys.map((k) => aiConfigIds[k]),
+        ],
+        {
+          id: `Place${capitalizedKey}AIFleet`,
+          after: [mapCalls[placement.mapKey]],
+        },
+      ),
+    );
+  }
+
+  // Seeds the campaign graph so the frontend has a real unlock graph out of
+  // the box: nodes are created in the JSON's order, each node's id is its
+  // 1-indexed position (same "no event to read" reasoning as the maps
+  // above), and "prerequisites" references other nodes by key, which
+  // requires the JSON to list a node after everything it depends on (same
+  // requirement the old hardcoded version had). MAP_EDITOR can add more
+  // nodes/branches afterward via NodeMap.createNode/addPrerequisite.
+  // costLimit/turnTime/maxScore are curated here rather than player-chosen
+  // — see NodeMap.sol's header comment for why.
+  const nodeCalls: Record<string, ReturnType<typeof m.call>> = {};
+  const nodeIds: Record<string, bigint> = {};
+  starterContent.campaignNodes.forEach((node, i) => {
+    const capitalizedKey = `${node.key[0].toUpperCase()}${node.key.slice(1)}`;
+    const prerequisiteIds = node.prerequisites.map((k) => nodeIds[k]);
+    const call = m.call(
+      nodeMap,
+      "createNode",
+      [
+        mapIds[node.mapKey],
+        prerequisiteIds,
+        node.costLimit,
+        node.turnTime,
+        node.maxScore,
+        node.creatorGoesFirst,
+      ],
       {
-        serialNumber: 0n,
-        colors: AI_SHIP_COLORS,
-        variant: 1,
-        accuracy: 0,
-        hull: 0,
-        speed: 0,
+        id: `Create${capitalizedKey}`,
+        after: [
+          mapCalls[node.mapKey],
+          ...node.prerequisites.map((k) => nodeCalls[k]),
+        ],
       },
-      0, // Archetype.Grunt
-    ],
-    { id: "CreateGruntAIShipConfig" },
-  );
-  const gruntConfigId = m.readEventArgument(
-    gruntConfigCall,
-    "AIShipConfigCreated",
-    "configId",
-    { emitter: aiEncounters, id: "ReadGruntConfigId" },
-  );
-
-  const aggressorConfigCall = m.call(
-    aiEncounters,
-    "createAIShipConfig",
-    [
-      "AI Aggressor",
-      { mainWeapon: 2, armor: 1, shields: 0, special: 0 }, // MissileLauncher, Light armor
-      {
-        serialNumber: 0n,
-        colors: AI_SHIP_COLORS,
-        variant: 1,
-        accuracy: 0,
-        hull: 1,
-        speed: 1,
-      },
-      1, // Archetype.Aggressor
-    ],
-    { id: "CreateAggressorAIShipConfig" },
-  );
-  const aggressorConfigId = m.readEventArgument(
-    aggressorConfigCall,
-    "AIShipConfigCreated",
-    "configId",
-    { emitter: aiEncounters, id: "ReadAggressorConfigId" },
-  );
-
-  const sniperConfigCall = m.call(
-    aiEncounters,
-    "createAIShipConfig",
-    [
-      "AI Sniper",
-      { mainWeapon: 1, armor: 0, shields: 0, special: 0 }, // Railgun (longest range)
-      {
-        serialNumber: 0n,
-        colors: AI_SHIP_COLORS,
-        variant: 1,
-        accuracy: 1,
-        hull: 0,
-        speed: 0,
-      },
-      2, // Archetype.Sniper
-    ],
-    { id: "CreateSniperAIShipConfig" },
-  );
-  const sniperConfigId = m.readEventArgument(
-    sniperConfigCall,
-    "AIShipConfigCreated",
-    "configId",
-    { emitter: aiEncounters, id: "ReadSniperConfigId" },
-  );
-
-  const supportConfigCall = m.call(
-    aiEncounters,
-    "createAIShipConfig",
-    [
-      "AI Support",
-      { mainWeapon: 0, armor: 0, shields: 1, special: 2 }, // Laser, Light shields, RepairDrones
-      {
-        serialNumber: 0n,
-        colors: AI_SHIP_COLORS,
-        variant: 1,
-        accuracy: 0,
-        hull: 0,
-        speed: 0,
-      },
-      3, // Archetype.Support
-    ],
-    { id: "CreateSupportAIShipConfig" },
-  );
-  const supportConfigId = m.readEventArgument(
-    supportConfigCall,
-    "AIShipConfigCreated",
-    "configId",
-    { emitter: aiEncounters, id: "ReadSupportConfigId" },
-  );
-
-  const turtleConfigCall = m.call(
-    aiEncounters,
-    "createAIShipConfig",
-    [
-      "AI Turtle",
-      { mainWeapon: 0, armor: 1, shields: 0, special: 0 }, // Laser, Light armor
-      {
-        serialNumber: 0n,
-        colors: AI_SHIP_COLORS,
-        variant: 1,
-        accuracy: 0,
-        hull: 1,
-        speed: 0,
-      },
-      4, // Archetype.Turtle
-    ],
-    { id: "CreateTurtleAIShipConfig" },
-  );
-  const turtleConfigId = m.readEventArgument(
-    turtleConfigCall,
-    "AIShipConfigCreated",
-    "configId",
-    { emitter: aiEncounters, id: "ReadTurtleConfigId" },
-  );
-
-  // No AI Rammer config: the AI has no decision path for Archetype.Rammer
-  // (SinglePlayerMatch._decideMove falls through to the default
-  // engage-or-approach logic for it, same as any unhandled archetype) —
-  // player-controlled Rammer ships and RamResolver are unaffected.
-
-  // Clustered vertically at column 13 — the leftmost (closest to the
-  // human's side, columns 0-3) column in the joiner's legal 13-16 window —
-  // centered exactly on the grid's vertical middle (row 5 of 0-10) across
-  // these five rows, so the AI fleet spawns as close as possible to the
-  // human rather than spread across the top of its zone.
-  const placeStarterAIFleetCall = m.call(
-    aiEncounters,
-    "setMapPlacements",
-    [
-      starterMapId,
-      [
-        { row: 3, col: 13 },
-        { row: 4, col: 13 },
-        { row: 5, col: 13 },
-        { row: 6, col: 13 },
-        { row: 7, col: 13 },
-      ],
-      [
-        gruntConfigId,
-        aggressorConfigId,
-        sniperConfigId,
-        supportConfigId,
-        turtleConfigId,
-      ],
-    ],
-    { id: "PlaceStarterAIFleet", after: [starterMapCall] },
-  );
-
-  // --- Second starter map (nebula field) ----------------------------------
-  // A second default single-player map, laid out with blocked "nebula"
-  // tiles and five scoring tiles. createFullPresetMap (not the overloaded
-  // createPresetMap) for the same Ignition-disambiguation reason
-  // createPresetScoringMap exists above — see Maps.sol's comment on it.
-  const nebulaMapCall = m.call(
-    maps,
-    "createFullPresetMap",
-    [
-      [
-        { row: 0, col: 1 },
-        { row: 0, col: 2 },
-        { row: 0, col: 3 },
-        { row: 0, col: 13 },
-        { row: 0, col: 14 },
-        { row: 0, col: 15 },
-        { row: 0, col: 16 },
-        { row: 1, col: 1 },
-        { row: 1, col: 2 },
-        { row: 1, col: 13 },
-        { row: 1, col: 14 },
-        { row: 1, col: 15 },
-        { row: 1, col: 16 },
-        { row: 2, col: 1 },
-        { row: 2, col: 2 },
-        { row: 2, col: 13 },
-        { row: 2, col: 14 },
-        { row: 2, col: 15 },
-        { row: 3, col: 2 },
-        { row: 3, col: 8 },
-        { row: 3, col: 9 },
-        { row: 3, col: 11 },
-        { row: 3, col: 12 },
-        { row: 3, col: 13 },
-        { row: 4, col: 2 },
-        { row: 4, col: 9 },
-        { row: 6, col: 7 },
-        { row: 6, col: 14 },
-        { row: 7, col: 3 },
-        { row: 7, col: 4 },
-        { row: 7, col: 5 },
-        { row: 7, col: 7 },
-        { row: 7, col: 8 },
-        { row: 7, col: 14 },
-        { row: 8, col: 1 },
-        { row: 8, col: 2 },
-        { row: 8, col: 3 },
-        { row: 8, col: 14 },
-        { row: 8, col: 15 },
-        { row: 9, col: 0 },
-        { row: 9, col: 1 },
-        { row: 9, col: 2 },
-        { row: 9, col: 3 },
-        { row: 9, col: 14 },
-        { row: 9, col: 15 },
-        { row: 10, col: 0 },
-        { row: 10, col: 1 },
-        { row: 10, col: 2 },
-        { row: 10, col: 3 },
-        { row: 10, col: 13 },
-        { row: 10, col: 14 },
-        { row: 10, col: 15 },
-      ],
-      [
-        { row: 0, col: 9, points: 10, onlyOnce: false },
-        { row: 1, col: 3, points: 10, onlyOnce: false },
-        { row: 5, col: 8, points: 10, onlyOnce: false },
-        { row: 9, col: 13, points: 10, onlyOnce: false },
-        { row: 10, col: 7, points: 10, onlyOnce: false },
-      ],
-    ],
-    // Ignition doesn't guarantee execution order between independent calls
-    // (see the leaveLobby/timeoutJoiner comments elsewhere in this repo for
-    // the same lesson) — force this after starterMapCall so mapCount is
-    // deterministically 1 (starter) then 2 (nebula), matching nebulaMapId
-    // below. Without this, the two calls could execute in either order and
-    // swap which map ends up as id 1 vs 2.
-    { id: "CreateNebulaSinglePlayerMap", after: [starterMapCall] },
-  );
-  // Same reasoning as starterMapId: no event/staticCall to read the new id
-  // from, but this is the second map-creation call in the module against a
-  // fresh Maps deployment, so mapCount is 2 once this executes.
-  const nebulaMapId = 2n;
-
-  // Clustered the same way as the starter map's fleet: column 13 is
-  // nebula-blocked at rows 0-3 and 10 on this map (see the blocked list
-  // above), so rows 4-8 — the best-centered 5-row window inside the only
-  // fully-open band (4-9) at that column — is used instead of the starter
-  // map's exactly-centered 3-7.
-  const placeNebulaAIFleetCall = m.call(
-    aiEncounters,
-    "setMapPlacements",
-    [
-      nebulaMapId,
-      [
-        { row: 4, col: 13 },
-        { row: 5, col: 13 },
-        { row: 6, col: 13 },
-        { row: 7, col: 13 },
-        { row: 8, col: 13 },
-      ],
-      [
-        gruntConfigId,
-        aggressorConfigId,
-        sniperConfigId,
-        supportConfigId,
-        turtleConfigId,
-      ],
-    ],
-    { id: "PlaceNebulaAIFleet", after: [nebulaMapCall] },
-  );
+    );
+    nodeCalls[node.key] = call;
+    nodeIds[node.key] = BigInt(i + 1);
+  });
 
   // Set PvPMatch address in Lobbies contract
   const setLobbiesPvpMatchAddressCall = m.call(lobbies, "setPvpMatchAddress", [
@@ -607,27 +530,13 @@ const DeployModule = buildModule("DeployModule", (m) => {
     lobbies,
   ]);
 
-  // Set SinglePlayerMatch address in Lobbies contract, and recognize it as a
-  // single-player orchestrator (createFleet dispatches to it instead of
-  // PvPMatch when a lobby's joiner is this address)
-  const setLobbiesSinglePlayerMatchAddressCall = m.call(
-    lobbies,
-    "setSinglePlayerMatchAddress",
-    [singlePlayerMatch],
-  );
-  const recognizeSinglePlayerMatchCall = m.call(
-    lobbies,
-    "setIsSinglePlayerOrchestrator",
-    [singlePlayerMatch, true],
-    { id: "RecognizeSinglePlayerMatch" },
-  );
-
-  // Allow SinglePlayerMatch to mint/construct its own fleet
-  const allowSinglePlayerMatchToCreateShipsCall = m.call(
-    ships,
+  // Allow SinglePlayerMatch to allocate AI ships from AIShips' pool (it no
+  // longer touches Ships.sol at all — its fleets live entirely in AIShips)
+  const allowSinglePlayerMatchToCreateAIShipsCall = m.call(
+    aiShips,
     "setIsAllowedToCreateShips",
     [singlePlayerMatch, true],
-    { id: "AllowSinglePlayerMatchToCreateShips" },
+    { id: "AllowSinglePlayerMatchToCreateAIShips" },
   );
 
   // Set Fleets address in Lobbies contract
@@ -645,10 +554,20 @@ const DeployModule = buildModule("DeployModule", (m) => {
     [universalCredits],
   );
 
-  // Set Lobbies address in Fleets contract
-  const setFleetsLobbiesAddressCall = m.call(fleets, "setLobbiesAddress", [
-    lobbies,
-  ]);
+  // Authorize Lobbies (PvP) and SinglePlayerMatch (vs-AI node matches) to
+  // create/clear fleets
+  const allowLobbiesToManageFleetsCall = m.call(
+    fleets,
+    "setIsAllowedToManageFleets",
+    [lobbies, true],
+    { id: "AllowLobbiesToManageFleets" },
+  );
+  const allowSinglePlayerMatchToManageFleetsCall = m.call(
+    fleets,
+    "setIsAllowedToManageFleets",
+    [singlePlayerMatch, true],
+    { id: "AllowSinglePlayerMatchToManageFleets" },
+  );
 
   // Set Game address in Fleets contract
   const setFleetsGameAddressCall = m.call(fleets, "setGameAddress", [game]);
@@ -710,7 +629,8 @@ const DeployModule = buildModule("DeployModule", (m) => {
     true,
   ]);
 
-  // Allow ShipPurchaser and Ships to mint UniversalCredits
+  // Allow ShipPurchaser and Ships to mint UniversalCredits (Ships still
+  // mints UTC directly for shipBreaker, unrelated to destroy rewards)
   const authorizeShipPurchaserToMintCall = m.call(
     universalCredits,
     "setAuthorizedToMint",
@@ -723,17 +643,28 @@ const DeployModule = buildModule("DeployModule", (m) => {
     [ships, true],
     { id: "AuthorizeShipsToMint" },
   );
+  // ShipsRouter now performs the DestroyRewardLib call itself (it's the
+  // only place that can see both ships' owners regardless of which backing
+  // contract holds them), so it — not Ships.sol — needs UTC minting rights
+  // for the AI-destroys-human reward direction.
+  const authorizeShipsRouterToMintUtcCall = m.call(
+    universalCredits,
+    "setAuthorizedToMint",
+    [shipsRouter, true],
+    { id: "AuthorizeShipsRouterToMintUtc" },
+  );
 
-  // Enable minting for DroneEnergyCores and allow Ships (via
-  // DestroyRewardLib) to mint it
+  // Enable minting for DroneEnergyCores and allow ShipsRouter (via
+  // DestroyRewardLib, now called from the router instead of Ships.sol) to
+  // mint it
   const setDecMintIsActiveCall = m.call(droneEnergyCores, "setMintIsActive", [
     true,
   ]);
-  const authorizeShipsToMintDecCall = m.call(
+  const authorizeShipsRouterToMintDecCall = m.call(
     droneEnergyCores,
     "setAuthorizedToMint",
-    [ships, true],
-    { id: "AuthorizeShipsToMintDec" },
+    [shipsRouter, true],
+    { id: "AuthorizeShipsRouterToMintDec" },
   );
 
   // DEC is soulbound except to/from this address — makes it spendable at
@@ -846,7 +777,6 @@ const DeployModule = buildModule("DeployModule", (m) => {
       id: "TransferShipsOwnership",
       after: [
         setShipsConfigCall,
-        allowSinglePlayerMatchToCreateShipsCall,
         allowShipPurchaserToCreateShipsCall,
         allowDroneYardToModifyShipsCall,
         allowTutorialClaimToCreateShipsCall,
@@ -855,8 +785,27 @@ const DeployModule = buildModule("DeployModule", (m) => {
       ],
     });
 
+    m.call(aiShips, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferAIShipsOwnership",
+      after: [
+        setAiShipsShipAttributesCall,
+        setAiShipsRouterCall,
+        allowSinglePlayerMatchToCreateAIShipsCall,
+      ],
+    });
+
+    m.call(shipsRouter, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferShipsRouterOwnership",
+      after: [
+        setShipsRouterGameAddressCall,
+        setShipsRouterFleetsAddressCall,
+        setShipsRouterLobbyAddressCall,
+      ],
+    });
+
     m.call(shipAttributes, "transferOwnership", [MAP_EDITOR], {
       id: "TransferShipAttributesOwnership",
+      after: [setShipAttributesShipsAddressCall],
     });
 
     m.call(shipPurchaser, "transferOwnership", [MAP_EDITOR], {
@@ -872,23 +821,13 @@ const DeployModule = buildModule("DeployModule", (m) => {
       after: [
         setMapsGameAddressCall,
         allowMapEditorCall,
-        starterMapCall,
-        nebulaMapCall,
+        ...Object.values(mapCalls),
       ],
     });
 
     m.call(aiEncounters, "transferOwnership", [MAP_EDITOR], {
       id: "TransferAIEncountersOwnership",
-      after: [
-        allowAIEncounterEditorCall,
-        gruntConfigCall,
-        aggressorConfigCall,
-        sniperConfigCall,
-        supportConfigCall,
-        turtleConfigCall,
-        placeStarterAIFleetCall,
-        placeNebulaAIFleetCall,
-      ],
+      after: [allowAIEncounterEditorCall, ...aiConfigCalls, ...placementCalls],
     });
 
     m.call(gameResults, "transferOwnership", [MAP_EDITOR], {
@@ -912,7 +851,8 @@ const DeployModule = buildModule("DeployModule", (m) => {
     m.call(fleets, "transferOwnership", [MAP_EDITOR], {
       id: "TransferFleetsOwnership",
       after: [
-        setFleetsLobbiesAddressCall,
+        allowLobbiesToManageFleetsCall,
+        allowSinglePlayerMatchToManageFleetsCall,
         setFleetsGameAddressCall,
         setFleetsShipAttributesCall,
       ],
@@ -922,8 +862,6 @@ const DeployModule = buildModule("DeployModule", (m) => {
       id: "TransferLobbiesOwnership",
       after: [
         setLobbiesPvpMatchAddressCall,
-        setLobbiesSinglePlayerMatchAddressCall,
-        recognizeSinglePlayerMatchCall,
         setLobbiesFleetsAddressCall,
         setLobbiesMapsAddressCall,
         setLobbiesUniversalCreditsAddressCall,
@@ -940,12 +878,22 @@ const DeployModule = buildModule("DeployModule", (m) => {
       after: [setSinglePlayerMatchUniversalCreditsAddressCall],
     });
 
+    m.call(nodeMap, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferNodeMapOwnership",
+      after: [
+        allowNodeEditorCall,
+        allowSinglePlayerMatchToCompleteNodesCall,
+        ...Object.values(nodeCalls),
+      ],
+    });
+
     m.call(universalCredits, "transferOwnership", [MAP_EDITOR], {
       id: "TransferUniversalCreditsOwnership",
       after: [
         setMintIsActiveCall,
         authorizeShipPurchaserToMintCall,
         authorizeShipsToMintCall,
+        authorizeShipsRouterToMintUtcCall,
       ],
     });
 
@@ -953,7 +901,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
       id: "TransferDroneEnergyCoresOwnership",
       after: [
         setDecMintIsActiveCall,
-        authorizeShipsToMintDecCall,
+        authorizeShipsRouterToMintDecCall,
         setDecTransferExemptAddressCall,
       ],
     });
@@ -1003,6 +951,8 @@ const DeployModule = buildModule("DeployModule", (m) => {
     shipNames,
     generateNewShip,
     ships,
+    aiShips,
+    shipsRouter,
     shipAttributes,
     universalCredits,
     droneEnergyCores,
@@ -1016,6 +966,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
     singlePlayerMatch,
     fleets,
     lobbies,
+    nodeMap,
     tutorialClaim,
     worldId,
     tournament,

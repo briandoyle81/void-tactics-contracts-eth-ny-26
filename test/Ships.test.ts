@@ -1116,7 +1116,7 @@ describe("Ships", function () {
       // Note: The first purchase already gives 11 ships, no need for a second purchase
 
       // Destroy the ship (simulate by setting timestampDestroyed)
-      await ships.write.setTimestampDestroyed([1n, 0n], {
+      await ships.write.markDestroyed([1n], {
         account: owner.account,
       });
 

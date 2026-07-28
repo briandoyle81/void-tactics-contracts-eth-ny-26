@@ -8,26 +8,19 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./Types.sol";
 import "./Ships.sol";
 import "./PvPMatch.sol";
-import "./SinglePlayerMatch.sol";
 import "./IFleets.sol";
 import "./IMaps.sol";
 
+// PvP-only: vs-AI matches now enter through SinglePlayerMatch.startNodeMatch
+// directly (see NodeMap.sol), with no lobby involved at all.
 contract Lobbies is Ownable, ReentrancyGuard {
     using EnumerableSet for EnumerableSet.UintSet;
 
     Ships public ships;
     PvPMatch public pvpMatch;
-    SinglePlayerMatch public singlePlayerMatch;
     IFleets public fleets;
     IMaps public maps;
 
-    // Addresses (e.g. SinglePlayerMatch) recognized as single-player
-    // orchestrators. A lobby is a single-player match exactly when its joiner
-    // is one of these addresses — everything else about lobby creation,
-    // joining (typically via reservedJoiner + acceptGame), fees, timeouts,
-    // and fleet creation is identical to a PvP lobby, on purpose, so both
-    // modes share the same lobby-count/free-games constraints.
-    mapping(address => bool) public isSinglePlayerOrchestrator;
     IERC20 public universalCredits;
 
     uint public lobbyCount;
@@ -112,19 +105,6 @@ contract Lobbies is Ownable, ReentrancyGuard {
         pvpMatch = PvPMatch(_pvpMatchAddress);
     }
 
-    function setSinglePlayerMatchAddress(
-        address _singlePlayerMatchAddress
-    ) public onlyOwner {
-        singlePlayerMatch = SinglePlayerMatch(_singlePlayerMatchAddress);
-    }
-
-    function setIsSinglePlayerOrchestrator(
-        address _address,
-        bool _isSinglePlayerOrchestrator
-    ) public onlyOwner {
-        isSinglePlayerOrchestrator[_address] = _isSinglePlayerOrchestrator;
-    }
-
     function setFleetsAddress(address _fleetsAddress) public onlyOwner {
         fleets = IFleets(_fleetsAddress);
     }
@@ -185,13 +165,6 @@ contract Lobbies is Ownable, ReentrancyGuard {
         PlayerLobbyState storage state = playerStates[msg.sender];
         if (state.activeLobbyId != _lobbyId) revert NotInLobby();
 
-        // Was this an unresolved AI reservation made by the leaving creator?
-        // Checked before any mutation below: reservedJoiner holds the AI
-        // orchestrator address before it accepts, joiner holds it after.
-        bool leavingAIReservation = msg.sender == lobby.basic.creator &&
-            (isSinglePlayerOrchestrator[lobby.players.reservedJoiner] ||
-                isSinglePlayerOrchestrator[lobby.players.joiner]);
-
         // If player is creator, delete the lobby
         if (msg.sender == lobby.basic.creator) {
             // Clear creator's fleet if they have one
@@ -201,16 +174,8 @@ contract Lobbies is Ownable, ReentrancyGuard {
             }
 
             // If a human joiner exists, they become the new creator so the
-            // lobby isn't wasted. An AI orchestrator joiner can never fill
-            // that role — nothing in this contract gives it a creator-side
-            // flow, and single-player dispatch only ever checks
-            // isSinglePlayerOrchestrator[joiner], never creator — so treat a
-            // vs-AI lobby the creator abandons the same as a fully unjoined
-            // one: close it outright instead of promoting the AI.
-            if (
-                lobby.players.joiner != address(0) &&
-                !isSinglePlayerOrchestrator[lobby.players.joiner]
-            ) {
+            // lobby isn't wasted.
+            if (lobby.players.joiner != address(0)) {
                 address newCreator = lobby.players.joiner;
                 lobby.basic.creator = newCreator;
                 lobby.players.joiner = address(0);
@@ -228,18 +193,7 @@ contract Lobbies is Ownable, ReentrancyGuard {
 
                 emit LobbyReset(_lobbyId, newCreator);
             } else {
-                // Lobby is completely abandoned: either no joiner, or the
-                // joiner is an AI orchestrator that can't become creator.
-                // Clear the AI's fleet too, in case it had already called
-                // setupAIFleet before the creator left.
-                if (lobby.players.joinerFleetId != 0) {
-                    fleets.clearFleet(lobby.players.joinerFleetId);
-                    lobby.players.joinerFleetId = 0;
-                }
-                // Cleanup must run while joiner still holds its real value
-                // (possibly the AI orchestrator) — it's what tells
-                // _cleanupLobbyFromAllSets whose tracking-set entry to
-                // remove. Only reset joiner/status afterward.
+                // Lobby is completely abandoned: no joiner.
                 _cleanupLobbyFromAllSets(_lobbyId);
                 lobby.players.joiner = address(0);
                 lobby.state.status = LobbyStatus.Open;
@@ -268,9 +222,6 @@ contract Lobbies is Ownable, ReentrancyGuard {
         state.activeLobbyId = 0;
         if (state.activeLobbiesCount > 0) {
             state.activeLobbiesCount--;
-        }
-        if (leavingAIReservation && state.activeAILobbiesCount > 0) {
-            state.activeAILobbiesCount--;
         }
     }
 
@@ -303,26 +254,16 @@ contract Lobbies is Ownable, ReentrancyGuard {
         }
 
         // If reserving for a specific player, charge 1 UTC (no ETH involved).
-        // Exception: reserving for an AI opponent is free for a player's
-        // first unresolved AI lobby; a UTC fee applies from the second
-        // concurrent (not yet InGame) AI lobby onward, same as a human
-        // reservation.
-        bool isAIReservation = isSinglePlayerOrchestrator[_reservedJoiner];
         if (_reservedJoiner != address(0)) {
             if (msg.value != 0) revert InsufficientFee();
-            if (!isAIReservation || state.activeAILobbiesCount > 0) {
-                if (address(universalCredits) == address(0)) revert UTCTransferFailed();
-                uint reservationFee = 1 ether; // 1 UTC
-                uint balance = universalCredits.balanceOf(msg.sender);
-                if (balance < reservationFee) revert InsufficientUTC();
-                require(
-                    universalCredits.transferFrom(msg.sender, address(this), reservationFee),
-                    "UTC transfer failed"
-                );
-            }
-            if (isAIReservation) {
-                state.activeAILobbiesCount++;
-            }
+            if (address(universalCredits) == address(0)) revert UTCTransferFailed();
+            uint reservationFee = 1 ether; // 1 UTC
+            uint balance = universalCredits.balanceOf(msg.sender);
+            if (balance < reservationFee) revert InsufficientUTC();
+            require(
+                universalCredits.transferFrom(msg.sender, address(this), reservationFee),
+                "UTC transfer failed"
+            );
         } else {
             // Check if player needs to pay for additional lobbies (FLOW payment)
             if (state.activeLobbiesCount >= freeGamesPerAddress) {
@@ -490,19 +431,12 @@ contract Lobbies is Ownable, ReentrancyGuard {
             block.timestamp < lobby.players.joinedAt + lobby.gameConfig.turnTime
         ) revert TimeoutNotReached();
 
-        // Update joiner's kick state. For a vs-AI lobby, "the joiner" is
-        // the single shared SinglePlayerMatch contract address used by
-        // every player's AI match — applying a kick penalty to it would
-        // lock every other player out of accepting an AI match
-        // platform-wide. Only a real human joiner gets kicked; an AI
-        // orchestrator's timeout just resets the lobby.
+        // Update joiner's kick state.
         PlayerLobbyState storage joinerState = playerStates[
             lobby.players.joiner
         ];
-        if (!isSinglePlayerOrchestrator[lobby.players.joiner]) {
-            joinerState.kickCount++;
-            joinerState.lastKickTime = block.timestamp;
-        }
+        joinerState.kickCount++;
+        joinerState.lastKickTime = block.timestamp;
         joinerState.hasActiveLobby = false;
         joinerState.activeLobbyId = 0;
 
@@ -599,12 +533,6 @@ contract Lobbies is Ownable, ReentrancyGuard {
             if (creatorState.activeLobbiesCount > 0) {
                 creatorState.activeLobbiesCount--;
             }
-            if (
-                isSinglePlayerOrchestrator[lobby.players.joiner] &&
-                creatorState.activeAILobbiesCount > 0
-            ) {
-                creatorState.activeAILobbiesCount--;
-            }
             if (joinerState.activeLobbiesCount > 0) {
                 joinerState.activeLobbiesCount--;
             }
@@ -618,36 +546,18 @@ contract Lobbies is Ownable, ReentrancyGuard {
             // Remove from tracking sets when game starts
             _cleanupLobbyFromAllSets(_lobbyId);
 
-            // Start the game: dispatch to whichever orchestrator this match
-            // belongs to. A lobby is single-player exactly when its joiner is
-            // a recognized single-player orchestrator (e.g. SinglePlayerMatch
-            // accepting a reservation) — everything above this point (fees,
-            // reservation, timeouts, fleet creation) is identical either way.
-            if (isSinglePlayerOrchestrator[lobby.players.joiner]) {
-                singlePlayerMatch.startGame(
-                    _lobbyId,
-                    lobby.basic.creator,
-                    lobby.players.joiner,
-                    lobby.players.creatorFleetId,
-                    lobby.players.joinerFleetId,
-                    lobby.gameConfig.creatorGoesFirst,
-                    lobby.gameConfig.turnTime,
-                    lobby.gameConfig.selectedMapId,
-                    lobby.gameConfig.maxScore
-                );
-            } else {
-                pvpMatch.startGame(
-                    _lobbyId,
-                    lobby.basic.creator,
-                    lobby.players.joiner,
-                    lobby.players.creatorFleetId,
-                    lobby.players.joinerFleetId,
-                    lobby.gameConfig.creatorGoesFirst,
-                    lobby.gameConfig.turnTime,
-                    lobby.gameConfig.selectedMapId,
-                    lobby.gameConfig.maxScore
-                );
-            }
+            // Start the game
+            pvpMatch.startGame(
+                _lobbyId,
+                lobby.basic.creator,
+                lobby.players.joiner,
+                lobby.players.creatorFleetId,
+                lobby.players.joinerFleetId,
+                lobby.gameConfig.creatorGoesFirst,
+                lobby.gameConfig.turnTime,
+                lobby.gameConfig.selectedMapId,
+                lobby.gameConfig.maxScore
+            );
         }
     }
 

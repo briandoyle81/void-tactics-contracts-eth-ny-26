@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 // Reward token minted to a player's own wallet for destroying an AI-owned
-// ship in a single-player match (Ships.setTimestampDestroyed) — separate
+// ship in a single-player match (ShipsRouter.setTimestampDestroyed) — separate
 // from UniversalCredits so this specific reward can be soulbound rather
 // than freely tradeable. Non-transferable except to/from a single
 // admin-designated address (e.g. a future redemption contract); minting

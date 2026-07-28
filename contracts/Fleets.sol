@@ -3,14 +3,19 @@ pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./Types.sol";
-import "./Ships.sol";
+import "./IShips.sol";
 import "./IFleets.sol";
 import "./IShipAttributes.sol";
 
 contract Fleets is Ownable, IFleets {
-    Ships public ships;
+    IShips public ships;
     IShipAttributes public shipAttributes;
-    address public lobbiesAddress;
+    // Contracts (e.g. Lobbies, SinglePlayerMatch) authorized to manage
+    // fleets, mirroring Game.isAllowedToStartGames. Widened from a single
+    // lobbiesAddress so more than one orchestrator can create/clear fleets
+    // (Lobbies-free vs-AI matches via SinglePlayerMatch, alongside PvP via
+    // Lobbies).
+    mapping(address => bool) public isAllowedToManageFleets;
     address public gameAddress;
 
     mapping(uint => Fleet) public fleets;
@@ -23,7 +28,7 @@ contract Fleets is Ownable, IFleets {
     );
     event FleetCleared(uint indexed fleetId);
 
-    error NotLobbiesContract();
+    error NotAllowedToManageFleets();
     error FleetNotFound();
     error ShipNotOwned();
     error ShipAlreadyInFleet();
@@ -35,11 +40,14 @@ contract Fleets is Ownable, IFleets {
     error InvalidPosition();
 
     constructor(address _ships) Ownable(msg.sender) {
-        ships = Ships(_ships);
+        ships = IShips(_ships);
     }
 
-    function setLobbiesAddress(address _lobbiesAddress) public onlyOwner {
-        lobbiesAddress = _lobbiesAddress;
+    function setIsAllowedToManageFleets(
+        address _address,
+        bool _isAllowed
+    ) public onlyOwner {
+        isAllowedToManageFleets[_address] = _isAllowed;
     }
 
     function setGameAddress(address _gameAddress) public onlyOwner {
@@ -58,7 +66,8 @@ contract Fleets is Ownable, IFleets {
         uint _costLimit,
         bool _isCreator
     ) external returns (uint) {
-        if (msg.sender != lobbiesAddress) revert NotLobbiesContract();
+        if (!isAllowedToManageFleets[msg.sender])
+            revert NotAllowedToManageFleets();
 
         // Validate that shipIds and startingPositions arrays have the same length
         if (_shipIds.length != _startingPositions.length)
@@ -147,7 +156,8 @@ contract Fleets is Ownable, IFleets {
     }
 
     function clearFleet(uint _fleetId) external {
-        if (msg.sender != lobbiesAddress) revert NotLobbiesContract();
+        if (!isAllowedToManageFleets[msg.sender])
+            revert NotAllowedToManageFleets();
 
         Fleet storage fleet = fleets[_fleetId];
         if (fleet.id == 0) revert FleetNotFound();
@@ -164,8 +174,8 @@ contract Fleets is Ownable, IFleets {
     }
 
     function removeShipFromFleet(uint _fleetId, uint _shipId) external {
-        if (msg.sender != lobbiesAddress && msg.sender != gameAddress)
-            revert NotLobbiesContract();
+        if (!isAllowedToManageFleets[msg.sender] && msg.sender != gameAddress)
+            revert NotAllowedToManageFleets();
 
         Fleet storage fleet = fleets[_fleetId];
         if (fleet.id == 0) revert FleetNotFound();

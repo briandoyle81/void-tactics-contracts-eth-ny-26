@@ -1,0 +1,8 @@
+---
+description: Always date documents/instructions written for another agent to consume
+alwaysApply: true
+---
+
+# Dating cross-agent documents
+
+Any document or set of instructions written for another agent to consume (e.g. a frontend-integration handoff doc, a migration guide) must include the date it was written, near the top. These documents describe contract state at a point in time and go stale as the contracts evolve — a reader needs the date to judge whether the content is still current.

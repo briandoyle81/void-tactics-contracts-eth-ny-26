@@ -17,7 +17,6 @@ import "./IGenerateNewShip.sol";
 import "./IUniversalCredits.sol";
 import "./IShipAttributes.sol";
 import "./IDroneEnergyCores.sol";
-import "./DestroyRewardLib.sol";
 
 contract Ships is ERC721, Ownable, ReentrancyGuard {
     using EnumerableSet for EnumerableSet.UintSet;
@@ -537,7 +536,14 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         isAllowedToCreateShips[_address] = _isAllowed;
     }
 
-    function setTimestampDestroyed(uint _id, uint _destroyerId) external {
+    // Decomposed from a single combined setTimestampDestroyed into two
+    // primitives (this + recordKill) so ShipsRouter can orchestrate a kill
+    // that spans this contract and AIShips.sol — the destroyed ship and the
+    // destroyer ship no longer always live in the same contract's storage.
+    // The DEC/UTC reward payout itself now lives entirely in ShipsRouter,
+    // which is the only caller that can see both ships' owners regardless
+    // of which contract holds them.
+    function markDestroyed(uint _id) external returns (address ownerOut) {
         if (msg.sender != owner() && msg.sender != config.gameAddress) {
             revert NotAuthorized(msg.sender);
         }
@@ -548,26 +554,17 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
 
         // ERC-5192: Lock when destroyed
         emit Locked(_id);
-
-        ships[_destroyerId].shipData.shipsDestroyed++;
-
-        // Pay the destroyer 1/4 of salvage value (base recycleReward) — in
-        // soulbound DEC if the destroyed ship was AI-owned, otherwise UTC
-        // as before (see DestroyRewardLib for why this is a separately
-        // deployed library call rather than inline logic here).
-        address destroyerOwner = ships[_destroyerId].owner;
-        if (destroyerOwner != address(0)) {
-            DestroyRewardLib.payDestroyReward(
-                config.lobbyAddress,
-                ships[_id].owner,
-                destroyerOwner,
-                recycleReward >> 2, // Division by 4
-                universalCredits,
-                droneEnergyCores
-            );
-        }
-
         emit MetadataUpdate(_id);
+
+        return ships[_id].owner;
+    }
+
+    function recordKill(uint _destroyerId) external returns (address ownerOut) {
+        if (msg.sender != owner() && msg.sender != config.gameAddress) {
+            revert NotAuthorized(msg.sender);
+        }
+        ships[_destroyerId].shipData.shipsDestroyed++;
+        return ships[_destroyerId].owner;
     }
 
     function setPurchaseInfo(
@@ -583,7 +580,8 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
 
     function setConfig(
         address _gameAddress,
-        address _lobbyAddress,
+        address _lobbyAddress, // now SinglePlayerMatch's address — see DestroyRewardLib/ILobbiesOrchestratorCheck
+
         address _fleetsAddress,
         address _shipGenerator,
         address _randomManager,

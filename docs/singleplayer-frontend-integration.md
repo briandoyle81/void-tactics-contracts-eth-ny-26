@@ -1,96 +1,124 @@
 # Single-Player Frontend Integration
 
-What the contracts side just finished, and what the frontend needs to build against it. Single-player reuses the exact same `Lobbies`/`Game` flow as PvP — the only new pieces are `SinglePlayerMatch.sol` (an on-chain AI opponent) and `AIEncounters.sol` (admin-curated AI fleet content). If you already have PvP working, most of this is additive, not a rewrite.
+**Written: 2026-07-28.** This describes contract state as of that date — check the contracts repo's recent commits if it's been a while, since this can go stale as the contracts evolve.
+
+**This replaces the previous version of this doc.** Single-player no longer goes through `Lobbies` at all — the reservation-based flow this doc used to describe (`Lobbies.createLobby` with `reservedJoiner`, `SinglePlayerMatch.acceptMatch`/`setupAIFleet`) has been removed from the contracts entirely. If your frontend still has that flow wired up, it will not compile against the current ABI. Everything below reflects the current contracts.
 
 ## The mental model
 
-A human plays single-player by creating a `Lobbies` lobby *reserved for `SinglePlayerMatch`'s address* instead of an open lobby or a specific human opponent. `SinglePlayerMatch` then plays the joiner side through the same `Lobbies`/`Game` machinery a human joiner would use — same fees, same fleet-creation flow, same `Game.moveShip` for every ship move. There is no separate "single-player game" data structure; it's a regular `Game` session where one side happens to be a contract instead of a wallet.
+A human plays single-player by picking an unlocked node from a campaign graph (`NodeMap`) and calling one function, `SinglePlayerMatch.startNodeMatch`, which creates both fleets and starts the `Game` session in a single transaction. There's no lobby, no separate "accept"/"setup" step, and no waiting for a second party — the whole thing is one call from the human.
 
-The one genuinely new interaction pattern: **`SinglePlayerMatch.takeAITurn` moves exactly one AI ship per call.** The frontend is responsible for calling it repeatedly — once per AI ship that still needs to move this round — until the turn actually returns to the player. This mirrors how the player already fires one `moveShip` transaction per ship; the AI just needs the same thing done on its behalf, one call at a time, instead of doing its whole round in one contract call.
+Everything *after* the game starts is identical to PvP: same `Game.moveShip`, same turn/round/scoring rules, same `Game.getGame` read shape. The one AI-specific interaction pattern, unchanged from before: **`SinglePlayerMatch.takeAITurn` moves exactly one AI ship per call**, and the frontend calls it repeatedly until the turn returns to the human.
+
+What's new since the last version of this doc, in order of how much it affects you:
+
+1. **The entry flow is now one transaction** (`startNodeMatch`) instead of a five-step Lobbies dance.
+2. **Campaign structure**: nodes form a real graph (branches, dead ends, shortcuts), not a flat list — you need `NodeMap`, not `Lobbies`, to read/render it.
+3. **AI ships are no longer NFTs.** They're pooled and reused across matches in a separate contract (`AIShips`), behind a router (`ShipsRouter`) that `Game`/`Fleets`/`ShipAttributes` now point at instead of `Ships` directly. This changes how you look up an AI ship's name/equipment/art, and rules out a few things you might otherwise assume (see below).
 
 ## Full flow, in order
 
-1. **Human reserves a lobby for the AI.**
+1. **Fetch the campaign graph and figure out what's unlocked.**
+   ```js
+   const allNodes = await nodeMap.read.getAllNodes(); // CampaignNode[] — id, mapId, prerequisites[], costLimit, turnTime, maxScore, creatorGoesFirst
+   const unlocked = await Promise.all(
+     allNodes.map((n) => nodeMap.read.isNodeUnlocked([player, n.id]))
+   );
+   const completed = await Promise.all(
+     allNodes.map((n) => nodeMap.read.isNodeCompleted([player, n.id]))
+   );
    ```
-   Lobbies.createLobby(
-     costLimit,
-     turnTime,
-     creatorGoesFirst,   // true — human is creator
-     selectedMapId,       // see "which map" below
-     maxScore,
-     reservedJoiner: <SinglePlayerMatch address>
-   )
-   ```
-   Same fees/limits as reserving a specific human opponent — nothing special here.
+   **`prerequisites` is an array, and unlock is ANY-of, not ALL-of.** A node with `prerequisites: [5n, 8n]` unlocks if the player has completed node 5 *or* node 8 — this is how shortcut nodes converge back into the main path. Render this as an actual graph (multiple incoming edges into one node), not a linear chain — the current seeded campaign has a 2-node dead-end branch and a hard-fight node whose completion skips three nodes on the main path (details below, under "current campaign shape").
 
-2. **Accept the match.** Anyone can trigger this (no funds/state at risk):
-   ```
-   SinglePlayerMatch.acceptMatch(lobbyId)  // -> Lobbies.acceptGame(lobbyId)
-   ```
+   On-chain data has **no display names or flavor text** — just `mapId`, cost/turn/score numbers, and the prerequisite graph. You need your own `nodeId -> {title, description, art}` mapping; nothing in the contracts gives you that.
 
-3. **Human creates their fleet**, same as PvP:
+2. **Human builds a fleet and starts the match, in one call:**
+   ```js
+   const gameId = await singlePlayerMatch.simulate.startNodeMatch([nodeId, shipIds, positions]).then(r => r.result);
+   await singlePlayerMatch.write.startNodeMatch([nodeId, shipIds, positions]);
    ```
-   Lobbies.createFleet(lobbyId, shipIds, startingPositions)
-   ```
+   - `shipIds`/`positions` are the human's own ships, same as a PvP creator fleet — same position rule (`col` 0-3, any row 0-10), same cost-limit check against `node.costLimit` (fetched in step 1; don't let the player submit a fleet that exceeds it, `Fleets.createFleet` will revert `InvalidFleetCost`).
+   - Everything else about the match (map, turn time, max score, who goes first) comes from the node, not from the player — no "create lobby with these settings" step anymore.
+   - Reverts `NodeNotUnlocked` if the node isn't unlocked for `msg.sender`, `NoAIPlacementsConfigured` if the node's map has no AI content (shouldn't happen for any seeded node, but matters if you let players hit not-yet-configured admin content).
+   - **Get `gameId` from the return value or the `NodeMatchStarted(gameId, nodeId, human)` event — don't compute it yourself.** It's offset into a range disjoint from PvP game ids, but the offset constant isn't public on this contract (it *is* public on `AIShips` as `AI_SHIP_ID_OFFSET`, which happens to be the same value, `2**128`, but that's a coincidence of implementation, not a guarantee — always read the real id back).
+   - The game is live immediately after this confirms — no polling for a second player to show up.
 
-4. **AI fleet gets built.** Anyone can trigger this too:
+3. **Turn loop — same as PvP:**
+   ```js
+   await game.write.moveShip([gameId, shipId, destRow, destCol, actionType, actionTarget]);
    ```
-   SinglePlayerMatch.setupAIFleet(lobbyId)
-   ```
-   This mints a fresh AI fleet from the selected map's configured `AIEncounters` placements and calls `Lobbies.createFleet` on the AI's behalf. **Fleet size is dynamic** — it's whatever the map's admin configured (1 to 8 ships), not a fixed number. Don't assume 3.
+   After it confirms, check `Game.getGame(gameId).turnState.currentTurn` — if it's `SinglePlayerMatch`'s address, the AI acts next.
 
-   Reverts with `NoAIPlacementsConfigured` if the selected map has no AI content configured (including `selectedMapId == 0`). See "which map" below — right now only map id `1` is guaranteed to work.
-
-5. **Game starts automatically** once both fleets are set (`Lobbies` calls `SinglePlayerMatch.startGame`, which forwards to core `Game.startGame`). Poll `Game.getGame(lobbyId)` (the game id == the lobby id) to know when this has happened — `metadata.ended == false` and `turnState.currentTurn` will be set.
-
-6. **Turn loop.** On the human's turn:
-   ```
-   Game.moveShip(gameId, shipId, destRow, destCol, actionType, actionTarget)
-   ```
-   exactly like PvP. After it confirms, check `Game.getGame(gameId).turnState.currentTurn` — if it's now `SinglePlayerMatch`'s address, the AI needs to act.
-
-7. **AI turn loop — the part that's new:**
+4. **AI turn loop — unchanged from before:**
    ```js
    while (true) {
-     const game = await Game.read.getGame([gameId]);
-     if (game.metadata.ended) break;
-     if (game.turnState.currentTurn !== singlePlayerMatchAddress) break; // back to human
-     await SinglePlayerMatch.write.takeAITurn([gameId]);
+     const g = await game.read.getGame([gameId]);
+     if (g.metadata.ended) break;
+     if (g.turnState.currentTurn !== singlePlayerMatchAddress) break; // back to human
+     await singlePlayerMatch.write.takeAITurn([gameId]);
    }
    ```
-   Each `takeAITurn` call moves exactly one AI ship and returns. If the AI's side has more unmoved ships than the human's (common with the dynamic fleet sizes above), the turn *stays* with the AI across several consecutive `takeAITurn` calls before coming back to the human — same alternation rule PvP already has (a side keeps the turn across consecutive ship-moves once the other side runs out of unmoved ships for the round). Bound the loop defensively (e.g. cap at ~10 iterations) as a safety net — it should never actually run that long since `AIEncounters.MAX_PLACEMENTS_PER_MAP = 8`.
+   One `takeAITurn` call moves exactly one AI ship. The turn can stay with the AI across several consecutive calls if it has more unmoved ships than the human did that round (same alternation rule as PvP). Bound the loop defensively (~10 iterations is plenty — `AIEncounters.MAX_PLACEMENTS_PER_MAP = 8`).
 
-   `takeAITurn` is permissionless — anyone can call it, same as `acceptMatch`/`setupAIFleet`. It reverts with `NotAITurn` if called when it isn't actually the AI's turn, and `GameEnded` if the game already ended — check `currentTurn`/`ended` before calling rather than relying on catching those.
+   Permissionless, like before. Reverts `NotAITurn`/`GameEnded` — check `currentTurn`/`ended` rather than relying on catching those. Listen for `AITurnTaken(gameId, shipId, actionType, targetShipId)` to animate what happened.
 
-   Listen for `SinglePlayerMatch.AITurnTaken(gameId, shipId, actionType, targetShipId)` if you want to show what the AI did (e.g. animate a shot) — it fires once per `takeAITurn` call. `actionType` is the same `ActionType` enum PvP already uses: `Pass=0, Shoot=1, Retreat=2, Assist=3(unused), Special=4, FactionAbility=5`.
+5. **Repeat 3-4 until `Game.getGame(gameId).metadata.ended`.** On a human win, the node is automatically marked completed (unlocking whatever it gates) — nothing extra to call.
 
-   The AI never gets "stuck" from your side's perspective — `_takeShipTurn` wraps its move in a revert-safety net internally, so even if the AI's heuristic decides on something that turns out illegal, that one ship just Passes instead of the transaction reverting. You don't need extra error handling for "the AI made a bad move."
+## AI ships: what changed and why it matters to you
 
-8. **Repeat 6-7** until `Game.getGame(gameId).metadata.ended`.
+AI ships used to be real ERC-721s minted fresh on `Ships.sol` every match. They're now **pooled, non-NFT entries in a separate contract, `AIShips`**, reused across matches instead of minted-and-abandoned. Concretely:
 
-## Which map to use
+- **AI ship ids are large.** They live in a disjoint numeric range, `id >= AIShips.AI_SHIP_ID_OFFSET` (`2**128`, publicly readable as a constant). `Game.getGame(gameId).shipIds`/`.shipPositions`/`.shipAttributes` already include these transparently — you don't need to do anything special to see an AI ship move or take damage. But:
+  - **Never coerce a shipId through JS `Number()`.** This was already true for game ids; it now applies to ship ids too. Keep them as `bigint` (viem already gives you this) end to end — through URL params, map keys, comparisons, everything.
+  - Client-side, `shipId >= AI_SHIP_ID_OFFSET` is a free, contract-call-free way to tell "is this an AI ship" if you need that for UI logic (e.g. a badge).
 
-A fresh deployment now seeds exactly one usable single-player map: **id `1`**, with one AI ship per behavior archetype (Grunt/Aggressor/Sniper/Support/Turtle/Rammer) and a single scoring tile. This is placeholder content, not final game design — more maps will get added over time by whoever holds map-editor rights.
+- **For ship *data* (name/equipment/traits), call `ShipsRouter`, not `Ships` directly.** `Game.ships()`, `Fleets.ships()`, and `ShipAttributes.ships()` all now point at `ShipsRouter`'s address, not `Ships.sol`'s — if you were previously hardcoding `Ships`'s address for `getShip(id)`/`isShipDestroyed(id)` calls, switch to whichever of those you're already reading (or the router's own address directly). `ShipsRouter.getShip(id)`/`.isShipDestroyed(id)` transparently resolve to either `Ships.sol` (human) or `AIShips.sol` (AI) based on the id range — one call site works for both. Calling `Ships.sol.getShip(aiShipId)` directly will just return a zeroed/empty struct now; the ship isn't there.
 
-Don't hardcode `1` forever. Before offering a map as a single-player option, check:
+- **AI ships are never ERC-721 tokens.** No `ownerOf`, no `tokenURI`, no `Transfer` events, nothing shows up if you enumerate tokens owned by `SinglePlayerMatch`'s address. If anything in your UI renders AI ship art through the same NFT metadata/`tokenURI` pipeline used for player ships, that will not work for AI ships — it never queries `AIShips` and there's no image renderer wired up for it. Build AI ship visuals from `SinglePlayerMatch.aiShipInfo(shipId)` (→ `{archetype, variant, special}`, unchanged in shape) plus `ShipsRouter.getShip(shipId)` for name/equipment/traits, same as before this refactor — just note the underlying data no longer comes from a real NFT.
+
+- **Ids are reused across matches — don't cache AI ship data long-term.** Because slots get released and reallocated, the *same* AI shipId can be a completely different ship (different name, different config) in a later match. Anything you fetch about an AI ship (via `aiShipInfo`/`ShipsRouter.getShip`) should be treated as scoped to the current `gameId`, fetched fresh when the match starts, not cached indefinitely keyed by shipId the way you might reasonably cache a player's own (permanent, NFT-backed) ships.
+
+- **Player ships are completely unaffected.** Still real ERC-721s on `Ships.sol`, same purchase/customize/render pipeline, same everything. This only changes AI-side ships.
+
+## Current campaign shape (10 nodes)
+
+`NodeMap.getAllNodes()` gives you this graph directly, but here's the shape as seeded so you can sanity-check your rendering and build matching flavor copy (again: none of these names exist on-chain, this is just what the content is *for*):
+
 ```
-AIEncounters.mapHasPlacements(mapId)  // bool
+node 1 (root, always unlocked)
+  -> node 2
+       -> node 3 -> node 4 -> node 5 ─────────────┐
+       -> node 6 -> node 7  [dead end — nothing    │
+                     requires node 7]              ├─> node 9 -> node 10 (final)
+       -> node 8  [hard fight: full 5-ship AI       │
+                    fleet, tighter cost limit than  │
+                    the mainline route offers at    │
+                    this point in the graph] ───────┘
 ```
-Any map where this is false will make `setupAIFleet` revert. If you want to list all AI-configured maps, `AIEncounters.getMapPlacements(mapId)` returns the full `(positions[], configIds[])` for a given map — combine with `Maps.getAllPresetMapIds()` and filter.
 
-## What's *not* new for you
+- Node 9's `prerequisites` is `[5, 8]` — beating node 8 alone unlocks it, skipping nodes 3-5 (three nodes) entirely. That's the "shortcut."
+- Node 7 is a genuine dead end: completing it doesn't unlock anything. Fine to frame as optional/bonus content in the UI (its scoring tile is worth more than the mainline nodes around it, as a small reward for taking the detour).
+- If you're building a node-graph UI component for the first time (vs. the old flat "map 1, map 2" picker), this is the shape to test it against — a node with two incoming edges (9) and a node with zero outgoing edges besides its own dead-end child (7) are both real cases you'll hit immediately.
 
-- Combat, movement, scoring, round/turn advancement, win conditions — all identical to PvP, same `Game.sol` code path. If your PvP UI already renders these correctly, single-player renders the same way once you're driving the human side.
-- `Game.getGame`, `Game.getShipAttributes`, `Game.getShipPosition` — same read APIs, same shapes.
-- Ship rendering — AI ships are real `Ship` NFTs (owned by the `SinglePlayerMatch` contract), same metadata/image pipeline as any other ship.
+## What's *still* not new for you
 
-## New contract surface, for reference
+- Combat, movement, scoring, round/turn advancement, win conditions — identical to PvP, same `Game.sol` code path.
+- `Game.getGame`, `Game.getShipAttributes`, `Game.getShipPosition` — same read APIs, same shapes, now just occasionally populated with large AI ship ids (see above).
+- Player ship rendering — unchanged, still real NFTs, same pipeline.
 
-- `SinglePlayerMatch.acceptMatch(lobbyId)`, `.setupAIFleet(lobbyId)`, `.takeAITurn(gameId)` — all permissionless.
-- `SinglePlayerMatch.aiShipInfo(shipId)` → `{archetype, variant, special}` if you ever want to show "what kind of AI ship is this" in the UI (e.g. an icon per archetype).
-- `Types.Archetype` enum: `Grunt=0, Aggressor=1, Sniper=2, Support=3, Turtle=4, Rammer=5`.
-- `AIEncounters.getAIShipConfig(configId)` / `getAllAIShipConfigs()` — read-only, useful if you want to preview a map's AI fleet before a match starts.
+## New/changed contract surface, for reference
 
-## Open item on our end
+- `SinglePlayerMatch.startNodeMatch(nodeId, shipIds, positions) -> gameId` — replaces the old `acceptMatch`/`setupAIFleet` two-step. Permissionless, one call, only the human calls it (it's their fleet).
+- `SinglePlayerMatch.takeAITurn(gameId)` — unchanged, permissionless.
+- `SinglePlayerMatch.aiShipInfo(shipId)` → `{archetype, variant, special}` — unchanged in shape.
+- `NodeMap.getAllNodes()`, `.getNode(nodeId)`, `.getPrerequisites(nodeId)`, `.isNodeUnlocked(player, nodeId)`, `.isNodeCompleted(player, nodeId)`, `.nodeCount()` — the whole campaign-graph read surface. Replaces the old "which map" section entirely; there's no more `Lobbies`/`selectedMapId` player choice.
+- `ShipsRouter.getShip(shipId)`, `.isShipDestroyed(shipId)` — the one call site for ship data regardless of human/AI. Get its address from `Game.ships()`/`Fleets.ships()`/`ShipAttributes.ships()`, or from your deployment config.
+- `AIShips.AI_SHIP_ID_OFFSET` — public constant, `2**128`. Use for the free client-side "is this an AI ship" check.
+- `Types.Archetype` enum: `Grunt=0, Aggressor=1, Sniper=2, Support=3, Turtle=4, Rammer=5` — unchanged.
+- `AIEncounters.getAIShipConfig(configId)` / `.getAllAIShipConfigs()` / `.getMapPlacements(mapId)` / `.mapHasPlacements(mapId)` — unchanged, still useful for previewing a node's AI fleet before the player commits to it.
 
-Real single-player map/encounter content beyond the one seeded starter map is still to be designed — flag if you need more than one playable map before this ships to real users.
+## No longer part of the surface
+
+- `Lobbies.createLobby(..., reservedJoiner: SinglePlayerMatch)` — this specific usage is gone; `Lobbies` is PvP-only now.
+- `SinglePlayerMatch.acceptMatch(lobbyId)` / `.setupAIFleet(lobbyId)` — removed, replaced by `startNodeMatch`.
+- Calling `Ships.sol.setTimestampDestroyed` directly (if you ever did, e.g. in test/debug tooling) — decomposed into `markDestroyed`/`recordKill`, orchestrated by `ShipsRouter.setTimestampDestroyed` now. Not something the frontend should be calling directly either way.
