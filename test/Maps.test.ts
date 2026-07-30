@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox-viem/network-helpers";
 import hre from "hardhat";
+import { MapMode } from "./types";
 
 describe("Line of Sight System", function () {
   let maps: any;
@@ -780,7 +781,7 @@ describe("Line of Sight System", function () {
         expect(initialMapCount).to.equal(0n);
 
         // Create the map (this returns a transaction hash, not the map ID)
-        await maps.write.createPresetMap([blockedPositions], {
+        await maps.write.createPresetMap([blockedPositions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -800,7 +801,7 @@ describe("Line of Sight System", function () {
         const positions2 = [{ row: 2, col: 2 }];
 
         // Create first map
-        await maps.write.createPresetMap([positions1], {
+        await maps.write.createPresetMap([positions1, MapMode.Both], {
           account: owner.address,
         });
 
@@ -810,7 +811,7 @@ describe("Line of Sight System", function () {
         expect(await maps.read.mapExists([1n])).to.be.true;
 
         // Create second map
-        await maps.write.createPresetMap([positions2], {
+        await maps.write.createPresetMap([positions2, MapMode.Both], {
           account: owner.address,
         });
 
@@ -823,7 +824,7 @@ describe("Line of Sight System", function () {
       it("Should revert when non-owner tries to create preset maps", async function () {
         const blockedPositions = [{ row: 5, col: 5 }];
 
-        await expect(userMaps.write.createPresetMap([blockedPositions])).to.be
+        await expect(userMaps.write.createPresetMap([blockedPositions, MapMode.Both])).to.be
           .rejected;
       });
 
@@ -834,10 +835,69 @@ describe("Line of Sight System", function () {
         ];
 
         await expect(
-          maps.write.createPresetMap([invalidPositions], {
+          maps.write.createPresetMap([invalidPositions, MapMode.Both], {
             account: owner.address,
           }),
         ).to.be.rejected;
+      });
+    });
+
+    describe("Map Mode", function () {
+      it("Should read back the mode a map was created with", async function () {
+        const positions = [{ row: 5, col: 5 }];
+
+        await maps.write.createPresetMap([positions, MapMode.PvP], {
+          account: owner.address,
+        });
+        const pvpMapId = await maps.read.mapCount();
+        expect(await maps.read.mapMode([pvpMapId])).to.equal(MapMode.PvP);
+
+        await maps.write.createPresetMap([positions, MapMode.PvE], {
+          account: owner.address,
+        });
+        const pveMapId = await maps.read.mapCount();
+        expect(await maps.read.mapMode([pveMapId])).to.equal(MapMode.PvE);
+      });
+
+      it("Should allow the map editor to change an existing map's mode", async function () {
+        const positions = [{ row: 5, col: 5 }];
+
+        await maps.write.createPresetMap([positions, MapMode.PvP], {
+          account: owner.address,
+        });
+        const mapId = await maps.read.mapCount();
+        expect(await maps.read.mapMode([mapId])).to.equal(MapMode.PvP);
+
+        await maps.write.setMapMode([mapId, MapMode.PvE], {
+          account: owner.address,
+        });
+        expect(await maps.read.mapMode([mapId])).to.equal(MapMode.PvE);
+      });
+
+      it("Should revert setMapMode with MapNotFound for a nonexistent map id", async function () {
+        await expect(
+          maps.write.setMapMode([0, MapMode.Both], {
+            account: owner.address,
+          }),
+        ).to.be.rejected;
+
+        const mapCount = await maps.read.mapCount();
+        await expect(
+          maps.write.setMapMode([mapCount + 1n, MapMode.Both], {
+            account: owner.address,
+          }),
+        ).to.be.rejected;
+      });
+
+      it("Should revert when non-owner tries to call setMapMode", async function () {
+        const positions = [{ row: 5, col: 5 }];
+        await maps.write.createPresetMap([positions, MapMode.PvP], {
+          account: owner.address,
+        });
+        const mapId = await maps.read.mapCount();
+
+        await expect(userMaps.write.setMapMode([mapId, MapMode.Both])).to.be
+          .rejected;
       });
     });
 
@@ -849,7 +909,7 @@ describe("Line of Sight System", function () {
           { row: 6, col: 5 },
         ];
 
-        await maps.write.createPresetMap([blockedPositions], {
+        await maps.write.createPresetMap([blockedPositions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -870,7 +930,7 @@ describe("Line of Sight System", function () {
       it("Should return empty array for map with no blocked positions", async function () {
         const emptyPositions: any[] = [];
 
-        await maps.write.createPresetMap([emptyPositions], {
+        await maps.write.createPresetMap([emptyPositions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -889,7 +949,7 @@ describe("Line of Sight System", function () {
         const initialPositions = [{ row: 5, col: 5 }];
         const updatedPositions = [{ row: 6, col: 6 }];
 
-        await maps.write.createPresetMap([initialPositions], {
+        await maps.write.createPresetMap([initialPositions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -911,7 +971,7 @@ describe("Line of Sight System", function () {
           { row: 5, col: 6 },
         ];
 
-        await maps.write.createPresetMap([initialPositions], {
+        await maps.write.createPresetMap([initialPositions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -930,7 +990,7 @@ describe("Line of Sight System", function () {
 
       it("Should revert when non-owner tries to update maps", async function () {
         const positions = [{ row: 5, col: 5 }];
-        await maps.write.createPresetMap([positions], {
+        await maps.write.createPresetMap([positions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -955,7 +1015,7 @@ describe("Line of Sight System", function () {
         const initialScoring = [
           { row: 10, col: 10, points: 5, onlyOnce: false },
         ];
-        await maps.write.createPresetMap([initialBlocked, initialScoring], {
+        await maps.write.createPresetMap([initialBlocked, initialScoring, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1003,7 +1063,7 @@ describe("Line of Sight System", function () {
       it("Should allow owner to update map with only blocked tiles", async function () {
         // Create initial map
         const initialBlocked = [{ row: 5, col: 5 }];
-        await maps.write.createPresetMap([initialBlocked], {
+        await maps.write.createPresetMap([initialBlocked, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1032,7 +1092,7 @@ describe("Line of Sight System", function () {
         const initialScoring = [
           { row: 10, col: 10, points: 5, onlyOnce: false },
         ];
-        await maps.write.createPresetScoringMap([initialScoring], {
+        await maps.write.createPresetScoringMap([initialScoring, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1064,7 +1124,7 @@ describe("Line of Sight System", function () {
           { row: 5, col: 6 },
         ];
 
-        await maps.write.createPresetMap([blockedPositions], {
+        await maps.write.createPresetMap([blockedPositions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1085,7 +1145,7 @@ describe("Line of Sight System", function () {
 
       it("Should apply map without affecting other games", async function () {
         const blockedPositions = [{ row: 5, col: 5 }];
-        await maps.write.createPresetMap([blockedPositions], {
+        await maps.write.createPresetMap([blockedPositions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1109,7 +1169,7 @@ describe("Line of Sight System", function () {
 
       it("Should revert when non-owner tries to apply map to game", async function () {
         const blockedPositions = [{ row: 5, col: 5 }];
-        await maps.write.createPresetMap([blockedPositions], {
+        await maps.write.createPresetMap([blockedPositions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1133,7 +1193,7 @@ describe("Line of Sight System", function () {
     describe("Map Existence Checks", function () {
       it("Should correctly identify existing maps", async function () {
         const positions = [{ row: 5, col: 5 }];
-        await maps.write.createPresetMap([positions], {
+        await maps.write.createPresetMap([positions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1161,7 +1221,7 @@ describe("Line of Sight System", function () {
           { row: 10, col: 10, points: 5, onlyOnce: false },
         ];
         await maps.write.createPresetMap(
-          [blockedPositions1, scoringPositions1],
+          [blockedPositions1, scoringPositions1, MapMode.Both],
           {
             account: owner.address,
           },
@@ -1169,7 +1229,7 @@ describe("Line of Sight System", function () {
 
         // Create second map with only blocked tiles
         const blockedPositions2 = [{ row: 10, col: 10 }];
-        await maps.write.createPresetMap([blockedPositions2], {
+        await maps.write.createPresetMap([blockedPositions2, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1178,7 +1238,7 @@ describe("Line of Sight System", function () {
           { row: 10, col: 10, points: 10, onlyOnce: true },
           { row: 8, col: 8, points: 15, onlyOnce: false },
         ];
-        await maps.write.createPresetScoringMap([scoringPositions3], {
+        await maps.write.createPresetScoringMap([scoringPositions3, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1223,7 +1283,7 @@ describe("Line of Sight System", function () {
           { row: 5, col: 6 },
         ];
 
-        await maps.write.createPresetMap([blockedPositions], {
+        await maps.write.createPresetMap([blockedPositions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1247,7 +1307,7 @@ describe("Line of Sight System", function () {
 
       it("Should allow additional blocked tiles after applying preset map", async function () {
         const presetPositions = [{ row: 5, col: 5 }];
-        await maps.write.createPresetMap([presetPositions], {
+        await maps.write.createPresetMap([presetPositions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1363,7 +1423,7 @@ describe("Line of Sight System", function () {
         ];
 
         const initialMapCount = await maps.read.mapCount();
-        await maps.write.createPresetScoringMap([scoringPositions], {
+        await maps.write.createPresetScoringMap([scoringPositions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1384,10 +1444,10 @@ describe("Line of Sight System", function () {
         const positions1 = [{ row: 1, col: 1, points: 1, onlyOnce: false }];
         const positions2 = [{ row: 2, col: 2, points: 1, onlyOnce: true }];
 
-        await maps.write.createPresetScoringMap([positions1], {
+        await maps.write.createPresetScoringMap([positions1, MapMode.Both], {
           account: owner.address,
         });
-        await maps.write.createPresetScoringMap([positions2], {
+        await maps.write.createPresetScoringMap([positions2, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1400,7 +1460,7 @@ describe("Line of Sight System", function () {
           { row: 5, col: 5, points: 1, onlyOnce: false },
         ];
 
-        await expect(userMaps.write.createPresetScoringMap([scoringPositions]))
+        await expect(userMaps.write.createPresetScoringMap([scoringPositions, MapMode.Both]))
           .to.be.rejected;
       });
 
@@ -1410,7 +1470,7 @@ describe("Line of Sight System", function () {
         ];
 
         await expect(
-          maps.write.createPresetScoringMap([invalidPositions], {
+          maps.write.createPresetScoringMap([invalidPositions, MapMode.Both], {
             account: owner.address,
           }),
         ).to.be.rejected;
@@ -1422,7 +1482,7 @@ describe("Line of Sight System", function () {
           { row: 10, col: 10, points: 2, onlyOnce: true },
         ];
 
-        await maps.write.createPresetScoringMap([scoringPositions], {
+        await maps.write.createPresetScoringMap([scoringPositions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1441,7 +1501,7 @@ describe("Line of Sight System", function () {
       it("Should handle empty preset scoring maps", async function () {
         const emptyPositions: { row: number; col: number }[] = [];
 
-        await maps.write.createPresetScoringMap([emptyPositions], {
+        await maps.write.createPresetScoringMap([emptyPositions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1459,7 +1519,7 @@ describe("Line of Sight System", function () {
         const initialPositions = [
           { row: 5, col: 5, points: 1, onlyOnce: false },
         ];
-        await maps.write.createPresetScoringMap([initialPositions], {
+        await maps.write.createPresetScoringMap([initialPositions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1485,7 +1545,7 @@ describe("Line of Sight System", function () {
           { row: 5, col: 5, points: 1, onlyOnce: false },
           { row: 10, col: 10, points: 1, onlyOnce: true },
         ];
-        await maps.write.createPresetScoringMap([initialPositions], {
+        await maps.write.createPresetScoringMap([initialPositions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1507,7 +1567,7 @@ describe("Line of Sight System", function () {
 
       it("Should revert when non-owner tries to update preset scoring maps", async function () {
         const positions = [{ row: 5, col: 5, points: 1, onlyOnce: false }];
-        await maps.write.createPresetScoringMap([positions], {
+        await maps.write.createPresetScoringMap([positions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1532,7 +1592,7 @@ describe("Line of Sight System", function () {
           { row: 10, col: 10, points: 1, onlyOnce: true },
         ];
 
-        await maps.write.createPresetScoringMap([scoringPositions], {
+        await maps.write.createPresetScoringMap([scoringPositions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1560,7 +1620,7 @@ describe("Line of Sight System", function () {
           { row: 5, col: 5, points: 1, onlyOnce: false },
         ];
 
-        await maps.write.createPresetScoringMap([scoringPositions], {
+        await maps.write.createPresetScoringMap([scoringPositions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1595,7 +1655,7 @@ describe("Line of Sight System", function () {
         const scoringPositions = [
           { row: 5, col: 5, points: 1, onlyOnce: false },
         ];
-        await maps.write.createPresetScoringMap([scoringPositions], {
+        await maps.write.createPresetScoringMap([scoringPositions, MapMode.Both], {
           account: owner.address,
         });
 
@@ -1645,13 +1705,13 @@ describe("Line of Sight System", function () {
         ];
 
         // Create preset blocked map
-        await maps.write.createPresetMap([blockedPositions], {
+        await maps.write.createPresetMap([blockedPositions, MapMode.Both], {
           account: owner.address,
         });
         const blockedMapId = await maps.read.mapCount();
 
         // Create preset scoring map
-        await maps.write.createPresetScoringMap([scoringPositions], {
+        await maps.write.createPresetScoringMap([scoringPositions, MapMode.Both], {
           account: owner.address,
         });
         const scoringMapId = await maps.read.mapCount();

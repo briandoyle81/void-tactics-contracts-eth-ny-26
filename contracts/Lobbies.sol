@@ -113,6 +113,17 @@ contract Lobbies is Ownable, ReentrancyGuard {
         maps = IMaps(_mapsAddress);
     }
 
+    /// @dev A PvP lobby needs a map that exists and is valid for PvP (PvP
+    /// or Both) — a PvE-only map (e.g. one curated for a specific campaign
+    /// encounter) shouldn't be selectable here. _selectedMapId == 0 means
+    /// no preset map and is valid, handled by callers before this runs.
+    function _requireMapUsableForPvP(uint _selectedMapId) internal view {
+        if (address(maps) == address(0)) revert InvalidMapId();
+        if (!maps.mapExists(_selectedMapId)) revert InvalidMapId();
+        MapMode mode = maps.mapMode(_selectedMapId);
+        if (mode != MapMode.PvP && mode != MapMode.Both) revert InvalidMapId();
+    }
+
     function isLobbyOpenForJoining(uint _id) public view returns (bool) {
         Lobby storage l = lobbies[_id];
         return
@@ -239,10 +250,10 @@ contract Lobbies is Ownable, ReentrancyGuard {
         if (_costLimit > maxFleetCostLimit) revert MaxFleetCostExceeded();
         if (_reservedJoiner == msg.sender) revert PlayerAlreadyInLobby();
 
-        // Validate mapId: 0 means no preset map (valid), otherwise must exist
+        // Validate mapId: 0 means no preset map (valid), otherwise must
+        // exist and be valid for PvP.
         if (_selectedMapId > 0) {
-            if (address(maps) == address(0)) revert InvalidMapId();
-            if (!maps.mapExists(_selectedMapId)) revert InvalidMapId();
+            _requireMapUsableForPvP(_selectedMapId);
         }
 
         // Check if player is in timeout
@@ -625,10 +636,10 @@ contract Lobbies is Ownable, ReentrancyGuard {
         if (_creator == _joiner) revert PlayerAlreadyInLobby();
         if (_costLimit > maxFleetCostLimit) revert MaxFleetCostExceeded();
 
-        // Validate mapId: 0 means no preset map (valid), otherwise must exist
+        // Validate mapId: 0 means no preset map (valid), otherwise must
+        // exist and be valid for PvP.
         if (_selectedMapId > 0) {
-            if (address(maps) == address(0)) revert InvalidMapId();
-            if (!maps.mapExists(_selectedMapId)) revert InvalidMapId();
+            _requireMapUsableForPvP(_selectedMapId);
         }
 
         lobbyCount++;

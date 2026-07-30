@@ -8,6 +8,7 @@ import {
   ShipTuple,
   tupleToShip,
   ActionType,
+  MapMode,
 } from "./types";
 import DeployModule from "../ignition/modules/DeployAndConfig";
 
@@ -70,6 +71,7 @@ describe("Lobbies", function () {
       joinerFleets,
       ships: deployed.ships,
       game: deployed.game,
+      maps: deployed.maps,
       randomManager: deployed.randomManager,
       universalCredits: deployed.universalCredits,
       shipPurchaser: deployed.shipPurchaser,
@@ -236,6 +238,67 @@ describe("Lobbies", function () {
           zeroAddress, // reservedJoiner - no reservation
         ])
       ).to.be.rejectedWith("InvalidTurnTime");
+    });
+
+    it("should revert with InvalidMapId when selectedMapId is a PvE-only map", async function () {
+      const { creatorLobbies, maps, owner } = await loadFixture(
+        deployLobbiesFixture
+      );
+      const costLimit = 1000n;
+      const turnTime = 300n;
+      const creatorGoesFirst = true;
+
+      await maps.write.createPresetMap([[], MapMode.PvE], {
+        account: owner.account,
+      });
+      const pveMapId = await maps.read.mapCount();
+
+      await expect(
+        creatorLobbies.write.createLobby([
+          costLimit,
+          turnTime,
+          creatorGoesFirst,
+          pveMapId,
+          100n, // maxScore
+          zeroAddress, // reservedJoiner - no reservation
+        ])
+      ).to.be.rejectedWith("InvalidMapId");
+    });
+
+    it("should succeed when selectedMapId is a PvP or Both map", async function () {
+      const { creatorLobbies, maps, owner } = await loadFixture(
+        deployLobbiesFixture
+      );
+      const costLimit = 1000n;
+      const turnTime = 300n;
+      const creatorGoesFirst = true;
+
+      await maps.write.createPresetMap([[], MapMode.PvP], {
+        account: owner.account,
+      });
+      const pvpMapId = await maps.read.mapCount();
+      await maps.write.createPresetMap([[], MapMode.Both], {
+        account: owner.account,
+      });
+      const bothMapId = await maps.read.mapCount();
+
+      await expect(
+        creatorLobbies.write.createLobby([
+          costLimit,
+          turnTime,
+          creatorGoesFirst,
+          pvpMapId,
+          100n, // maxScore
+          zeroAddress, // reservedJoiner - no reservation
+        ])
+      ).to.not.be.rejected;
+
+      await expect(
+        creatorLobbies.write.createLobby(
+          [costLimit, turnTime, creatorGoesFirst, bothMapId, 100n, zeroAddress],
+          { value: parseEther("1") } // second lobby from this creator requires the fee
+        )
+      ).to.not.be.rejected;
     });
 
     it("should require fee for additional lobbies", async function () {

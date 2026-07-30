@@ -305,11 +305,17 @@ const DeployModule = buildModule("DeployModule", (m) => {
   );
 
   // Set all addresses in Game contract (Fleets/Maps/ShipAttributes stay core
-  // dependencies; Lobbies/GameResults moved to PvPMatch)
+  // dependencies; Lobbies/GameResults moved to PvPMatch). `ships` here is
+  // redundant with the constructor arg today, but folding it into this
+  // existing bulk setter (rather than a new standalone function) is what
+  // lets a future ShipsRouter be swapped in later without spending scarce
+  // Game.sol bytecode on a dedicated setter — see AI_SHIP_ID_OFFSET's
+  // comment in AIShips.sol for why that matters.
   const setGameAddressesCall = m.call(game, "setAddresses", [
     maps,
     fleets,
     shipAttributes,
+    shipsRouter,
   ]);
 
   // Authorize PvPMatch and SinglePlayerMatch to start/force-end sessions on
@@ -407,22 +413,27 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // these are the only map-creation calls in this module, mapCount starts
   // at 0 on a fresh Maps deployment, and each call is forced (via `after`)
   // to run strictly after the previous one so they can't land out of order.
+  // Types.sol's MapMode enum, mirrored here so the JSON can use readable
+  // strings instead of magic numbers — keep in sync if MapMode changes.
+  const MAP_MODE: Record<string, number> = { PvP: 0, PvE: 1, Both: 2 };
+
   const mapCalls: Record<string, ReturnType<typeof m.call>> = {};
   const mapIds: Record<string, bigint> = {};
   starterContent.maps.forEach((map, i) => {
     const mapId = BigInt(i + 1);
     const previousMapCall =
       i > 0 ? mapCalls[starterContent.maps[i - 1].key] : undefined;
+    const mode = MAP_MODE[map.mode];
     const call =
       map.type === "scoring"
-        ? m.call(maps, "createPresetScoringMap", [map.scoringTiles], {
+        ? m.call(maps, "createPresetScoringMap", [map.scoringTiles, mode], {
             id: `Create${map.key[0].toUpperCase()}${map.key.slice(1)}Map`,
             ...(previousMapCall ? { after: [previousMapCall] } : {}),
           })
         : m.call(
             maps,
             "createFullPresetMap",
-            [map.blockedTiles ?? [], map.scoringTiles],
+            [map.blockedTiles ?? [], map.scoringTiles, mode],
             {
               id: `Create${map.key[0].toUpperCase()}${map.key.slice(1)}Map`,
               ...(previousMapCall ? { after: [previousMapCall] } : {}),
@@ -483,6 +494,21 @@ const DeployModule = buildModule("DeployModule", (m) => {
     );
   }
 
+  // Campaigns are just a grouping label for nodes (see NodeMap.sol's
+  // header comment) — created first, in JSON order, so nodes below can
+  // reference their campaign's id. campaignId is 1-indexed position, same
+  // "no event to read" reasoning as maps/nodes elsewhere in this file.
+  const campaignCalls: Record<string, ReturnType<typeof m.call>> = {};
+  const campaignIds: Record<string, bigint> = {};
+  starterContent.campaigns.forEach((campaign, i) => {
+    const capitalizedKey = `${campaign.key[0].toUpperCase()}${campaign.key.slice(1)}`;
+    const call = m.call(nodeMap, "createCampaign", [], {
+      id: `Create${capitalizedKey}Campaign`,
+    });
+    campaignCalls[campaign.key] = call;
+    campaignIds[campaign.key] = BigInt(i + 1);
+  });
+
   // Seeds the campaign graph so the frontend has a real unlock graph out of
   // the box: nodes are created in the JSON's order, each node's id is its
   // 1-indexed position (same "no event to read" reasoning as the maps
@@ -501,16 +527,19 @@ const DeployModule = buildModule("DeployModule", (m) => {
       nodeMap,
       "createNode",
       [
+        campaignIds[node.campaignKey],
         mapIds[node.mapKey],
         prerequisiteIds,
         node.costLimit,
         node.turnTime,
         node.maxScore,
         node.creatorGoesFirst,
+        node.enemyThreat,
       ],
       {
         id: `Create${capitalizedKey}`,
         after: [
+          campaignCalls[node.campaignKey],
           mapCalls[node.mapKey],
           ...node.prerequisites.map((k) => nodeCalls[k]),
         ],

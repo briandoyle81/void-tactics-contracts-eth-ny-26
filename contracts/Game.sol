@@ -81,11 +81,13 @@ contract Game is Ownable {
     function setAddresses(
         address _mapsAddress,
         address _fleetsAddress,
-        address _shipAttributesAddress
+        address _shipAttributesAddress,
+        address _shipsAddress
     ) public onlyOwner {
         maps = IMaps(_mapsAddress);
         fleets = IFleets(_fleetsAddress);
         shipAttributes = IShipAttributes(_shipAttributesAddress);
+        ships = IShips(_shipsAddress);
     }
 
     function setIsAllowedToStartGames(

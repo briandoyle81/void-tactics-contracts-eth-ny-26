@@ -11,7 +11,7 @@ import { zeroAddress } from "viem";
 // than the full DeployAndConfig module, matching test/NodeMap.test.ts's
 // convention for contracts with few real dependencies.
 describe("ShipsRouter", function () {
-  const AI_SHIP_ID_OFFSET = 2n ** 128n;
+  const AI_SHIP_ID_OFFSET = 2n ** 40n;
 
   async function deployFixture() {
     const [owner, gameEOA, fleetsEOA, human, aiOwner, other] =

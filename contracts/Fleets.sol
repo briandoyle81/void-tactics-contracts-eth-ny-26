@@ -58,6 +58,14 @@ contract Fleets is Ownable, IFleets {
         shipAttributes = IShipAttributes(_shipAttributes);
     }
 
+    // Lets a future ShipsRouter (or any other IShips-compatible facade) be
+    // swapped in without redeploying this contract — see Game.sol's
+    // setAddresses for why this matters (AIShips' id offset has finite
+    // headroom against Ships.sol's own growing id space).
+    function setShipsAddress(address _ships) public onlyOwner {
+        ships = IShips(_ships);
+    }
+
     function createFleet(
         uint _lobbyId,
         address _owner,

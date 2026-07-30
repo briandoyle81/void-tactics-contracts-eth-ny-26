@@ -35,8 +35,14 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator {
 
     // Node-match game ids live in a disjoint range above Lobbies.lobbyCount
     // (PvP's id source), so Game.sol's gameId == lobbyId scheme can never
-    // collide between a PvP game and a node-match game.
-    uint private constant NODE_MATCH_ID_OFFSET = 2 ** 128;
+    // collide between a PvP game and a node-match game. 2**40 (~1.1T) is
+    // comfortably past any realistic lobbyCount while staying ~8,192x under
+    // Number.MAX_SAFE_INTEGER (2**53-1) — frontend code that treats gameId
+    // as a JS number (rather than bigint) needs this to stay exact.
+    // Public (unlike before) so the frontend has a documented, contract-
+    // read way to tell a node-match gameId from a PvP one if it ever needs
+    // that without already knowing from context which flow started it.
+    uint public constant NODE_MATCH_ID_OFFSET = 2 ** 40;
     uint public nodeMatchCount;
     mapping(uint => uint) public gameIdToNodeId;
     mapping(uint => address) public gameIdToHuman;
@@ -99,6 +105,13 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator {
 
     function setLobbiesAddress(address _lobbies) external onlyOwner {
         lobbies = Lobbies(_lobbies);
+    }
+
+    // Lets a future AIShips pool (with a higher AI_SHIP_ID_OFFSET) be
+    // swapped in without redeploying this contract — see Game.setAddresses
+    // for why this matters.
+    function setShipsAddress(address _ships) external onlyOwner {
+        ships = AIShips(_ships);
     }
 
     function setGameAddress(address _game) external onlyOwner {
@@ -175,7 +188,7 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator {
             true
         );
 
-        uint aiFleetId = _mintAIFleet(node.mapId, node.costLimit, gameId);
+        uint aiFleetId = _mintAIFleet(node.mapId, gameId);
 
         gameIdToNodeId[gameId] = _nodeId;
         gameIdToHuman[gameId] = msg.sender;
@@ -210,9 +223,15 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator {
     // fleet, matching this codebase's established "fail loud on
     // unconfigured admin data" precedent (see ShipAttributes' unconfigured-
     // variant reverts).
+    //
+    // Deliberately NOT capped by node.costLimit (or anything else) — that
+    // limit exists to constrain the human's own fleet-building choices, not
+    // to second-guess what an admin curated for an encounter. An admin
+    // should be free to place a fleet that's arbitrarily expensive relative
+    // to the node's costLimit; node.enemyThreat is purely descriptive
+    // reference for that curation, never enforced here.
     function _mintAIFleet(
         uint _mapId,
-        uint _costLimit,
         uint _gameId
     ) internal returns (uint fleetId) {
         (Position[] memory positions, uint[] memory configIds) = aiEncounters
@@ -240,7 +259,7 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator {
             address(this),
             shipIds,
             positions,
-            _costLimit,
+            type(uint).max,
             false
         );
         emit AIFleetCreated(_gameId, fleetId);

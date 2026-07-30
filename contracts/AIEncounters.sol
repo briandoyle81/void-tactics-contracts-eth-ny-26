@@ -44,8 +44,9 @@ contract AIEncounters is Ownable {
     mapping(uint => mapping(int16 => mapping(int16 => uint)))
         public mapPlacements;
     // presetMapId => count of currently-non-zero placement cells, kept in
-    // sync by _setMapPlacementInternal so getMapPlacements/mapHasPlacements
-    // and the MAX_PLACEMENTS_PER_MAP bound are both O(1)/exact-sized, no scan.
+    // sync by _setMapPlacementInternal/_clearMapPlacements so
+    // getMapPlacements/mapHasPlacements and the maxPlacementsPerMap bound
+    // are both O(1)/exact-sized, no scan.
     mapping(uint => uint) public mapPlacementCount;
 
     int16 public constant GRID_HEIGHT = 11;
@@ -54,7 +55,14 @@ contract AIEncounters is Ownable {
     // constant for it; keep in sync if that window ever changes.
     int16 public constant JOINER_COL_MIN = 13;
     int16 public constant JOINER_COL_MAX = 16;
-    uint public constant MAX_PLACEMENTS_PER_MAP = 8;
+    // Owner-tunable rather than a fixed constant: this bounds how many AI
+    // ships SinglePlayerMatch._mintAIFleet mints in one startNodeMatch
+    // transaction (the whole fleet mints in a single loop, unlike
+    // takeAITurn which is already one-ship-per-call), so it's a gas/pacing
+    // knob, not a value anything else structurally depends on — the
+    // joiner-side spawn window (4 cols x 11 rows = 44 cells) supports far
+    // more than the default of 8.
+    uint public maxPlacementsPerMap = 8;
 
     error NotEncounterEditor();
     error InvalidTier();
@@ -88,6 +96,14 @@ contract AIEncounters is Ownable {
 
     function setMapsAddress(address _maps) external onlyOwner {
         maps = Maps(_maps);
+    }
+
+    /// @dev Tune the per-map AI fleet size cap — see maxPlacementsPerMap's
+    /// declaration for why this is a gas/pacing knob, not a structural
+    /// limit. Does not retroactively affect maps already at or above the
+    /// old cap; only future setMapPlacement(s) calls see the new value.
+    function setMaxPlacementsPerMap(uint _maxPlacementsPerMap) external onlyOwner {
+        maxPlacementsPerMap = _maxPlacementsPerMap;
     }
 
     /**
@@ -178,6 +194,12 @@ contract AIEncounters is Ownable {
         _setMapPlacementInternal(_mapId, _row, _col, _configId);
     }
 
+    /// @dev Replaces the map's ENTIRE fleet deployment — this clears every
+    /// existing placement first, then applies _positions/_configIds, so the
+    /// caller (e.g. an admin fleet editor) can just send the new desired
+    /// deployment wholesale without knowing what was there before or
+    /// manually zeroing out removed slots. Pass an empty array to clear a
+    /// map's fleet entirely.
     function setMapPlacements(
         uint _mapId,
         Position[] calldata _positions,
@@ -185,6 +207,7 @@ contract AIEncounters is Ownable {
     ) external onlyEncounterEditor {
         if (_positions.length != _configIds.length)
             revert ArrayLengthMismatch();
+        _clearMapPlacements(_mapId);
         for (uint i = 0; i < _positions.length; i++) {
             _setMapPlacementInternal(
                 _mapId,
@@ -193,6 +216,21 @@ contract AIEncounters is Ownable {
                 _configIds[i]
             );
         }
+    }
+
+    /// @dev Empties every placement on _mapId (bounded to the 44-cell
+    /// joiner window, same bound getMapPlacements already scans) so
+    /// setMapPlacements can give its input full-replace semantics.
+    function _clearMapPlacements(uint _mapId) internal {
+        for (int16 row = 0; row < GRID_HEIGHT; row++) {
+            for (int16 col = JOINER_COL_MIN; col <= JOINER_COL_MAX; col++) {
+                if (mapPlacements[_mapId][row][col] != 0) {
+                    mapPlacements[_mapId][row][col] = 0;
+                    emit MapPlacementSet(_mapId, row, col, 0);
+                }
+            }
+        }
+        mapPlacementCount[_mapId] = 0;
     }
 
     function _setMapPlacementInternal(
@@ -213,7 +251,7 @@ contract AIEncounters is Ownable {
 
         uint existing = mapPlacements[_mapId][_row][_col];
         if (existing == 0 && _configId != 0) {
-            if (mapPlacementCount[_mapId] >= MAX_PLACEMENTS_PER_MAP)
+            if (mapPlacementCount[_mapId] >= maxPlacementsPerMap)
                 revert TooManyPlacements();
             mapPlacementCount[_mapId]++;
         } else if (existing != 0 && _configId == 0) {

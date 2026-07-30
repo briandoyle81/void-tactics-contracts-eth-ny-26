@@ -25,7 +25,10 @@ import "./DestroyRewardLib.sol";
 // vice versa), that combined logic has to live here instead, uniformly for
 // both the pure-PvP case (both ids human) and the cross-contract case.
 contract ShipsRouter is IShips, Ownable {
-    uint public constant AI_SHIP_ID_OFFSET = 2 ** 128;
+    // Read from AIShips at construction rather than redeclared here, so
+    // there's exactly one source of truth for this value — see IAIShips's
+    // comment on why a second hardcoded copy is a drift hazard.
+    uint public immutable AI_SHIP_ID_OFFSET;
 
     Ships public ships; // human ships (real ERC-721)
     IAIShips public aiShips; // pooled AI ships (no ERC-721)
@@ -48,6 +51,7 @@ contract ShipsRouter is IShips, Ownable {
         aiShips = IAIShips(_aiShips);
         universalCredits = IUniversalCredits(_universalCredits);
         droneEnergyCores = IDroneEnergyCores(_droneEnergyCores);
+        AI_SHIP_ID_OFFSET = aiShips.AI_SHIP_ID_OFFSET();
     }
 
     function setGameAddress(address _gameAddress) external onlyOwner {
@@ -62,7 +66,7 @@ contract ShipsRouter is IShips, Ownable {
         lobbyAddress = _lobbyAddress;
     }
 
-    function _isAI(uint _id) internal pure returns (bool) {
+    function _isAI(uint _id) internal view returns (bool) {
         return _id >= AI_SHIP_ID_OFFSET;
     }
 

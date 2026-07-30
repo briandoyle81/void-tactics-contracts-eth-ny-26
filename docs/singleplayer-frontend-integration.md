@@ -2,6 +2,8 @@
 
 **Written: 2026-07-28.** This describes contract state as of that date — check the contracts repo's recent commits if it's been a while, since this can go stale as the contracts evolve.
 
+**Correction, same day:** the first version of this doc said `AIShips.AI_SHIP_ID_OFFSET`/`SinglePlayerMatch.NODE_MATCH_ID_OFFSET` were `2**128`. That was a real bug, not just a doc error — `2**128` is astronomically past `Number.MAX_SAFE_INTEGER` (2^53-1), so any JS-number-native id handling (which is what your shared grid components use) would silently collide every AI ship in a fleet onto the same coerced number. Both offsets are now `2**40` (~1.1T, ~8,192x under the safe-integer ceiling — bumped once more from an initial `2**32` fix purely for extra headroom, same cost either way) on the contract side specifically so they stay exact as JS numbers — no change needed on your end, the fix is entirely in the contracts. Everywhere below already reflects the corrected value.
+
 **This replaces the previous version of this doc.** Single-player no longer goes through `Lobbies` at all — the reservation-based flow this doc used to describe (`Lobbies.createLobby` with `reservedJoiner`, `SinglePlayerMatch.acceptMatch`/`setupAIFleet`) has been removed from the contracts entirely. If your frontend still has that flow wired up, it will not compile against the current ABI. Everything below reflects the current contracts.
 
 ## The mental model
@@ -40,7 +42,7 @@ What's new since the last version of this doc, in order of how much it affects y
    - `shipIds`/`positions` are the human's own ships, same as a PvP creator fleet — same position rule (`col` 0-3, any row 0-10), same cost-limit check against `node.costLimit` (fetched in step 1; don't let the player submit a fleet that exceeds it, `Fleets.createFleet` will revert `InvalidFleetCost`).
    - Everything else about the match (map, turn time, max score, who goes first) comes from the node, not from the player — no "create lobby with these settings" step anymore.
    - Reverts `NodeNotUnlocked` if the node isn't unlocked for `msg.sender`, `NoAIPlacementsConfigured` if the node's map has no AI content (shouldn't happen for any seeded node, but matters if you let players hit not-yet-configured admin content).
-   - **Get `gameId` from the return value or the `NodeMatchStarted(gameId, nodeId, human)` event — don't compute it yourself.** It's offset into a range disjoint from PvP game ids, but the offset constant isn't public on this contract (it *is* public on `AIShips` as `AI_SHIP_ID_OFFSET`, which happens to be the same value, `2**128`, but that's a coincidence of implementation, not a guarantee — always read the real id back).
+   - **Get `gameId` from the return value or the `NodeMatchStarted(gameId, nodeId, human)` event — don't compute it yourself.** It's offset into a range disjoint from PvP game ids via `SinglePlayerMatch.NODE_MATCH_ID_OFFSET` (public, `2**40` — chosen to stay exact as a JS `number`, same reasoning as `AI_SHIP_ID_OFFSET` below), but read the real id back rather than deriving it, since the offset is an implementation detail you shouldn't need to hardcode.
    - The game is live immediately after this confirms — no polling for a second player to show up.
 
 3. **Turn loop — same as PvP:**
@@ -68,8 +70,7 @@ What's new since the last version of this doc, in order of how much it affects y
 
 AI ships used to be real ERC-721s minted fresh on `Ships.sol` every match. They're now **pooled, non-NFT entries in a separate contract, `AIShips`**, reused across matches instead of minted-and-abandoned. Concretely:
 
-- **AI ship ids are large.** They live in a disjoint numeric range, `id >= AIShips.AI_SHIP_ID_OFFSET` (`2**128`, publicly readable as a constant). `Game.getGame(gameId).shipIds`/`.shipPositions`/`.shipAttributes` already include these transparently — you don't need to do anything special to see an AI ship move or take damage. But:
-  - **Never coerce a shipId through JS `Number()`.** This was already true for game ids; it now applies to ship ids too. Keep them as `bigint` (viem already gives you this) end to end — through URL params, map keys, comparisons, everything.
+- **AI ship ids are larger than human ship ids, but still an exact JS `number`.** They live in a disjoint numeric range, `id >= AIShips.AI_SHIP_ID_OFFSET` (`2**40` ≈ 1.1T, publicly readable as a constant — deliberately chosen to stay under `Number.MAX_SAFE_INTEGER`, see the correction note at the top). `Game.getGame(gameId).shipIds`/`.shipPositions`/`.shipAttributes` already include these transparently — you don't need to do anything special to see an AI ship move or take damage. Your existing number-native `GridShip`/`GameGridCell` components work as-is; no bigint migration needed for this.
   - Client-side, `shipId >= AI_SHIP_ID_OFFSET` is a free, contract-call-free way to tell "is this an AI ship" if you need that for UI logic (e.g. a badge).
 
 - **For ship *data* (name/equipment/traits), call `ShipsRouter`, not `Ships` directly.** `Game.ships()`, `Fleets.ships()`, and `ShipAttributes.ships()` all now point at `ShipsRouter`'s address, not `Ships.sol`'s — if you were previously hardcoding `Ships`'s address for `getShip(id)`/`isShipDestroyed(id)` calls, switch to whichever of those you're already reading (or the router's own address directly). `ShipsRouter.getShip(id)`/`.isShipDestroyed(id)` transparently resolve to either `Ships.sol` (human) or `AIShips.sol` (AI) based on the id range — one call site works for both. Calling `Ships.sol.getShip(aiShipId)` directly will just return a zeroed/empty struct now; the ship isn't there.
@@ -113,7 +114,8 @@ node 1 (root, always unlocked)
 - `SinglePlayerMatch.aiShipInfo(shipId)` → `{archetype, variant, special}` — unchanged in shape.
 - `NodeMap.getAllNodes()`, `.getNode(nodeId)`, `.getPrerequisites(nodeId)`, `.isNodeUnlocked(player, nodeId)`, `.isNodeCompleted(player, nodeId)`, `.nodeCount()` — the whole campaign-graph read surface. Replaces the old "which map" section entirely; there's no more `Lobbies`/`selectedMapId` player choice.
 - `ShipsRouter.getShip(shipId)`, `.isShipDestroyed(shipId)` — the one call site for ship data regardless of human/AI. Get its address from `Game.ships()`/`Fleets.ships()`/`ShipAttributes.ships()`, or from your deployment config.
-- `AIShips.AI_SHIP_ID_OFFSET` — public constant, `2**128`. Use for the free client-side "is this an AI ship" check.
+- `AIShips.AI_SHIP_ID_OFFSET` — public constant, `2**40`. Use for the free client-side "is this an AI ship" check.
+- `SinglePlayerMatch.NODE_MATCH_ID_OFFSET` — public constant, `2**40`. Same idea for gameId, though you shouldn't normally need it (see step 2 above).
 - `Types.Archetype` enum: `Grunt=0, Aggressor=1, Sniper=2, Support=3, Turtle=4, Rammer=5` — unchanged.
 - `AIEncounters.getAIShipConfig(configId)` / `.getAllAIShipConfigs()` / `.getMapPlacements(mapId)` / `.mapHasPlacements(mapId)` — unchanged, still useful for previewing a node's AI fleet before the player commits to it.
 

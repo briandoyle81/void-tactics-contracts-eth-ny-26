@@ -2,14 +2,20 @@ import { expect } from "chai";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox-viem/network-helpers";
 import hre from "hardhat";
 import { parseEther, parseEventLogs } from "viem";
-import { ShipTuple, tupleToShip, ActionType, GameDataView } from "./types";
+import {
+  ShipTuple,
+  tupleToShip,
+  ActionType,
+  GameDataView,
+  MapMode,
+} from "./types";
 import DeployModule from "../ignition/modules/DeployAndConfig";
 
 // Node-match game ids live in a disjoint range above Lobbies-sourced (PvP)
 // ids — see SinglePlayerMatch.sol's NODE_MATCH_ID_OFFSET. Every test below
 // starts exactly one node match against a fresh fixture, so its gameId is
 // always this offset plus 1.
-const NODE_MATCH_ID_OFFSET = 2n ** 128n;
+const NODE_MATCH_ID_OFFSET = 2n ** 40n;
 
 // AI ship ids live in AIShips.sol's own local id space, offset by this same
 // constant (mirrors AIShips.sol's AI_SHIP_ID_OFFSET) so ShipsRouter can tell
@@ -17,7 +23,7 @@ const NODE_MATCH_ID_OFFSET = 2n ** 128n;
 // ships against a fresh AIShips pool, so the Nth AI ship ever allocated in
 // that test is always this offset plus N, regardless of how many human
 // ships were minted first.
-const AI_SHIP_ID_OFFSET = 2n ** 128n;
+const AI_SHIP_ID_OFFSET = 2n ** 40n;
 
 function findShipPosition(gameData: GameDataView, shipId: bigint) {
   for (const shipPosition of gameData.shipPositions) {
@@ -113,7 +119,7 @@ describe("SinglePlayerMatch", function () {
   // its fleet composition/placement entirely from AIEncounters, so every
   // single-player test needs a real, non-empty configured map.
   async function setupBasicAIEncounter(maps: any, aiEncounters: any) {
-    await maps.write.createPresetMap([[]]);
+    await maps.write.createPresetMap([[], MapMode.Both]);
     const mapId = await maps.read.mapCount();
     await aiEncounters.write.createAIShipConfig([
       "AI Ship",
@@ -135,12 +141,14 @@ describe("SinglePlayerMatch", function () {
     prerequisites: bigint[] = [],
   ) {
     await nodeMap.write.createNode([
+      1n, // campaignId — reuses the deploy-seeded "mainCampaign" (id 1)
       mapId,
       prerequisites,
       2000n, // costLimit
       86400n, // turnTime
       20n, // maxScore
       true, // creatorGoesFirst
+      2000n, // enemyThreat (descriptive only, not enforced)
     ]);
     return await nodeMap.read.nodeCount();
   }
@@ -349,7 +357,7 @@ describe("SinglePlayerMatch", function () {
       deploySinglePlayerFixture,
     );
 
-    await maps.write.createPresetMap([[]]);
+    await maps.write.createPresetMap([[], MapMode.Both]);
     const mapId = await maps.read.mapCount();
     const nodeId = await createCampaignNode(nodeMap, mapId);
 
@@ -372,7 +380,7 @@ describe("SinglePlayerMatch", function () {
       human,
     } = await loadFixture(deploySinglePlayerFixture);
 
-    await maps.write.createPresetMap([[]]);
+    await maps.write.createPresetMap([[], MapMode.Both]);
     const mapId = await maps.read.mapCount();
 
     await aiEncounters.write.createAIShipConfig([
@@ -452,7 +460,7 @@ describe("SinglePlayerMatch", function () {
     const { aiShips, maps, nodeMap, singlePlayerMatch, aiEncounters, humanSinglePlayerMatch, human } =
       await loadFixture(deploySinglePlayerFixture);
 
-    await maps.write.createPresetMap([[]]);
+    await maps.write.createPresetMap([[], MapMode.Both]);
     const mapId = await maps.read.mapCount();
 
     await aiEncounters.write.createAIShipConfig([
@@ -491,27 +499,53 @@ describe("SinglePlayerMatch", function () {
     }
   });
 
+  it("does not cap the AI fleet's cost against the node's costLimit", async function () {
+    const { maps, nodeMap, aiEncounters, humanSinglePlayerMatch } =
+      await loadFixture(deploySinglePlayerFixture);
+
+    // setupBasicAIEncounter's single default-traits AI ship still costs 75
+    // (baseCost 50 + Laser's mainWeapon cost 25) — comfortably more than
+    // the costLimit: 1n below. If the AI fleet were still capped against
+    // the node's costLimit (the old behavior), minting it would revert
+    // InvalidFleetCost; an admin-curated encounter should never be
+    // second-guessed by the human's own fleet-cost ceiling.
+    const mapId = await setupBasicAIEncounter(maps, aiEncounters);
+    await nodeMap.write.createNode([1n, mapId, [], 1n, 600n, 20n, true, 1n]);
+    const nodeId = await nodeMap.read.nodeCount();
+
+    // Human enters with an empty fleet (cost 0, so it alone can't prove
+    // anything — the AI fleet is what has to clear a costLimit of 1).
+    await humanSinglePlayerMatch.write.startNodeMatch([nodeId, [], []]);
+  });
+
   describe("Deploy-seeded starter maps", function () {
     it("seeds ten starter maps, the first two with AI fleets clustered at column 13, closest to the human's side", async function () {
       const { maps, aiEncounters } = await loadFixture(deploySinglePlayerFixture);
 
       expect(await maps.read.mapCount()).to.equal(10n);
 
-      // Map 1: original starter map — no blocked tiles, one scoring tile
+      // Map 1: starter map — 3 blocked tiles (a light wall biasing the
+      // early fight toward the AI, per the map's own light-terrain design)
+      // and one scoring tile, moved toward the AI's side for the same
+      // reason.
       const map1Blocked = await maps.read.getPresetMap([1n]);
-      expect(map1Blocked.length).to.equal(0);
+      expect(map1Blocked.length).to.equal(3);
       const map1Scoring = await maps.read.getPresetScoringMap([1n]);
       expect(map1Scoring.length).to.equal(1);
+      expect(map1Scoring[0].col).to.equal(12);
 
+      // Trimmed to 3 ships (Grunt/Aggressor/Turtle) for an easier first
+      // fight — Sniper's retreat behavior and Support's healing are held
+      // back for later maps.
       const [map1Positions] = await aiEncounters.read.getMapPlacements([1n]);
-      expect(map1Positions.length).to.equal(5); // no Rammer — AI has no ram decision path
+      expect(map1Positions.length).to.equal(3);
       for (const pos of map1Positions as any[]) {
         expect(pos.col).to.equal(13);
       }
       const map1Rows = (map1Positions as any[])
         .map((p) => p.row)
         .sort((a, b) => a - b);
-      expect(map1Rows).to.deep.equal([3, 4, 5, 6, 7]);
+      expect(map1Rows).to.deep.equal([4, 5, 6]);
 
       // Map 2: nebula map — 52 blocked tiles, 5 scoring tiles
       const map2Blocked = await maps.read.getPresetMap([2n]);
@@ -539,6 +573,14 @@ describe("SinglePlayerMatch", function () {
       const { nodeMap, human } = await loadFixture(deploySinglePlayerFixture);
 
       expect(await nodeMap.read.nodeCount()).to.equal(10n);
+
+      // All 10 seeded nodes belong to the single deploy-seeded
+      // "mainCampaign" (id 1).
+      expect(await nodeMap.read.campaignCount()).to.equal(1n);
+      const campaignNodeIds = (await nodeMap.read.getNodesInCampaign([
+        1n,
+      ])) as bigint[];
+      expect(campaignNodeIds.length).to.equal(10);
 
       // Node 7 (silentHulk) is the dead end's terminal node: it requires
       // node 6 (driftWreck), which itself branches off node 2, and nothing
@@ -615,7 +657,7 @@ describe("SinglePlayerMatch", function () {
         publicClient,
       } = await loadFixture(deploySinglePlayerFixture);
 
-      await maps.write.createPresetMap([[]]);
+      await maps.write.createPresetMap([[], MapMode.Both]);
       const mapId = await maps.read.mapCount();
       await aiEncounters.write.createAIShipConfig([
         "Aggressor Ship",
@@ -674,7 +716,7 @@ describe("SinglePlayerMatch", function () {
         publicClient,
       } = await loadFixture(deploySinglePlayerFixture);
 
-      await maps.write.createPresetMap([[]]);
+      await maps.write.createPresetMap([[], MapMode.Both]);
       const mapId = await maps.read.mapCount();
       await aiEncounters.write.createAIShipConfig([
         "Sniper Ship",
@@ -743,7 +785,7 @@ describe("SinglePlayerMatch", function () {
         publicClient,
       } = await loadFixture(deploySinglePlayerFixture);
 
-      await maps.write.createPresetMap([[]]);
+      await maps.write.createPresetMap([[], MapMode.Both]);
       const mapId = await maps.read.mapCount();
       await aiEncounters.write.createAIShipConfig([
         "Sniper Ship",
@@ -810,7 +852,7 @@ describe("SinglePlayerMatch", function () {
         publicClient,
       } = await loadFixture(deploySinglePlayerFixture);
 
-      await maps.write.createPresetMap([[]]);
+      await maps.write.createPresetMap([[], MapMode.Both]);
       const mapId = await maps.read.mapCount();
 
       // Scan order (row-major, col 13->16) mints the col-15 placement
@@ -898,6 +940,7 @@ describe("SinglePlayerMatch", function () {
 
       await maps.write.createPresetScoringMap([
         [{ row: 0, col: 13, points: 5, onlyOnce: false }],
+        MapMode.Both,
       ]);
       const mapId = await maps.read.mapCount();
       await aiEncounters.write.createAIShipConfig([
@@ -966,7 +1009,7 @@ describe("SinglePlayerMatch", function () {
         publicClient,
       } = await loadFixture(deploySinglePlayerFixture);
 
-      await maps.write.createPresetMap([[]]);
+      await maps.write.createPresetMap([[], MapMode.Both]);
       const mapId = await maps.read.mapCount();
       // PlasmaCannon: range 2, well under this ship's movement (3) — an
       // enemy placed exactly at movement distance but outside gun range
@@ -1039,7 +1082,7 @@ describe("SinglePlayerMatch", function () {
 
       // Two AI ships on this map instead of one, so there's a live ship
       // behind the zeroed-out one for the AI to reach.
-      await maps.write.createPresetMap([[]]);
+      await maps.write.createPresetMap([[], MapMode.Both]);
       const mapId = await maps.read.mapCount();
       await aiEncounters.write.createAIShipConfig([
         "AI Grunt A",

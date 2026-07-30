@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox-viem/network-helpers";
 import hre from "hardhat";
+import { MapMode } from "./types";
 
 // Standalone tests — AIEncounters only depends on Maps (read-only, via
 // mapExists), so this deploys just those two contracts directly rather than
@@ -54,7 +55,7 @@ describe("AIEncounters", function () {
     );
 
     // A real preset map for placement tests to reference.
-    await maps.write.createPresetMap([[]]);
+    await maps.write.createPresetMap([[], MapMode.Both]);
 
     return {
       maps,
@@ -443,6 +444,79 @@ describe("AIEncounters", function () {
       expect(positions.length).to.equal(3);
     });
 
+    it("a second setMapPlacements call replaces the whole fleet rather than upserting on top of it", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await aiEncounters.write.createAIShipConfig([
+        "Scout",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+
+      // First deployment: 3 ships.
+      await aiEncounters.write.setMapPlacements([
+        1n,
+        [
+          { row: 0, col: 13 },
+          { row: 1, col: 13 },
+          { row: 2, col: 13 },
+        ],
+        [1n, 1n, 1n],
+      ]);
+      expect(await aiEncounters.read.mapPlacementCount([1n])).to.equal(3n);
+
+      // Admin edits the fleet down to 2 ships at different cells and saves
+      // — this is exactly the "remove a ship in the editor, hit Save"
+      // workflow. The client only sends the new desired deployment; it
+      // shouldn't need to know row 0/1/2 col 13 were ever occupied.
+      await aiEncounters.write.setMapPlacements([
+        1n,
+        [
+          { row: 4, col: 14 },
+          { row: 5, col: 14 },
+        ],
+        [1n, 1n],
+      ]);
+
+      expect(await aiEncounters.read.mapPlacementCount([1n])).to.equal(2n);
+      const [positions, configIds] = await aiEncounters.read.getMapPlacements(
+        [1n],
+      );
+      expect(positions.length).to.equal(2);
+      expect(positions).to.deep.equal([
+        { row: 4, col: 14 },
+        { row: 5, col: 14 },
+      ]);
+      expect(configIds).to.deep.equal([1n, 1n]);
+
+      // The old cells must be genuinely cleared in storage, not just
+      // excluded from getMapPlacements by coincidence.
+      expect(await aiEncounters.read.mapPlacements([1n, 0, 13])).to.equal(0n);
+      expect(await aiEncounters.read.mapPlacements([1n, 1, 13])).to.equal(0n);
+      expect(await aiEncounters.read.mapPlacements([1n, 2, 13])).to.equal(0n);
+    });
+
+    it("setMapPlacements with an empty array clears a map's fleet entirely", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await aiEncounters.write.createAIShipConfig([
+        "Scout",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+      await aiEncounters.write.setMapPlacements([
+        1n,
+        [{ row: 0, col: 13 }],
+        [1n],
+      ]);
+
+      await aiEncounters.write.setMapPlacements([1n, [], []]);
+
+      expect(await aiEncounters.read.mapPlacementCount([1n])).to.equal(0n);
+      const [positions] = await aiEncounters.read.getMapPlacements([1n]);
+      expect(positions.length).to.equal(0);
+    });
+
     it("reverts TooManyPlacements at the 9th distinct cell; the 8th succeeds", async function () {
       const { aiEncounters } = await loadFixture(deployFixture);
       await aiEncounters.write.createAIShipConfig([
@@ -463,6 +537,39 @@ describe("AIEncounters", function () {
       ).to.be.rejectedWith("TooManyPlacements");
     });
 
+    it("defaults maxPlacementsPerMap to 8", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      expect(await aiEncounters.read.maxPlacementsPerMap()).to.equal(8n);
+    });
+
+    it("owner can lower maxPlacementsPerMap, and the new cap is enforced", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await aiEncounters.write.createAIShipConfig([
+        "Scout",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+
+      await aiEncounters.write.setMaxPlacementsPerMap([2n]);
+      expect(await aiEncounters.read.maxPlacementsPerMap()).to.equal(2n);
+
+      await aiEncounters.write.setMapPlacement([1n, 0, 13, 1n]);
+      await aiEncounters.write.setMapPlacement([1n, 1, 13, 1n]);
+      expect(await aiEncounters.read.mapPlacementCount([1n])).to.equal(2n);
+
+      await expect(
+        aiEncounters.write.setMapPlacement([1n, 2, 13, 1n]),
+      ).to.be.rejectedWith("TooManyPlacements");
+    });
+
+    it("reverts when a non-owner tries to call setMaxPlacementsPerMap", async function () {
+      const { otherAIEncounters } = await loadFixture(deployFixture);
+      await expect(
+        otherAIEncounters.write.setMaxPlacementsPerMap([2n]),
+      ).to.be.rejected;
+    });
+
     it("placements are scoped per map id", async function () {
       const { aiEncounters, maps } = await loadFixture(deployFixture);
       await aiEncounters.write.createAIShipConfig([
@@ -471,7 +578,7 @@ describe("AIEncounters", function () {
         defaultTraits,
         defaultArchetype,
       ]);
-      await maps.write.createPresetMap([[]]); // map id 2
+      await maps.write.createPresetMap([[], MapMode.Both]); // map id 2
 
       await aiEncounters.write.setMapPlacement([1n, 0, 13, 1n]);
 

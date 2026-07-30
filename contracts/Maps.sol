@@ -49,6 +49,10 @@ contract Maps is Ownable {
     // Counter for preset maps
     uint public mapCount;
 
+    // presetMapId => which game mode(s) it's valid for. Set at creation,
+    // editable afterward — see Types.sol's MapMode for what enforces this.
+    mapping(uint => MapMode) public mapMode;
+
     // Address of the Game contract that can apply preset maps
     address public gameAddress;
 
@@ -106,35 +110,57 @@ contract Maps is Ownable {
     }
 
     /**
+     * @dev Reclassify an existing preset map's valid game mode(s) — e.g. if
+     * a map originally seeded for the campaign should also be selectable
+     * for PvP lobbies, or vice versa.
+     * @param _mapId The map ID to update
+     * @param _mode Which game mode(s) this map should be valid for
+     */
+    function setMapMode(uint _mapId, MapMode _mode) external onlyMapEditor {
+        if (_mapId == 0 || _mapId > mapCount) revert MapNotFound();
+        mapMode[_mapId] = _mode;
+    }
+
+    /**
      * @dev Create a new preset map with both blocked and scoring tiles
      * @param _blockedPositions Array of blocked positions
      * @param _scoringPositions Array of scoring positions with point values
+     * @param _mode Which game mode(s) this map is valid for
      */
     function createPresetMap(
         Position[] memory _blockedPositions,
-        ScoringPosition[] memory _scoringPositions
+        ScoringPosition[] memory _scoringPositions,
+        MapMode _mode
     ) external onlyMapEditor {
-        _createPresetMapInternal(_blockedPositions, _scoringPositions);
+        _createPresetMapInternal(_blockedPositions, _scoringPositions, _mode);
     }
 
     /**
      * @dev Create a new preset map with only blocked positions
      * @param _blockedPositions Array of blocked positions
+     * @param _mode Which game mode(s) this map is valid for
      */
     function createPresetMap(
-        Position[] memory _blockedPositions
+        Position[] memory _blockedPositions,
+        MapMode _mode
     ) external onlyMapEditor {
-        _createPresetMapInternal(_blockedPositions, new ScoringPosition[](0));
+        _createPresetMapInternal(
+            _blockedPositions,
+            new ScoringPosition[](0),
+            _mode
+        );
     }
 
     /**
      * @dev Create a new preset map with only scoring positions
      * @param _scoringPositions Array of scoring positions with point values
+     * @param _mode Which game mode(s) this map is valid for
      */
     function createPresetScoringMap(
-        ScoringPosition[] memory _scoringPositions
+        ScoringPosition[] memory _scoringPositions,
+        MapMode _mode
     ) external onlyMapEditor {
-        _createPresetMapInternal(new Position[](0), _scoringPositions);
+        _createPresetMapInternal(new Position[](0), _scoringPositions, _mode);
     }
 
     /**
@@ -148,24 +174,29 @@ contract Maps is Ownable {
      * call must go through this function instead.
      * @param _blockedPositions Array of blocked positions
      * @param _scoringPositions Array of scoring positions with point values
+     * @param _mode Which game mode(s) this map is valid for
      */
     function createFullPresetMap(
         Position[] memory _blockedPositions,
-        ScoringPosition[] memory _scoringPositions
+        ScoringPosition[] memory _scoringPositions,
+        MapMode _mode
     ) external onlyMapEditor {
-        _createPresetMapInternal(_blockedPositions, _scoringPositions);
+        _createPresetMapInternal(_blockedPositions, _scoringPositions, _mode);
     }
 
     /**
      * @dev Internal function to create a preset map with both blocked and scoring tiles
      * @param _blockedPositions Array of blocked positions
      * @param _scoringPositions Array of scoring positions with point values
+     * @param _mode Which game mode(s) this map is valid for
      */
     function _createPresetMapInternal(
         Position[] memory _blockedPositions,
-        ScoringPosition[] memory _scoringPositions
+        ScoringPosition[] memory _scoringPositions,
+        MapMode _mode
     ) internal {
         mapCount++;
+        mapMode[mapCount] = _mode;
 
         // Set blocked positions
         for (uint i = 0; i < _blockedPositions.length; i++) {

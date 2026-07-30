@@ -61,6 +61,17 @@ enum Archetype {
     Rammer // faction-1 only: hunts 0-HP enemies to Ram, else shoots
 }
 
+// Which game mode(s) a preset map is valid for. Enforced at the point a
+// map gets attached to something a player can actually enter — NodeMap
+// (campaign nodes, PvE) and Lobbies (createLobby/createLobbyForAddresses,
+// PvP) — rather than in Maps.sol itself, which has no notion of lobbies or
+// campaigns. Both means the map is valid in either context.
+enum MapMode {
+    PvP,
+    PvE,
+    Both
+}
+
 // Declarative outcome of a resolver-backed faction ability (see
 // IFactionAbilityResolver), applied by Game.sol without re-validating
 // anything — the resolver owns all pre-dispatch checks for its ability.

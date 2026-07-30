@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./IMaps.sol";
+import "./Types.sol";
 
 // Admin-curated campaign graph for vs-AI matches: a full node/prerequisite
 // graph (not flat per-node flags) so branches and shortcuts are possible,
@@ -19,16 +20,37 @@ import "./IMaps.sol";
 contract NodeMap is Ownable {
     struct CampaignNode {
         uint id;
+        uint campaignId;
         uint mapId;
         uint[] prerequisites;
-        uint costLimit;
+        uint costLimit; // max player threat: the human fleet's cost cap, enforced by Fleets.createFleet
         uint turnTime;
         uint maxScore;
         bool creatorGoesFirst;
+        // Approximate enemy threat, for admin/UI reference only — purely
+        // descriptive, never enforced. The AI fleet's actual composition is
+        // whatever AIEncounters.setMapPlacements configures for this node's
+        // map; SinglePlayerMatch doesn't cap the AI fleet's cost against
+        // this or any other value (see _mintAIFleet).
+        uint enemyThreat;
         bool exists;
     }
 
     IMaps public maps;
+
+    // A campaign is just a grouping label for nodes — no metadata beyond
+    // existence (display names/flavor text live off-chain, same as maps
+    // and AI ship configs elsewhere in this codebase). Node ids stay
+    // globally unique across all campaigns (unchanged from before
+    // campaigns existed); campaignId only determines which campaign a
+    // node is grouped under for the query functions below.
+    mapping(uint => bool) public campaignExists;
+    uint public campaignCount;
+    // campaignId => node ids in that campaign, in creation order. Kept in
+    // sync by createNode/updateNode so getNodesInCampaign/
+    // getCampaignCompletion are O(that campaign's own node count), not a
+    // full scan of every node ever created.
+    mapping(uint => uint[]) private campaignNodeIds;
 
     mapping(uint => CampaignNode) private nodes;
     uint public nodeCount;
@@ -49,6 +71,8 @@ contract NodeMap is Ownable {
     error NotNodeEditor();
     error NotAllowedToCompleteNodes();
     error MapNotFound();
+    error InvalidMapMode();
+    error CampaignNotFound();
     error NodeNotFound();
     error SelfPrerequisite();
     error PrerequisiteNotFound();
@@ -56,7 +80,12 @@ contract NodeMap is Ownable {
 
     event NodeEditorSet(address indexed editor, bool allowed);
     event CompleterSet(address indexed completer, bool allowed);
-    event NodeCreated(uint indexed nodeId, uint indexed mapId);
+    event CampaignCreated(uint indexed campaignId);
+    event NodeCreated(
+        uint indexed nodeId,
+        uint indexed campaignId,
+        uint mapId
+    );
     event NodeUpdated(uint indexed nodeId);
     event NodeCompleted(address indexed player, uint indexed nodeId);
 
@@ -99,15 +128,43 @@ contract NodeMap is Ownable {
         emit CompleterSet(_completer, _allowed);
     }
 
+    /// @dev A campaign node needs a map that exists and is valid for PvE
+    /// (PvE or Both) — a PvP-only map attached here would let a player
+    /// enter a "campaign" match on a map never designed/encountered for it.
+    function _requireMapUsableForCampaign(uint _mapId) internal view {
+        if (!maps.mapExists(_mapId)) revert MapNotFound();
+        MapMode mode = maps.mapMode(_mapId);
+        if (mode != MapMode.PvE && mode != MapMode.Both)
+            revert InvalidMapMode();
+    }
+
+    /// @dev Campaigns are created explicitly (fail-loud, matching this
+    /// codebase's established "no implicit/unconfigured content" idiom —
+    /// see ShipAttributes' unconfigured-variant reverts) rather than
+    /// letting createNode silently allocate a new campaignId on first use.
+    function createCampaign()
+        external
+        onlyNodeEditor
+        returns (uint campaignId)
+    {
+        campaignCount++;
+        campaignId = campaignCount;
+        campaignExists[campaignId] = true;
+        emit CampaignCreated(campaignId);
+    }
+
     function createNode(
+        uint _campaignId,
         uint _mapId,
         uint[] calldata _prerequisites,
         uint _costLimit,
         uint _turnTime,
         uint _maxScore,
-        bool _creatorGoesFirst
+        bool _creatorGoesFirst,
+        uint _enemyThreat
     ) external onlyNodeEditor returns (uint nodeId) {
-        if (!maps.mapExists(_mapId)) revert MapNotFound();
+        if (!campaignExists[_campaignId]) revert CampaignNotFound();
+        _requireMapUsableForCampaign(_mapId);
 
         nodeCount++;
         nodeId = nodeCount;
@@ -118,42 +175,73 @@ contract NodeMap is Ownable {
 
         CampaignNode storage node = nodes[nodeId];
         node.id = nodeId;
+        node.campaignId = _campaignId;
         node.mapId = _mapId;
         node.prerequisites = _prerequisites;
         node.costLimit = _costLimit;
         node.turnTime = _turnTime;
         node.maxScore = _maxScore;
         node.creatorGoesFirst = _creatorGoesFirst;
+        node.enemyThreat = _enemyThreat;
         node.exists = true;
 
-        emit NodeCreated(nodeId, _mapId);
+        campaignNodeIds[_campaignId].push(nodeId);
+
+        emit NodeCreated(nodeId, _campaignId, _mapId);
     }
 
     function updateNode(
         uint _nodeId,
+        uint _campaignId,
         uint _mapId,
         uint[] calldata _prerequisites,
         uint _costLimit,
         uint _turnTime,
         uint _maxScore,
-        bool _creatorGoesFirst
+        bool _creatorGoesFirst,
+        uint _enemyThreat
     ) external onlyNodeEditor {
         CampaignNode storage node = nodes[_nodeId];
         if (!node.exists) revert NodeNotFound();
-        if (!maps.mapExists(_mapId)) revert MapNotFound();
+        if (!campaignExists[_campaignId]) revert CampaignNotFound();
+        _requireMapUsableForCampaign(_mapId);
 
         for (uint i = 0; i < _prerequisites.length; i++) {
             _requirePrerequisiteValid(_nodeId, _prerequisites[i]);
         }
 
+        if (_campaignId != node.campaignId) {
+            _removeFromCampaignNodeIds(node.campaignId, _nodeId);
+            campaignNodeIds[_campaignId].push(_nodeId);
+        }
+
+        node.campaignId = _campaignId;
         node.mapId = _mapId;
         node.prerequisites = _prerequisites;
         node.costLimit = _costLimit;
         node.turnTime = _turnTime;
         node.maxScore = _maxScore;
         node.creatorGoesFirst = _creatorGoesFirst;
+        node.enemyThreat = _enemyThreat;
 
         emit NodeUpdated(_nodeId);
+    }
+
+    // Order doesn't matter here (campaignNodeIds is an unordered bag for
+    // query purposes), so swap-and-pop — same pattern as removePrerequisite.
+    function _removeFromCampaignNodeIds(
+        uint _campaignId,
+        uint _nodeId
+    ) internal {
+        uint[] storage ids = campaignNodeIds[_campaignId];
+        uint length = ids.length;
+        for (uint i = 0; i < length; i++) {
+            if (ids[i] == _nodeId) {
+                ids[i] = ids[length - 1];
+                ids.pop();
+                return;
+            }
+        }
     }
 
     function addPrerequisite(
@@ -248,5 +336,43 @@ contract NodeMap is Ownable {
         for (uint i = 1; i <= nodeCount; i++) {
             all[i - 1] = nodes[i];
         }
+    }
+
+    function getNodesInCampaign(
+        uint _campaignId
+    ) external view returns (uint[] memory) {
+        return campaignNodeIds[_campaignId];
+    }
+
+    /// @dev The primary integration point for other contracts: learn, in
+    /// one call, exactly which of a campaign's nodes a given player has
+    /// completed — without looping N separate isNodeCompleted calls or
+    /// needing to already know the campaign's node ids ahead of time.
+    function getCampaignCompletion(
+        address _player,
+        uint _campaignId
+    ) external view returns (uint[] memory nodeIds, bool[] memory completed) {
+        nodeIds = campaignNodeIds[_campaignId];
+        completed = new bool[](nodeIds.length);
+        for (uint i = 0; i < nodeIds.length; i++) {
+            completed[i] = completedNodes[_player][nodeIds[i]];
+        }
+    }
+
+    /// @dev Convenience for the common "gate something on 100% campaign
+    /// clear" case (e.g. a rewards/badge contract), so callers don't have
+    /// to fetch getCampaignCompletion and scan it themselves. An empty or
+    /// nonexistent campaign is never "completed".
+    function isCampaignFullyCompleted(
+        address _player,
+        uint _campaignId
+    ) external view returns (bool) {
+        uint[] storage ids = campaignNodeIds[_campaignId];
+        uint length = ids.length;
+        if (length == 0) return false;
+        for (uint i = 0; i < length; i++) {
+            if (!completedNodes[_player][ids[i]]) return false;
+        }
+        return true;
     }
 }

@@ -9,7 +9,7 @@ import { zeroAddress } from "viem";
 // AIShips, which only uses getCurrentCostsVersion/calculateShipCost), so an
 // arbitrary EOA stands in for it here.
 describe("AIShips", function () {
-  const AI_SHIP_ID_OFFSET = 2n ** 128n;
+  const AI_SHIP_ID_OFFSET = 2n ** 40n;
 
   async function deployFixture() {
     const [owner, allowedMinter, router, other] =

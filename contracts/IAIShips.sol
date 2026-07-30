@@ -7,6 +7,12 @@ import "./Types.sol";
 // release are pool-management concepts IShips has no notion of, so this is
 // deliberately a separate interface rather than a superset/subset of IShips.
 interface IAIShips {
+    // Lets ShipsRouter read the offset once at construction instead of
+    // hardcoding its own copy — two independently-declared constants that
+    // must always match is a silent-drift hazard neither compiler nor
+    // tests catch if one gets edited without the other.
+    function AI_SHIP_ID_OFFSET() external view returns (uint);
+
     // Called only by SinglePlayerMatch (gated by isAllowedToCreateShips).
     function allocateShip(
         address _to,

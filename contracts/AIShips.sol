@@ -16,11 +16,15 @@ import "./IAIShips.sol";
 // per-ship-destroyed mid-match, so a slot is never touched while its game
 // is still resolving.
 //
-// Ids are offset into a range disjoint from Ships.sol's own id space
-// (mirrors SinglePlayerMatch.NODE_MATCH_ID_OFFSET) so ShipsRouter can tell,
-// from the numeric id alone, which backing contract to call.
+// Ids are offset into a range disjoint from Ships.sol's own id space so
+// ShipsRouter can tell, from the numeric id alone, which backing contract
+// to call. 2**40 (~1.1T) is comfortably past any realistic Ships.sol
+// token-id count while staying ~8,192x under Number.MAX_SAFE_INTEGER
+// (2**53-1) — frontend code that treats ids as JS numbers (rather than
+// bigint) needs this to stay exact; a symbolic value like 2**128 (this
+// used before) silently breaks that.
 contract AIShips is Ownable, IAIShips {
-    uint public constant AI_SHIP_ID_OFFSET = 2 ** 128;
+    uint public constant AI_SHIP_ID_OFFSET = 2 ** 40;
 
     mapping(uint => Ship) private ships; // keyed by LOCAL id, 1-indexed
     uint public slotCount;

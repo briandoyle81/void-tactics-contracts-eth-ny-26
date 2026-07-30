@@ -10,6 +10,7 @@ import {
   ActionType,
   Ship,
   GameDataView,
+  MapMode,
 } from "./types";
 import DeployModule from "../ignition/modules/DeployAndConfig";
 
@@ -6270,7 +6271,7 @@ describe("Game", function () {
         { row: 5, col: 10 },
       ];
 
-      await maps.write.createPresetMap([blockedPositions], {
+      await maps.write.createPresetMap([blockedPositions, MapMode.Both], {
         account: owner.account,
       });
       const mapId = await maps.read.mapCount();

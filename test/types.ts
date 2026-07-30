@@ -348,3 +348,9 @@ export enum ActionType {
   Special,
   FactionAbility,
 }
+
+export enum MapMode {
+  PvP,
+  PvE,
+  Both,
+}
