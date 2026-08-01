@@ -164,7 +164,7 @@ contract Fleets is Ownable, IFleets {
     }
 
     function clearFleet(uint _fleetId) external {
-        if (!isAllowedToManageFleets[msg.sender])
+        if (!isAllowedToManageFleets[msg.sender] && msg.sender != gameAddress)
             revert NotAllowedToManageFleets();
 
         Fleet storage fleet = fleets[_fleetId];

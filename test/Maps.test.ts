@@ -8,9 +8,11 @@ describe("Line of Sight System", function () {
   let userMaps: any;
   let owner: any;
   let user: any;
+  let publicClient: any;
 
   async function deployMapsFixture() {
     const [ownerAccount, userAccount] = await hre.viem.getWalletClients();
+    const publicClient = await hre.viem.getPublicClient();
 
     const mapsContract = await hre.viem.deployContract("Maps", []);
 
@@ -28,6 +30,7 @@ describe("Line of Sight System", function () {
       userMaps: userMaps,
       owner: ownerAccount,
       user: userAccount,
+      publicClient,
     };
   }
 
@@ -37,6 +40,7 @@ describe("Line of Sight System", function () {
     userMaps = fixture.userMaps;
     owner = fixture.owner;
     user = fixture.user;
+    publicClient = fixture.publicClient;
   });
 
   // Helper function to create visual grid diagrams
@@ -1187,6 +1191,92 @@ describe("Line of Sight System", function () {
             account: owner.address,
           }),
         ).to.be.rejected;
+      });
+
+      // Generates a set of distinct in-bounds (row, col) positions, filling
+      // row-major so the count is exact and deterministic.
+      function densePositions(count: number) {
+        const positions: { row: number; col: number }[] = [];
+        outer: for (let row = 0; row < 11; row++) {
+          for (let col = 0; col < 17; col++) {
+            if (positions.length >= count) break outer;
+            positions.push({ row, col });
+          }
+        }
+        return positions;
+      }
+
+      // Regression coverage for the blocked-tile bitmask refactor: this
+      // repo previously copied a preset's blocked tiles into a game with
+      // one cold SSTORE per tile (~22,100 gas each), which cost ~2.1M gas
+      // for a real 52-tile map and ran a live startNodeMatch transaction
+      // out of gas entirely. applyPresetMapToGame now copies a single
+      // packed bitmask word regardless of density, so cost should stay
+      // flat and low even at half the grid blocked (~93+ tiles) or more.
+      it("Should apply a densely-blocked preset map (half the grid) at flat, low gas cost", async function () {
+        const denseBlocked = densePositions(100); // >half of the 187-cell grid
+        await maps.write.createPresetMap([denseBlocked, MapMode.Both], {
+          account: owner.address,
+        });
+        const mapId = await maps.read.mapCount();
+
+        const tx = await maps.write.applyPresetMapToGame([1n, mapId], {
+          account: owner.address,
+        });
+        const receipt = await publicClient.getTransactionReceipt({
+          hash: tx,
+        });
+
+        // Comfortably above the flat cost of copying one bitmask word
+        // (well under 100,000 gas measured), comfortably below what even
+        // ~10 blocked tiles cost under the old per-tile-SSTORE scheme
+        // (~221,000 gas) — a real regression guard, not a rubber stamp.
+        expect(Number(receipt.gasUsed)).to.be.lessThan(150_000);
+
+        // Spot-check a few tiles actually landed
+        expect(await maps.read.isTileBlocked([1n, 0, 0])).to.be.true;
+        expect(await maps.read.isTileBlocked([1n, 5, 14])).to.be.true;
+        expect(await maps.read.isTileBlocked([1n, 10, 16])).to.be.false;
+      });
+
+      it("Should apply a fully-blocked preset map (entire grid) at the same flat gas cost as a half-blocked one", async function () {
+        const halfBlocked = densePositions(100);
+        await maps.write.createPresetMap([halfBlocked, MapMode.Both], {
+          account: owner.address,
+        });
+        const halfMapId = await maps.read.mapCount();
+        const halfTx = await maps.write.applyPresetMapToGame(
+          [2n, halfMapId],
+          { account: owner.address },
+        );
+        const halfReceipt = await publicClient.getTransactionReceipt({
+          hash: halfTx,
+        });
+
+        const fullBlocked = densePositions(11 * 17); // every cell
+        await maps.write.createPresetMap([fullBlocked, MapMode.Both], {
+          account: owner.address,
+        });
+        const fullMapId = await maps.read.mapCount();
+        const fullTx = await maps.write.applyPresetMapToGame(
+          [3n, fullMapId],
+          { account: owner.address },
+        );
+        const fullReceipt = await publicClient.getTransactionReceipt({
+          hash: fullTx,
+        });
+
+        // The whole point of the bitmask: cost is density-independent, not
+        // just "better at 100 tiles" — the fully-blocked grid should cost
+        // within a few thousand gas of the half-blocked one, not scale
+        // with the extra ~87 tiles (which would be ~1.9M more gas under
+        // the old per-tile-SSTORE scheme).
+        const diff = Math.abs(
+          Number(fullReceipt.gasUsed) - Number(halfReceipt.gasUsed),
+        );
+        expect(diff).to.be.lessThan(5_000);
+
+        expect(await maps.read.isTileBlocked([3n, 10, 16])).to.be.true;
       });
     });
 

@@ -43,6 +43,10 @@ library AIBehavior {
         uint shipId;
         Position pos;
         Attributes attrs;
+        MainWeapon mainWeapon;
+        ScoringPosition[] scoringPositions;
+        int16 gridWidth;
+        int16 gridHeight;
     }
 
     // ---- shared lookups over GameDataView (already fetched once per
@@ -83,10 +87,12 @@ library AIBehavior {
         return rowDiff + colDiff;
     }
 
-    // Enemy (opposing side) in manhattan range with LOS, preferring the
-    // lowest nonzero HP target (focus the weakest); if every in-range enemy
-    // is already at 0 HP, returns the first one found (still a legal Shoot,
-    // still meaningful reactor-timer progress toward removing it).
+    // Enemy (opposing side) in manhattan range with LOS. Primary sort key is
+    // "standing on a scoring tile" (contesting the objective is worth more
+    // than shaving HP off someone who isn't); within the same tier, prefers
+    // the lowest nonzero HP target (focus the weakest), falling back to the
+    // first found if every in-range enemy in that tier is already at 0 HP
+    // (still a legal Shoot, still meaningful reactor-timer progress).
     function _bestEnemyInRange(
         Ctx memory ctx,
         Position memory fromPos,
@@ -94,6 +100,7 @@ library AIBehavior {
     ) private view returns (uint targetId, bool found) {
         uint8 bestHp = type(uint8).max;
         bool bestIsZero = false;
+        bool bestOnTile = false;
         for (uint i = 0; i < ctx.g.shipPositions.length; i++) {
             ShipPosition memory sp = ctx.g.shipPositions[i];
             if (sp.shipId == ctx.shipId || sp.status != 0 || !sp.isCreator)
@@ -117,11 +124,24 @@ library AIBehavior {
             );
             if (!attrsFound) continue;
 
+            bool onTile = _isScoringTile(ctx.scoringPositions, sp.position);
+
             if (!found) {
                 targetId = sp.shipId;
                 found = true;
                 bestHp = attrs.hullPoints;
                 bestIsZero = attrs.hullPoints == 0;
+                bestOnTile = onTile;
+                continue;
+            }
+            if (onTile != bestOnTile) {
+                // on-tile always beats off-tile, regardless of HP
+                if (onTile) {
+                    targetId = sp.shipId;
+                    bestHp = attrs.hullPoints;
+                    bestIsZero = attrs.hullPoints == 0;
+                    bestOnTile = true;
+                }
                 continue;
             }
             if (bestIsZero && attrs.hullPoints > 0) {
@@ -136,6 +156,19 @@ library AIBehavior {
                 bestHp = attrs.hullPoints;
             }
         }
+    }
+
+    function _isScoringTile(
+        ScoringPosition[] memory scoringPositions,
+        Position memory p
+    ) private pure returns (bool) {
+        for (uint i = 0; i < scoringPositions.length; i++) {
+            if (
+                scoringPositions[i].row == p.row &&
+                scoringPositions[i].col == p.col
+            ) return true;
+        }
+        return false;
     }
 
     // Same shape as _bestEnemyInRange but for the AI's own side, preferring
@@ -222,22 +255,112 @@ library AIBehavior {
         }
     }
 
-    function _nearestScoringTile(
-        ScoringPosition[] memory scoringPositions,
-        Position memory myPos
+    function _isOccupiedByOther(
+        Ctx memory ctx,
+        Position memory p
+    ) private pure returns (bool) {
+        for (uint i = 0; i < ctx.g.shipPositions.length; i++) {
+            ShipPosition memory sp = ctx.g.shipPositions[i];
+            if (sp.shipId == ctx.shipId || sp.status != 0) continue;
+            if (sp.position.row == p.row && sp.position.col == p.col)
+                return true;
+        }
+        return false;
+    }
+
+    // Picks a scoring-tile movement target. Preference order:
+    //   1. Unclaimed (unoccupied) tile on this ship's weapon-range-
+    //      appropriate side of the grid — long-range weapons (Railgun,
+    //      MissileLauncher) stick close to the AI's own spawn side (high
+    //      columns), short-range weapons (Laser, PlasmaCannon) push toward
+    //      the midline/opponent's side (low columns) — nearest first.
+    //   2. Unclaimed tile on either side, nearest first (no matching-side
+    //      tile exists on this map).
+    //   3. Any tile at all, even one currently held by a ship, nearest
+    //      first — so there's always somewhere to head as long as scoring
+    //      tiles exist, rather than stalling out with nothing to do.
+    function _bestScoringTile(
+        Ctx memory ctx
     ) private pure returns (Position memory pos, bool found) {
-        uint16 bestDist = type(uint16).max;
-        for (uint i = 0; i < scoringPositions.length; i++) {
-            Position memory candidate = Position({
-                row: scoringPositions[i].row,
-                col: scoringPositions[i].col
-            });
-            uint16 dist = _manhattan(myPos, candidate);
-            if (!found || dist < bestDist) {
-                pos = candidate;
-                found = true;
-                bestDist = dist;
+        int16 midCol = ctx.gridWidth / 2;
+        bool longRange = ctx.mainWeapon == MainWeapon.Railgun ||
+            ctx.mainWeapon == MainWeapon.MissileLauncher;
+
+        for (uint pass = 0; pass < 3; pass++) {
+            uint16 bestDist = type(uint16).max;
+            for (uint i = 0; i < ctx.scoringPositions.length; i++) {
+                Position memory candidate = Position({
+                    row: ctx.scoringPositions[i].row,
+                    col: ctx.scoringPositions[i].col
+                });
+                if (pass < 2 && _isOccupiedByOther(ctx, candidate)) continue;
+                if (pass == 0) {
+                    bool onOwnSide = longRange
+                        ? candidate.col >= midCol
+                        : candidate.col <= midCol;
+                    if (!onOwnSide) continue;
+                }
+                uint16 dist = _manhattan(ctx.pos, candidate);
+                if (!found || dist < bestDist) {
+                    pos = candidate;
+                    bestDist = dist;
+                    found = true;
+                }
             }
+            if (found) return (pos, true);
+        }
+    }
+
+    // Shared fallback movement step used by every archetype whose primary
+    // directive (shoot, heal, retreat) didn't produce a decision this turn:
+    // close on the nearest enemy, but only follow through on that step if it
+    // would actually bring an enemy into range this turn — otherwise
+    // redirect the move toward a scoring tile instead, since walking toward
+    // an enemy that stays out of reach anyway makes no more progress than
+    // walking toward the objective. Falls back to the enemy-directed step if
+    // no scoring tile exists on the map at all (or enemyFound is false and
+    // there's no tile either, in which case this just holds position).
+    function _approachOrSeekTile(
+        Ctx memory ctx,
+        Position memory enemyPos,
+        bool enemyFound
+    ) private view returns (Decision memory d) {
+        d.destRow = ctx.pos.row;
+        d.destCol = ctx.pos.col;
+        d.action = ActionType.Pass;
+
+        Position memory towardEnemy = ctx.pos;
+        if (enemyFound) {
+            towardEnemy = _stepToward(ctx.pos, enemyPos, ctx.attrs.movement);
+            (uint target, bool found) = _bestEnemyInRange(
+                ctx,
+                towardEnemy,
+                ctx.attrs.range
+            );
+            if (found) {
+                d.destRow = towardEnemy.row;
+                d.destCol = towardEnemy.col;
+                d.action = ActionType.Shoot;
+                d.actionTarget = target;
+                return d;
+            }
+        }
+
+        (Position memory tilePos, bool tileFound) = _bestScoringTile(ctx);
+        if (tileFound) {
+            Position memory towardTile = _stepToward(
+                ctx.pos,
+                tilePos,
+                ctx.attrs.movement
+            );
+            d.destRow = towardTile.row;
+            d.destCol = towardTile.col;
+            return d;
+        }
+
+        if (enemyFound) {
+            d.destRow = towardEnemy.row;
+            d.destCol = towardEnemy.col;
         }
     }
 
@@ -305,25 +428,25 @@ library AIBehavior {
     // ---- per-archetype rule lists ----
 
     // Grunt & Aggressor share this v1: shoot from here if anything's in
-    // range, else close distance and re-check from the new position — a
-    // direct generalization of the original v0 script's "adjacent enemy:
-    // fire; else step left and fire if now adjacent" shape, just toward the
-    // nearest enemy instead of a fixed direction. _bestEnemyInRange already
-    // focuses the weakest target, which covers the "prioritize kills" intent
-    // for both without inventing a fake distinction between the two.
+    // range, else close distance if that would actually bring an enemy into
+    // range this turn, else redirect toward a scoring tile (see
+    // _approachOrSeekTile) — a direct generalization of the original v0
+    // script's "adjacent enemy: fire; else step left and fire if now
+    // adjacent" shape, just toward the nearest enemy instead of a fixed
+    // direction. _bestEnemyInRange already focuses the weakest/on-tile
+    // target, which covers the "prioritize kills" intent for both without
+    // inventing a fake distinction between the two.
     function decideEngageOrApproach(
         Ctx memory ctx
     ) internal view returns (Decision memory d) {
-        d.destRow = ctx.pos.row;
-        d.destCol = ctx.pos.col;
-        d.action = ActionType.Pass;
-
         (uint target, bool found) = _bestEnemyInRange(
             ctx,
             ctx.pos,
             ctx.attrs.range
         );
         if (found) {
+            d.destRow = ctx.pos.row;
+            d.destCol = ctx.pos.col;
             d.action = ActionType.Shoot;
             d.actionTarget = target;
             return d;
@@ -333,42 +456,23 @@ library AIBehavior {
             ctx,
             false
         );
-        if (!enemyFound) return d;
-
-        Position memory newPos = _stepToward(
-            ctx.pos,
-            enemyPos,
-            ctx.attrs.movement
-        );
-        d.destRow = newPos.row;
-        d.destCol = newPos.col;
-        (uint target2, bool found2) = _bestEnemyInRange(
-            ctx,
-            newPos,
-            ctx.attrs.range
-        );
-        if (found2) {
-            d.action = ActionType.Shoot;
-            d.actionTarget = target2;
-        }
+        return _approachOrSeekTile(ctx, enemyPos, enemyFound);
     }
 
     // Shoots from range without moving when possible; retreats (steps away
-    // from the nearest enemy) rather than staying adjacent to engage.
+    // from the nearest enemy) rather than staying adjacent to engage. When
+    // out of range entirely, closes the gap only if that would bring an
+    // enemy into range this turn, else redirects toward a scoring tile (see
+    // _approachOrSeekTile) — Sniper's weapon is always long-range (Railgun),
+    // so this naturally biases it toward tiles on its own side.
     function decideSniper(
-        Ctx memory ctx,
-        int16 gridHeight,
-        int16 gridWidth
+        Ctx memory ctx
     ) internal view returns (Decision memory d) {
-        d.destRow = ctx.pos.row;
-        d.destCol = ctx.pos.col;
-        d.action = ActionType.Pass;
-
         (Position memory enemyPos, bool enemyFound) = _nearestEnemyPosition(
             ctx,
             false
         );
-        if (!enemyFound) return d;
+        if (!enemyFound) return _approachOrSeekTile(ctx, enemyPos, false);
         uint16 dist = _manhattan(ctx.pos, enemyPos);
 
         if (dist > 1) {
@@ -378,45 +482,35 @@ library AIBehavior {
                 ctx.attrs.range
             );
             if (found) {
+                d.destRow = ctx.pos.row;
+                d.destCol = ctx.pos.col;
                 d.action = ActionType.Shoot;
                 d.actionTarget = target;
                 return d;
             }
-            // out of range entirely: close the gap partway, then re-check
-            Position memory newPos = _stepToward(
-                ctx.pos,
-                enemyPos,
-                ctx.attrs.movement
-            );
-            d.destRow = newPos.row;
-            d.destCol = newPos.col;
-            (uint target2, bool found2) = _bestEnemyInRange(
-                ctx,
-                newPos,
-                ctx.attrs.range
-            );
-            if (found2) {
-                d.action = ActionType.Shoot;
-                d.actionTarget = target2;
-            }
-            return d;
+            return _approachOrSeekTile(ctx, enemyPos, true);
         }
 
         // adjacent to an enemy: retreat rather than engage
+        d.action = ActionType.Pass;
         Position memory awayPos = _stepAway(
             ctx.pos,
             enemyPos,
             ctx.attrs.movement,
-            gridHeight,
-            gridWidth
+            ctx.gridHeight,
+            ctx.gridWidth
         );
         d.destRow = awayPos.row;
         d.destCol = awayPos.col;
     }
 
-    // Heals the weakest ally in RepairDrones range if equipped with it;
-    // otherwise behaves like Grunt; otherwise closes toward whichever ally
-    // most needs staying in healing range of.
+    // Heals the weakest ally in RepairDrones range if equipped with it, or
+    // shoots an enemy in range — both free actions from the current
+    // position, so neither is ever skipped in favor of moving. Otherwise
+    // seeks an unclaimed scoring tile first (the objective matters more
+    // than positioning near an ally that isn't hurt yet), falling back to
+    // closing toward whichever ally most needs staying in healing range of
+    // if no scoring tile exists on the map.
     function decideSupport(
         Ctx memory ctx,
         IShipAttributes shipAttributes,
@@ -454,34 +548,34 @@ library AIBehavior {
             return d;
         }
 
-        // Nothing to heal or shoot from here: move toward whichever ally is
-        // most injured (stay useful), ignoring enemies entirely (Support
-        // hangs back rather than chasing a fight).
-        (uint allyTarget2, bool allyFound2) = _bestAllyToHeal(
-            ctx,
-            type(uint8).max
-        );
-        if (!allyFound2) return d;
-        (Position memory allyPos, bool posFound) = findPosition(
-            ctx.g,
-            allyTarget2
-        );
-        if (!posFound) return d;
+        (Position memory dest, bool destFound) = _bestScoringTile(ctx);
+        if (!destFound) {
+            // No scoring tile on this map: fall back to staying useful near
+            // whichever ally is most injured.
+            (uint allyTarget, bool allyFound) = _bestAllyToHeal(
+                ctx,
+                type(uint8).max
+            );
+            if (!allyFound) return d;
+            (dest, destFound) = findPosition(ctx.g, allyTarget);
+            if (!destFound) return d;
+        }
+
         Position memory newPos = _stepToward(
             ctx.pos,
-            allyPos,
+            dest,
             ctx.attrs.movement
         );
         d.destRow = newPos.row;
         d.destCol = newPos.col;
     }
 
-    // Holds/seeks unclaimed scoring tiles; shoots opportunistically from
-    // wherever it ends up if an enemy is in range from the current
-    // position (never gives up a free shot just to move toward a tile).
+    // Holds/seeks unclaimed scoring tiles (weapon-range-biased, see
+    // _bestScoringTile); shoots opportunistically from wherever it ends up
+    // if an enemy is in range from the current position (never gives up a
+    // free shot just to move toward a tile).
     function decideTurtle(
-        Ctx memory ctx,
-        ScoringPosition[] memory scoringPositions
+        Ctx memory ctx
     ) internal view returns (Decision memory d) {
         d.destRow = ctx.pos.row;
         d.destCol = ctx.pos.col;
@@ -498,10 +592,7 @@ library AIBehavior {
             return d;
         }
 
-        (Position memory tilePos, bool tileFound) = _nearestScoringTile(
-            scoringPositions,
-            ctx.pos
-        );
+        (Position memory tilePos, bool tileFound) = _bestScoringTile(ctx);
         if (!tileFound) return d;
         Position memory newPos = _stepToward(
             ctx.pos,

@@ -61,6 +61,7 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator {
         Archetype archetype;
         uint16 variant;
         Special special;
+        MainWeapon mainWeapon;
     }
     mapping(uint => AIShipInfo) public aiShipInfo;
 
@@ -249,7 +250,8 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator {
             aiShipInfo[shipIds[i]] = AIShipInfo({
                 archetype: config.archetype,
                 variant: config.traits.variant,
-                special: config.equipment.special
+                special: config.equipment.special,
+                mainWeapon: config.equipment.mainWeapon
             });
         }
         gameIdToAiShipIds[_gameId] = shipIds;
@@ -397,16 +399,15 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator {
             gameId: _gameId,
             shipId: _shipId,
             pos: myPos,
-            attrs: myAttrs
+            attrs: myAttrs,
+            mainWeapon: info.mainWeapon,
+            scoringPositions: maps.getGameScoringPositions(_gameId),
+            gridWidth: game.GRID_WIDTH(),
+            gridHeight: game.GRID_HEIGHT()
         });
 
         if (info.archetype == Archetype.Sniper) {
-            return
-                AIBehavior.decideSniper(
-                    ctx,
-                    game.GRID_HEIGHT(),
-                    game.GRID_WIDTH()
-                );
+            return AIBehavior.decideSniper(ctx);
         } else if (info.archetype == Archetype.Support) {
             return
                 AIBehavior.decideSupport(
@@ -416,9 +417,7 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator {
                     info.variant
                 );
         } else if (info.archetype == Archetype.Turtle) {
-            ScoringPosition[] memory scoringPositions = maps
-                .getGameScoringPositions(_gameId);
-            return AIBehavior.decideTurtle(ctx, scoringPositions);
+            return AIBehavior.decideTurtle(ctx);
         }
         // Grunt and Aggressor share this engage-or-approach logic — see
         // AIBehavior's header comment on why. Rammer has no AI decision

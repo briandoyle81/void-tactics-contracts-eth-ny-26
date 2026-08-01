@@ -21,11 +21,15 @@ The line-of-sight system is implemented as a separate contract (`Maps.sol`) that
 
 ## Data Structures
 
-### Blocked Tiles Mapping
+### Blocked Tiles Bitmask
+
+Blocked-tile presence is packed one bit per grid cell into a single `uint256` per game (bit index = `row * GRID_WIDTH + col`; the 11x17=187-cell grid fits with room to spare). This keeps `applyPresetMapToGame`'s copy from a preset into a game to a single `SSTORE` regardless of how many tiles are blocked, instead of one `SSTORE` per blocked tile.
 
 ```solidity
-mapping(uint => mapping(int16 row => mapping(int16 col => bool))) blockedTiles;
+mapping(uint => uint256) private blockedTilesBitmap; // gameId => 187-bit-packed blocked mask
 ```
+
+Reads go through `isTileBlocked`/`_isTileBlockedSafe` — nothing outside `Maps.sol` reads the raw mapping.
 
 ## Core Functions
 

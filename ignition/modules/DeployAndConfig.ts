@@ -474,6 +474,16 @@ const DeployModule = buildModule("DeployModule", (m) => {
     );
   }
 
+  // Default cap is 8; the hardest campaign nodes (asteroidField,
+  // warlordsRedoubt, gauntlet, bastion) need up to 14 ships to actually
+  // reach their enemyThreat target within the available config levels
+  // (I-V), so raise the live knob once here before placing any fleet.
+  const setMaxPlacementsPerMapCall = m.call(
+    aiEncounters,
+    "setMaxPlacementsPerMap",
+    [14n],
+  );
+
   const placementCalls: ReturnType<typeof m.call>[] = [];
   for (const placement of starterContent.mapPlacements) {
     const capitalizedKey = `${placement.mapKey[0].toUpperCase()}${placement.mapKey.slice(1)}`;
@@ -488,7 +498,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
         ],
         {
           id: `Place${capitalizedKey}AIFleet`,
-          after: [mapCalls[placement.mapKey]],
+          after: [mapCalls[placement.mapKey], setMaxPlacementsPerMapCall],
         },
       ),
     );

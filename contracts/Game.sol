@@ -507,16 +507,8 @@ contract Game is Ownable {
             );
         }
         // Remove all ships from fleets when game ends
-        _removeShipsFromFleet(
-            _gameId,
-            game.metadata.creator,
-            game.metadata.creatorFleetId
-        );
-        _removeShipsFromFleet(
-            _gameId,
-            game.metadata.joiner,
-            game.metadata.joinerFleetId
-        );
+        _removeShipsFromFleet(game.metadata.creatorFleetId);
+        _removeShipsFromFleet(game.metadata.joinerFleetId);
     }
 
     // Move then perform action. Landing on an occupied cell is never valid
@@ -1334,22 +1326,18 @@ contract Game is Ownable {
         emit GameUpdate(_gameId);
     }
 
-    // Helper function to remove ships from a specific fleet
-    function _removeShipsFromFleet(
-        uint _gameId,
-        address _player,
-        uint _fleetId
-    ) internal {
-        GameData storage game = games[_gameId];
-        EnumerableSet.UintSet storage shipIds = game.playerActiveShipIds[
-            _player
-        ];
-
-        uint shipCount = EnumerableSet.length(shipIds);
-        for (uint i = 0; i < shipCount; i++) {
-            uint shipId = EnumerableSet.at(shipIds, i);
-            fleets.removeShipFromFleet(_fleetId, shipId);
-        }
+    // Releases every remaining ship in a fleet at game end. Uses
+    // Fleets.clearFleet rather than looping playerActiveShipIds and calling
+    // removeShipFromFleet per ship — the fleet is being fully dissolved
+    // here, so there's no need to pay for removeShipFromFleet's per-ship
+    // getShip() cost-accounting (fleet.totalCost) or its O(n) find-in-array
+    // per removal; clearFleet just unlocks every ship (setInFleet(false))
+    // and drops the whole shipIds array in one storage write. Safe because
+    // every mid-game removal (_removeShipFromGame) already keeps
+    // fleet.shipIds and playerActiveShipIds in lockstep, so by the time a
+    // game ends they contain the same ship ids.
+    function _removeShipsFromFleet(uint _fleetId) internal {
+        fleets.clearFleet(_fleetId);
     }
 
     // Helper function to handle end-of-round logic

@@ -1535,9 +1535,23 @@ describe("Game", function () {
       const oldRow = initialPosition.row;
       const oldCol = initialPosition.col;
 
-      // Move ship to a new position
-      const newRow = 0;
-      const newCol = 2;
+      // Move ship to a new position, clamped to its actual (RNG-derived,
+      // equipment-dependent) movement stat rather than a hardcoded delta --
+      // deploy-sequence changes shift trait/equipment RNG, so a fixed delta
+      // can exceed movement.
+      const newRow = oldRow;
+      const newCol = await getValidHorizontalDestination(
+        game,
+        1n,
+        1n,
+        oldCol,
+        2,
+      );
+      if (newCol === oldCol) {
+        // Equipment RNG happened to leave this ship with 0 movement this
+        // run -- nothing to assert "actual movement" against.
+        this.skip();
+      }
       await game.write.moveShip([1n, 1n, newRow, newCol, ActionType.Pass, 0n], {
         account: creator.account,
       });
@@ -2017,8 +2031,19 @@ describe("Game", function () {
         generateStartingPositions([6n], false),
       ]);
 
-      // Try diagonal movement (both row and column change) - should work now
-      await game.write.moveShip([1n, 1n, 1, 1, ActionType.Pass, 0n], {
+      // Try diagonal movement (both row and column change) - should work now.
+      // Delta is clamped to the ship's actual (RNG-derived, equipment-
+      // dependent) movement stat rather than hardcoded, since deploy-
+      // sequence changes shift trait/equipment RNG. A true diagonal step
+      // needs at least 2 movement (1 row + 1 col); if this ship's rolled
+      // equipment left it below that, there's nothing diagonal to test.
+      const attributes = await game.read.getShipAttributes([1n, 1n]);
+      const movement = Number(attributes.movement);
+      const delta = Math.floor(movement / 2);
+      if (delta < 1) {
+        this.skip();
+      }
+      await game.write.moveShip([1n, 1n, delta, delta, ActionType.Pass, 0n], {
         account: creator.account,
       });
 
@@ -2027,8 +2052,8 @@ describe("Game", function () {
         1n,
       ])) as unknown as GameDataView;
       const shipPosition = findShipPosition(gameData, 1n);
-      expect(shipPosition.row).to.equal(1);
-      expect(shipPosition.col).to.equal(1);
+      expect(shipPosition.row).to.equal(delta);
+      expect(shipPosition.col).to.equal(delta);
     });
 
     it("should handle different fleet sizes correctly", async function () {

@@ -8,8 +8,36 @@
     {
       "key": "grunt",
       "name": "AI Grunt",
-      "equipment": { "mainWeapon": 0, "armor": 0, "shields": 0, "special": 0 },
+      "equipment": { "mainWeapon": 0, "armor": 1, "shields": 0, "special": 0 },
       "traits": { "variant": 1, "accuracy": 0, "hull": 0, "speed": 0 },
+      "archetype": 0
+    },
+    {
+      "key": "grunt2",
+      "name": "AI Grunt II",
+      "equipment": { "mainWeapon": 0, "armor": 1, "shields": 0, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 1, "hull": 1, "speed": 1 },
+      "archetype": 0
+    },
+    {
+      "key": "grunt3",
+      "name": "AI Grunt III",
+      "equipment": { "mainWeapon": 0, "armor": 1, "shields": 0, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 2, "hull": 2, "speed": 2 },
+      "archetype": 0
+    },
+    {
+      "key": "grunt4",
+      "name": "AI Grunt IV",
+      "equipment": { "mainWeapon": 0, "armor": 2, "shields": 0, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 2, "hull": 2, "speed": 2 },
+      "archetype": 0
+    },
+    {
+      "key": "grunt5",
+      "name": "AI Grunt V",
+      "equipment": { "mainWeapon": 0, "armor": 3, "shields": 0, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 2, "hull": 2, "speed": 2 },
       "archetype": 0
     },
     {
@@ -20,10 +48,66 @@
       "archetype": 1
     },
     {
+      "key": "aggressor2",
+      "name": "AI Aggressor II",
+      "equipment": { "mainWeapon": 2, "armor": 1, "shields": 0, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 1, "hull": 2, "speed": 2 },
+      "archetype": 1
+    },
+    {
+      "key": "aggressor3",
+      "name": "AI Aggressor III",
+      "equipment": { "mainWeapon": 2, "armor": 1, "shields": 0, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 2, "hull": 2, "speed": 2 },
+      "archetype": 1
+    },
+    {
+      "key": "aggressor4",
+      "name": "AI Aggressor IV",
+      "equipment": { "mainWeapon": 2, "armor": 2, "shields": 0, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 2, "hull": 2, "speed": 2 },
+      "archetype": 1
+    },
+    {
+      "key": "aggressor5",
+      "name": "AI Aggressor V",
+      "equipment": { "mainWeapon": 2, "armor": 3, "shields": 0, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 2, "hull": 2, "speed": 2 },
+      "archetype": 1
+    },
+    {
       "key": "sniper",
       "name": "AI Sniper",
-      "equipment": { "mainWeapon": 1, "armor": 0, "shields": 0, "special": 0 },
+      "equipment": { "mainWeapon": 1, "armor": 0, "shields": 1, "special": 0 },
       "traits": { "variant": 1, "accuracy": 1, "hull": 0, "speed": 0 },
+      "archetype": 2
+    },
+    {
+      "key": "sniper2",
+      "name": "AI Sniper II",
+      "equipment": { "mainWeapon": 1, "armor": 0, "shields": 1, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 2, "hull": 1, "speed": 1 },
+      "archetype": 2
+    },
+    {
+      "key": "sniper3",
+      "name": "AI Sniper III",
+      "equipment": { "mainWeapon": 1, "armor": 0, "shields": 1, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 2, "hull": 2, "speed": 2 },
+      "archetype": 2
+    },
+    {
+      "key": "sniper4",
+      "name": "AI Sniper IV",
+      "equipment": { "mainWeapon": 1, "armor": 0, "shields": 2, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 2, "hull": 2, "speed": 2 },
+      "archetype": 2
+    },
+    {
+      "key": "sniper5",
+      "name": "AI Sniper V",
+      "equipment": { "mainWeapon": 1, "armor": 0, "shields": 3, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 2, "hull": 2, "speed": 2 },
       "archetype": 2
     },
     {
@@ -34,10 +118,66 @@
       "archetype": 3
     },
     {
+      "key": "support2",
+      "name": "AI Support II",
+      "equipment": { "mainWeapon": 0, "armor": 0, "shields": 1, "special": 2 },
+      "traits": { "variant": 1, "accuracy": 1, "hull": 1, "speed": 1 },
+      "archetype": 3
+    },
+    {
+      "key": "support3",
+      "name": "AI Support III",
+      "equipment": { "mainWeapon": 0, "armor": 0, "shields": 1, "special": 2 },
+      "traits": { "variant": 1, "accuracy": 2, "hull": 2, "speed": 2 },
+      "archetype": 3
+    },
+    {
+      "key": "support4",
+      "name": "AI Support IV",
+      "equipment": { "mainWeapon": 0, "armor": 0, "shields": 2, "special": 2 },
+      "traits": { "variant": 1, "accuracy": 2, "hull": 2, "speed": 2 },
+      "archetype": 3
+    },
+    {
+      "key": "support5",
+      "name": "AI Support V",
+      "equipment": { "mainWeapon": 0, "armor": 0, "shields": 3, "special": 2 },
+      "traits": { "variant": 1, "accuracy": 2, "hull": 2, "speed": 2 },
+      "archetype": 3
+    },
+    {
       "key": "turtle",
       "name": "AI Turtle",
       "equipment": { "mainWeapon": 0, "armor": 1, "shields": 0, "special": 0 },
       "traits": { "variant": 1, "accuracy": 0, "hull": 1, "speed": 0 },
+      "archetype": 4
+    },
+    {
+      "key": "turtle2",
+      "name": "AI Turtle II",
+      "equipment": { "mainWeapon": 0, "armor": 1, "shields": 0, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 1, "hull": 2, "speed": 1 },
+      "archetype": 4
+    },
+    {
+      "key": "turtle3",
+      "name": "AI Turtle III",
+      "equipment": { "mainWeapon": 0, "armor": 1, "shields": 0, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 2, "hull": 2, "speed": 2 },
+      "archetype": 4
+    },
+    {
+      "key": "turtle4",
+      "name": "AI Turtle IV",
+      "equipment": { "mainWeapon": 0, "armor": 2, "shields": 0, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 2, "hull": 2, "speed": 2 },
+      "archetype": 4
+    },
+    {
+      "key": "turtle5",
+      "name": "AI Turtle V",
+      "equipment": { "mainWeapon": 0, "armor": 3, "shields": 0, "special": 0 },
+      "traits": { "variant": 1, "accuracy": 2, "hull": 2, "speed": 2 },
       "archetype": 4
     }
   ],
@@ -184,7 +324,7 @@
         { "row": 5, "col": 13 },
         { "row": 6, "col": 13 }
       ],
-      "configKeys": ["grunt", "aggressor", "turtle"]
+      "configKeys": ["grunt", "aggressor", "turtle3"]
     },
     {
       "mapKey": "nebula",
@@ -195,36 +335,75 @@
         { "row": 7, "col": 13 },
         { "row": 8, "col": 13 }
       ],
-      "configKeys": ["grunt", "aggressor", "sniper", "support", "turtle"]
+      "configKeys": ["grunt", "aggressor", "sniper3", "support3", "turtle4"]
     },
     {
       "mapKey": "outpost",
-      "positions": [{ "row": 3, "col": 14 }, { "row": 7, "col": 15 }],
-      "configKeys": ["grunt", "aggressor"]
+      "positions": [
+        { "row": 3, "col": 14 },
+        { "row": 7, "col": 15 },
+        { "row": 0, "col": 13 },
+        { "row": 10, "col": 13 },
+        { "row": 10, "col": 14 },
+        { "row": 10, "col": 15 }
+      ],
+      "configKeys": ["grunt3", "aggressor5", "sniper5", "support5", "turtle5", "grunt5"]
     },
     {
       "mapKey": "junkyard",
-      "positions": [{ "row": 2, "col": 13 }, { "row": 8, "col": 16 }],
-      "configKeys": ["sniper", "support"]
+      "positions": [
+        { "row": 2, "col": 13 },
+        { "row": 8, "col": 16 },
+        { "row": 0, "col": 13 },
+        { "row": 8, "col": 13 },
+        { "row": 4, "col": 14 },
+        { "row": 0, "col": 15 },
+        { "row": 7, "col": 15 },
+        { "row": 3, "col": 16 }
+      ],
+      "configKeys": ["sniper3", "support3", "grunt4", "aggressor5", "turtle5", "sniper5", "support5", "grunt5"]
     },
     {
       "mapKey": "asteroidField",
       "positions": [
         { "row": 3, "col": 15 },
         { "row": 5, "col": 16 },
-        { "row": 7, "col": 15 }
+        { "row": 7, "col": 15 },
+        { "row": 0, "col": 13 },
+        { "row": 8, "col": 13 },
+        { "row": 5, "col": 14 },
+        { "row": 2, "col": 15 },
+        { "row": 1, "col": 16 },
+        { "row": 1, "col": 13 },
+        { "row": 10, "col": 14 }
       ],
-      "configKeys": ["grunt", "aggressor", "turtle"]
+      "configKeys": ["grunt5", "aggressor5", "turtle3", "sniper5", "support5", "grunt3", "aggressor3", "turtle3", "sniper5", "support5"]
     },
     {
       "mapKey": "driftWreck",
-      "positions": [{ "row": 7, "col": 16 }],
-      "configKeys": ["grunt"]
+      "positions": [
+        { "row": 7, "col": 16 },
+        { "row": 0, "col": 13 },
+        { "row": 8, "col": 13 },
+        { "row": 5, "col": 14 },
+        { "row": 2, "col": 15 },
+        { "row": 10, "col": 15 }
+      ],
+      "configKeys": ["grunt3", "aggressor5", "sniper5", "support5", "turtle5", "grunt5"]
     },
     {
       "mapKey": "silentHulk",
-      "positions": [{ "row": 2, "col": 14 }, { "row": 9, "col": 15 }],
-      "configKeys": ["aggressor", "sniper"]
+      "positions": [
+        { "row": 2, "col": 14 },
+        { "row": 9, "col": 15 },
+        { "row": 0, "col": 13 },
+        { "row": 7, "col": 13 },
+        { "row": 4, "col": 14 },
+        { "row": 0, "col": 15 },
+        { "row": 7, "col": 15 },
+        { "row": 4, "col": 16 }
+      ],
+      "configKeys": ["aggressor2", "sniper5", "grunt5", "support5", "turtle5", "aggressor5", "sniper5", "grunt5"]
     },
     {
       "mapKey": "warlordsRedoubt",
@@ -233,9 +412,16 @@
         { "row": 4, "col": 15 },
         { "row": 6, "col": 14 },
         { "row": 6, "col": 15 },
-        { "row": 5, "col": 16 }
+        { "row": 5, "col": 16 },
+        { "row": 0, "col": 13 },
+        { "row": 2, "col": 14 },
+        { "row": 8, "col": 15 },
+        { "row": 1, "col": 13 },
+        { "row": 10, "col": 13 },
+        { "row": 0, "col": 15 },
+        { "row": 1, "col": 16 }
       ],
-      "configKeys": ["grunt", "aggressor", "sniper", "support", "turtle"]
+      "configKeys": ["grunt4", "aggressor3", "sniper5", "support3", "turtle3", "grunt3", "aggressor3", "sniper3", "support3", "turtle3", "grunt3", "aggressor3"]
     },
     {
       "mapKey": "gauntlet",
@@ -243,9 +429,17 @@
         { "row": 3, "col": 14 },
         { "row": 7, "col": 14 },
         { "row": 4, "col": 16 },
-        { "row": 6, "col": 16 }
+        { "row": 6, "col": 16 },
+        { "row": 0, "col": 13 },
+        { "row": 10, "col": 13 },
+        { "row": 0, "col": 15 },
+        { "row": 10, "col": 15 },
+        { "row": 1, "col": 13 },
+        { "row": 0, "col": 14 },
+        { "row": 1, "col": 15 },
+        { "row": 0, "col": 16 }
       ],
-      "configKeys": ["grunt", "aggressor", "sniper", "turtle"]
+      "configKeys": ["grunt5", "aggressor5", "sniper5", "turtle5", "support5", "grunt5", "aggressor4", "sniper5", "turtle3", "support5", "grunt3", "aggressor3"]
     },
     {
       "mapKey": "bastion",
@@ -254,9 +448,18 @@
         { "row": 4, "col": 15 },
         { "row": 5, "col": 16 },
         { "row": 6, "col": 15 },
-        { "row": 8, "col": 13 }
+        { "row": 8, "col": 13 },
+        { "row": 0, "col": 13 },
+        { "row": 4, "col": 14 },
+        { "row": 8, "col": 15 },
+        { "row": 1, "col": 13 },
+        { "row": 9, "col": 13 },
+        { "row": 5, "col": 14 },
+        { "row": 0, "col": 15 },
+        { "row": 9, "col": 15 },
+        { "row": 4, "col": 16 }
       ],
-      "configKeys": ["grunt", "aggressor", "sniper", "support", "turtle"]
+      "configKeys": ["grunt5", "aggressor5", "sniper5", "support5", "turtle5", "grunt5", "aggressor5", "sniper5", "support5", "turtle5", "grunt3", "aggressor3", "sniper5", "support5"]
     }
   ],
   "campaigns": [{ "key": "mainCampaign" }],

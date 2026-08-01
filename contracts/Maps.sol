@@ -12,13 +12,19 @@ contract Maps is Ownable {
     int16 public constant GRID_WIDTH = 17; // Number of columns
     int16 public constant GRID_HEIGHT = 11; // Number of rows
 
-    // Mapping: gameId => row => column => blocked
-    mapping(uint => mapping(int16 => mapping(int16 => bool)))
-        public blockedTiles;
-
-    // Preset maps: mapId => row => column => blocked
-    mapping(uint => mapping(int16 => mapping(int16 => bool)))
-        public presetBlockedMaps;
+    // Blocked-tile presence packed into a single uint256 bit-per-cell mask
+    // (bit index = row * GRID_WIDTH + col; 11*17=187 cells fits in one word
+    // with room to spare). Replaces a triple-nested mapping that used to
+    // cost one cold SSTORE (~22,100 gas) per blocked tile every time a
+    // preset was copied into a game — on a half-blocked map that alone
+    // could run into the millions of gas. A bitmask copy is a single SSTORE
+    // regardless of density. mapping(uint => uint256) is intentionally
+    // private, not public: nothing reads these raw words directly anywhere
+    // in this codebase (confirmed via repo-wide search before this change),
+    // every consumer goes through isTileBlocked/_isTileBlockedSafe/
+    // getPresetMap/getGameMapState, whose signatures are unaffected.
+    mapping(uint => uint256) private blockedTilesBitmap; // gameId => mask
+    mapping(uint => uint256) private presetBlockedMapsBitmap; // mapId => mask
 
     // Mapping: gameId => row => column => scoring
     mapping(uint => mapping(int16 => mapping(int16 => uint8)))
@@ -82,6 +88,46 @@ contract Maps is Ownable {
     ) internal pure returns (int16 row, int16 col) {
         row = int16(uint16(_packed >> 16));
         col = int16(uint16(_packed));
+    }
+
+    // Total grid cells (11*17=187), used to bound the blocked-tile bitmask
+    // scan/reconstruction loops below instead of a bare magic number.
+    uint private constant TOTAL_CELLS =
+        uint(uint16(GRID_HEIGHT)) * uint(uint16(GRID_WIDTH));
+
+    // Bit index into a blocked-tile bitmask for a given grid cell. Callers
+    // MUST have already bounds-checked row/col (0 <= row < GRID_HEIGHT,
+    // 0 <= col < GRID_WIDTH) — this does not re-validate, since every call
+    // site already has its own bounds check immediately before calling this
+    // (duplicating it here would just be a second, redundant revert path).
+    // Max index is (GRID_HEIGHT-1)*GRID_WIDTH + (GRID_WIDTH-1) = 186,
+    // safely inside 0-255.
+    function _bitIndex(int16 _row, int16 _col) internal pure returns (uint) {
+        return
+            uint(uint16(_row)) *
+            uint(uint16(GRID_WIDTH)) +
+            uint(uint16(_col));
+    }
+
+    function _isBitSet(
+        uint256 _bitmap,
+        uint _index
+    ) internal pure returns (bool) {
+        return (_bitmap >> _index) & 1 == 1;
+    }
+
+    function _setBit(
+        uint256 _bitmap,
+        uint _index
+    ) internal pure returns (uint256) {
+        return _bitmap | (uint256(1) << _index);
+    }
+
+    function _clearBit(
+        uint256 _bitmap,
+        uint _index
+    ) internal pure returns (uint256) {
+        return _bitmap & ~(uint256(1) << _index);
     }
 
     /// @dev Restricts to the owner or an allowed map editor.
@@ -199,6 +245,7 @@ contract Maps is Ownable {
         mapMode[mapCount] = _mode;
 
         // Set blocked positions
+        uint256 bitmap = presetBlockedMapsBitmap[mapCount];
         for (uint i = 0; i < _blockedPositions.length; i++) {
             Position memory pos = _blockedPositions[i];
             if (
@@ -209,8 +256,9 @@ contract Maps is Ownable {
             ) {
                 revert InvalidPosition();
             }
-            presetBlockedMaps[mapCount][pos.row][pos.col] = true;
+            bitmap = _setBit(bitmap, _bitIndex(pos.row, pos.col));
         }
+        presetBlockedMapsBitmap[mapCount] = bitmap;
 
         // Set scoring positions
         for (uint i = 0; i < _scoringPositions.length; i++) {
@@ -242,14 +290,11 @@ contract Maps is Ownable {
     ) external onlyMapEditor {
         if (_mapId == 0 || _mapId > mapCount) revert MapNotFound();
 
-        // Get the current blocked positions and clear them
-        Position[] memory currentPositions = _getPresetMap(_mapId);
-        for (uint i = 0; i < currentPositions.length; i++) {
-            Position memory pos = currentPositions[i];
-            presetBlockedMaps[_mapId][pos.row][pos.col] = false;
-        }
-
-        // Set new blocked positions
+        // Full replace: compute the new bitmap from scratch rather than
+        // reading back the old one to clear it bit-by-bit — either way any
+        // old blocked tile not in the new array is gone, so this is
+        // behaviorally identical to the old clear-then-rewrite dance.
+        uint256 bitmap = 0;
         for (uint i = 0; i < _blockedPositions.length; i++) {
             Position memory pos = _blockedPositions[i];
             if (
@@ -260,8 +305,9 @@ contract Maps is Ownable {
             ) {
                 revert InvalidPosition();
             }
-            presetBlockedMaps[_mapId][pos.row][pos.col] = true;
+            bitmap = _setBit(bitmap, _bitIndex(pos.row, pos.col));
         }
+        presetBlockedMapsBitmap[_mapId] = bitmap;
     }
 
     /**
@@ -320,13 +366,6 @@ contract Maps is Ownable {
     ) external onlyMapEditor {
         if (_mapId == 0 || _mapId > mapCount) revert MapNotFound();
 
-        // Clear existing blocked positions
-        Position[] memory currentBlockedPositions = _getPresetMap(_mapId);
-        for (uint i = 0; i < currentBlockedPositions.length; i++) {
-            Position memory pos = currentBlockedPositions[i];
-            presetBlockedMaps[_mapId][pos.row][pos.col] = false;
-        }
-
         // Clear existing scoring positions
         ScoringPosition[] memory currentScoringPositions = _getPresetScoringMap(
             _mapId
@@ -340,7 +379,10 @@ contract Maps is Ownable {
             );
         }
 
-        // Set new blocked positions
+        // Set new blocked positions (full replace, see the blocked-only
+        // updatePresetMap overload's comment for why computing fresh is
+        // behaviorally identical to clear-then-rewrite)
+        uint256 bitmap = 0;
         for (uint i = 0; i < _blockedPositions.length; i++) {
             Position memory pos = _blockedPositions[i];
             if (
@@ -351,8 +393,9 @@ contract Maps is Ownable {
             ) {
                 revert InvalidPosition();
             }
-            presetBlockedMaps[_mapId][pos.row][pos.col] = true;
+            bitmap = _setBit(bitmap, _bitIndex(pos.row, pos.col));
         }
+        presetBlockedMapsBitmap[_mapId] = bitmap;
 
         // Set new scoring positions
         for (uint i = 0; i < _scoringPositions.length; i++) {
@@ -383,12 +426,11 @@ contract Maps is Ownable {
             revert NotGameContract();
         if (_mapId == 0 || _mapId > mapCount) revert MapNotFound();
 
-        // Get the preset blocked positions and apply them to the game
-        Position[] memory blockedPositions = _getPresetMap(_mapId);
-        for (uint i = 0; i < blockedPositions.length; i++) {
-            Position memory pos = blockedPositions[i];
-            blockedTiles[_gameId][pos.row][pos.col] = true;
-        }
+        // Copy the preset's blocked-tile bitmask into this game in one
+        // SSTORE, regardless of how many tiles are blocked — this used to
+        // be one cold SSTORE per blocked tile (~22,100 gas each), which
+        // could run into the millions of gas on a dense map.
+        blockedTilesBitmap[_gameId] = presetBlockedMapsBitmap[_mapId];
 
         // Get the preset scoring positions and apply them to the game
         _applyPresetScoringToGame(_gameId, _mapId);
@@ -439,31 +481,7 @@ contract Maps is Ownable {
     function getPresetMap(
         uint _mapId
     ) external view returns (Position[] memory) {
-        if (_mapId == 0 || _mapId > mapCount) revert MapNotFound();
-
-        // Count blocked positions first
-        uint blockedCount = 0;
-        for (int16 row = 0; row < GRID_HEIGHT; row++) {
-            for (int16 col = 0; col < GRID_WIDTH; col++) {
-                if (presetBlockedMaps[_mapId][row][col]) {
-                    blockedCount++;
-                }
-            }
-        }
-
-        // Create array and populate with blocked positions
-        Position[] memory blockedPositions = new Position[](blockedCount);
-        uint index = 0;
-        for (int16 row = 0; row < GRID_HEIGHT; row++) {
-            for (int16 col = 0; col < GRID_WIDTH; col++) {
-                if (presetBlockedMaps[_mapId][row][col]) {
-                    blockedPositions[index] = Position(row, col);
-                    index++;
-                }
-            }
-        }
-
-        return blockedPositions;
+        return _getPresetMap(_mapId);
     }
 
     /**
@@ -475,29 +493,35 @@ contract Maps is Ownable {
         uint _mapId
     ) internal view returns (Position[] memory) {
         if (_mapId == 0 || _mapId > mapCount) revert MapNotFound();
+        return _unpackBitmap(presetBlockedMapsBitmap[_mapId]);
+    }
 
-        // Count blocked positions first
+    // Reconstructs a Position[] from a blocked-tile bitmask: one pass to
+    // count set bits (so the memory array is allocated at the right size),
+    // one pass to fill it. Shared by _getPresetMap and getGameMapState.
+    // Only ever reached from view functions with no on-chain caller outside
+    // this contract, so the fixed 187-cell scan (cheap now that it's a
+    // shift/mask against one cached word instead of 187 nested-mapping
+    // SLOADs) isn't worth trading for single-pass bit-scanning complexity.
+    function _unpackBitmap(
+        uint256 _bitmap
+    ) internal pure returns (Position[] memory) {
         uint blockedCount = 0;
-        for (int16 row = 0; row < GRID_HEIGHT; row++) {
-            for (int16 col = 0; col < GRID_WIDTH; col++) {
-                if (presetBlockedMaps[_mapId][row][col]) {
-                    blockedCount++;
-                }
-            }
+        for (uint idx = 0; idx < TOTAL_CELLS; idx++) {
+            if (_isBitSet(_bitmap, idx)) blockedCount++;
         }
 
-        // Create array and populate with blocked positions
         Position[] memory blockedPositions = new Position[](blockedCount);
-        uint index = 0;
-        for (int16 row = 0; row < GRID_HEIGHT; row++) {
-            for (int16 col = 0; col < GRID_WIDTH; col++) {
-                if (presetBlockedMaps[_mapId][row][col]) {
-                    blockedPositions[index] = Position(row, col);
-                    index++;
-                }
+        uint outIdx = 0;
+        for (uint idx = 0; idx < TOTAL_CELLS; idx++) {
+            if (_isBitSet(_bitmap, idx)) {
+                blockedPositions[outIdx] = Position(
+                    int16(uint16(idx / uint(uint16(GRID_WIDTH)))),
+                    int16(uint16(idx % uint(uint16(GRID_WIDTH))))
+                );
+                outIdx++;
             }
         }
-
         return blockedPositions;
     }
 
@@ -610,7 +634,10 @@ contract Maps is Ownable {
         if (_row < 0 || _row >= GRID_HEIGHT || _col < 0 || _col >= GRID_WIDTH) {
             revert InvalidPosition();
         }
-        blockedTiles[_gameId][_row][_col] = _blocked;
+        uint idx = _bitIndex(_row, _col);
+        blockedTilesBitmap[_gameId] = _blocked
+            ? _setBit(blockedTilesBitmap[_gameId], idx)
+            : _clearBit(blockedTilesBitmap[_gameId], idx);
     }
 
     /**
@@ -653,7 +680,7 @@ contract Maps is Ownable {
         if (_row < 0 || _row >= GRID_HEIGHT || _col < 0 || _col >= GRID_WIDTH) {
             revert InvalidPosition();
         }
-        return blockedTiles[_gameId][_row][_col];
+        return _isBitSet(blockedTilesBitmap[_gameId], _bitIndex(_row, _col));
     }
 
     /**
@@ -730,7 +757,7 @@ contract Maps is Ownable {
         if (_row < 0 || _row >= GRID_HEIGHT || _col < 0 || _col >= GRID_WIDTH) {
             return true; // Treat out of bounds as blocked
         }
-        return blockedTiles[_gameId][_row][_col];
+        return _isBitSet(blockedTilesBitmap[_gameId], _bitIndex(_row, _col));
     }
 
     /**
@@ -880,8 +907,9 @@ contract Maps is Ownable {
 
     /**
      * @dev Get all blocked and scoring tiles for a specific game. Blocked
-     * tiles are still an O(grid size) scan (no bounded index exists for them
-     * yet); scoring tiles are O(configured tiles) via gameScoringPositionSet.
+     * tiles are reconstructed from a single bitmask word (one SLOAD, no
+     * per-tile storage reads) via _unpackBitmap's O(grid size) in-memory
+     * scan; scoring tiles are O(configured tiles) via gameScoringPositionSet.
      * @param _gameId The game ID
      * @return blockedPositions Array of blocked tile positions
      * @return scoringPositions Array of scoring tile positions
@@ -896,28 +924,7 @@ contract Maps is Ownable {
             ScoringPosition[] memory scoringPositions
         )
     {
-        // Count blocked positions first
-        uint blockedCount = 0;
-        for (int16 row = 0; row < GRID_HEIGHT; row++) {
-            for (int16 col = 0; col < GRID_WIDTH; col++) {
-                if (blockedTiles[_gameId][row][col]) {
-                    blockedCount++;
-                }
-            }
-        }
-
-        // Create array and populate with blocked positions
-        blockedPositions = new Position[](blockedCount);
-        uint blockedIndex = 0;
-        for (int16 row = 0; row < GRID_HEIGHT; row++) {
-            for (int16 col = 0; col < GRID_WIDTH; col++) {
-                if (blockedTiles[_gameId][row][col]) {
-                    blockedPositions[blockedIndex] = Position(row, col);
-                    blockedIndex++;
-                }
-            }
-        }
-
+        blockedPositions = _unpackBitmap(blockedTilesBitmap[_gameId]);
         scoringPositions = _getGameScoringPositions(_gameId);
     }
 
