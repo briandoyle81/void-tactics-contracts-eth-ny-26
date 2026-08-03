@@ -512,8 +512,15 @@ const DeployModule = buildModule("DeployModule", (m) => {
   const campaignIds: Record<string, bigint> = {};
   starterContent.campaigns.forEach((campaign, i) => {
     const capitalizedKey = `${campaign.key[0].toUpperCase()}${campaign.key.slice(1)}`;
+    // Chained to the previous campaign call for the same reason node
+    // creation is below: keeps the "id is array position" guess trustworthy
+    // even though createCampaign calls have no other dependency between
+    // them that would otherwise force this order.
+    const previousCampaignCall =
+      i > 0 ? campaignCalls[starterContent.campaigns[i - 1].key] : undefined;
     const call = m.call(nodeMap, "createCampaign", [], {
       id: `Create${capitalizedKey}Campaign`,
+      ...(previousCampaignCall ? { after: [previousCampaignCall] } : {}),
     });
     campaignCalls[campaign.key] = call;
     campaignIds[campaign.key] = BigInt(i + 1);
@@ -528,11 +535,23 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // nodes/branches afterward via NodeMap.createNode/addPrerequisite.
   // costLimit/turnTime/maxScore are curated here rather than player-chosen
   // — see NodeMap.sol's header comment for why.
+  // The "id is 1-indexed array position" trick only holds if createNode
+  // calls actually execute on-chain in that same order. With branching
+  // (a dead end and a shortcut both hanging off an early node, as below),
+  // Ignition is otherwise free to interleave independent branches' calls
+  // however its scheduler likes — confirmed this by deploying a 30-node
+  // graph and finding two adjacent branches' node ids swapped relative to
+  // array position. Forcing every node to also depend on the previous
+  // node in array order (same trick already used for maps below) makes
+  // execution strictly sequential regardless of the *logical* prerequisite
+  // graph, so the array-position id guess stays trustworthy.
   const nodeCalls: Record<string, ReturnType<typeof m.call>> = {};
   const nodeIds: Record<string, bigint> = {};
   starterContent.campaignNodes.forEach((node, i) => {
     const capitalizedKey = `${node.key[0].toUpperCase()}${node.key.slice(1)}`;
     const prerequisiteIds = node.prerequisites.map((k) => nodeIds[k]);
+    const previousNodeCall =
+      i > 0 ? nodeCalls[starterContent.campaignNodes[i - 1].key] : undefined;
     const call = m.call(
       nodeMap,
       "createNode",
@@ -552,6 +571,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
           campaignCalls[node.campaignKey],
           mapCalls[node.mapKey],
           ...node.prerequisites.map((k) => nodeCalls[k]),
+          ...(previousNodeCall ? [previousNodeCall] : []),
         ],
       },
     );

@@ -519,95 +519,94 @@ describe("SinglePlayerMatch", function () {
   });
 
   describe("Deploy-seeded starter maps", function () {
-    it("seeds ten starter maps, the first two with AI fleets clustered at column 13, closest to the human's side", async function () {
+    it("seeds thirty starter maps scaling from an easy opener (m01) through a matched-difficulty midpoint (m15) to the hardest finale (f06)", async function () {
       const { maps, aiEncounters } = await loadFixture(deploySinglePlayerFixture);
 
-      expect(await maps.read.mapCount()).to.equal(10n);
+      expect(await maps.read.mapCount()).to.equal(30n);
 
-      // Map 1: starter map — 3 blocked tiles (a light wall biasing the
-      // early fight toward the AI, per the map's own light-terrain design)
-      // and one scoring tile, moved toward the AI's side for the same
-      // reason.
+      // Map 1 (m01, id 1): easiest mission — light terrain, one low-value
+      // scoring tile, a small 3-ship fleet.
       const map1Blocked = await maps.read.getPresetMap([1n]);
-      expect(map1Blocked.length).to.equal(3);
+      expect(map1Blocked.length).to.equal(4);
       const map1Scoring = await maps.read.getPresetScoringMap([1n]);
       expect(map1Scoring.length).to.equal(1);
-      expect(map1Scoring[0].col).to.equal(12);
+      expect(map1Scoring[0].points).to.equal(5);
 
-      // Trimmed to 3 ships (Grunt/Aggressor/Turtle) for an easier first
-      // fight — Sniper's retreat behavior and Support's healing are held
-      // back for later maps.
       const [map1Positions] = await aiEncounters.read.getMapPlacements([1n]);
       expect(map1Positions.length).to.equal(3);
       for (const pos of map1Positions as any[]) {
-        expect(pos.col).to.equal(13);
+        expect(pos.col).to.be.at.least(13);
+        expect(pos.col).to.be.at.most(16);
       }
-      const map1Rows = (map1Positions as any[])
-        .map((p) => p.row)
-        .sort((a, b) => a - b);
-      expect(map1Rows).to.deep.equal([4, 5, 6]);
 
-      // Map 2: nebula map — 52 blocked tiles, 5 scoring tiles
-      const map2Blocked = await maps.read.getPresetMap([2n]);
-      expect(map2Blocked.length).to.equal(52);
-      const map2Scoring = await maps.read.getPresetScoringMap([2n]);
-      expect(map2Scoring.length).to.equal(5);
-
-      const [map2Positions] = await aiEncounters.read.getMapPlacements([2n]);
-      expect(map2Positions.length).to.equal(5); // no Rammer — AI has no ram decision path
-      for (const pos of map2Positions as any[]) {
-        expect(pos.col).to.equal(13);
-        // None of these spawn points should land on a blocked (nebula) tile
-        const isBlocked = (map2Blocked as any[]).some(
-          (b) => b.row === pos.row && b.col === pos.col,
-        );
-        expect(isBlocked).to.equal(false);
+      // Map 15 (m15, id 15): the "average" mission at the campaign's
+      // midpoint — 1000 player-cost-limit vs 1000 enemy threat, 5 scoring
+      // tiles worth 10 points each, ~30% of the 187-cell grid blocked.
+      const map15Blocked = await maps.read.getPresetMap([15n]);
+      expect(map15Blocked.length).to.equal(56);
+      const map15Scoring = await maps.read.getPresetScoringMap([15n]);
+      expect(map15Scoring.length).to.equal(5);
+      for (const tile of map15Scoring as any[]) {
+        expect(tile.points).to.equal(10);
       }
-      const map2Rows = (map2Positions as any[])
-        .map((p) => p.row)
-        .sort((a, b) => a - b);
-      expect(map2Rows).to.deep.equal([4, 5, 6, 7, 8]);
+
+      // Map 30 (f06, id 30): the hardest, final mission — same difficulty
+      // ceiling as the old 10-node campaign's finale, maxed out on the
+      // live-tunable AI fleet size (14 ships).
+      const map30Scoring = await maps.read.getPresetScoringMap([30n]);
+      expect(map30Scoring.length).to.equal(8);
+      const [map30Positions] = await aiEncounters.read.getMapPlacements([30n]);
+      expect(map30Positions.length).to.equal(14);
+      for (const pos of map30Positions as any[]) {
+        expect(pos.col).to.be.at.least(13);
+        expect(pos.col).to.be.at.most(16);
+      }
     });
 
-    it("seeds a ten-node campaign graph with a two-node dead end and a hard-fight shortcut", async function () {
+    it("seeds a thirty-node campaign graph — a 15-mission mainline, a 6-mission dead end, and a 3-mission shortcut that reconverges into a 6-mission final stretch", async function () {
       const { nodeMap, human } = await loadFixture(deploySinglePlayerFixture);
 
-      expect(await nodeMap.read.nodeCount()).to.equal(10n);
+      expect(await nodeMap.read.nodeCount()).to.equal(30n);
 
-      // All 10 seeded nodes belong to the single deploy-seeded
+      // All 30 seeded nodes belong to the single deploy-seeded
       // "mainCampaign" (id 1).
       expect(await nodeMap.read.campaignCount()).to.equal(1n);
       const campaignNodeIds = (await nodeMap.read.getNodesInCampaign([
         1n,
       ])) as bigint[];
-      expect(campaignNodeIds.length).to.equal(10);
+      expect(campaignNodeIds.length).to.equal(30);
 
-      // Node 7 (silentHulk) is the dead end's terminal node: it requires
-      // node 6 (driftWreck), which itself branches off node 2, and nothing
-      // in the graph lists node 7 as a prerequisite — so completing it
-      // doesn't unlock anything further.
-      expect(await nodeMap.read.getPrerequisites([6n])).to.deep.equal([2n]);
-      expect(await nodeMap.read.getPrerequisites([7n])).to.deep.equal([6n]);
-      for (let nodeId = 1n; nodeId <= 10n; nodeId++) {
+      // Node ids follow seed order: mainline m01-m15 = 1-15, dead end
+      // d01-d06 = 16-21, shortcut s01-s03 = 22-24, final stretch f01-f06 =
+      // 25-30.
+
+      // The dead end (16-21) branches off m02 (id 2) and terminates at
+      // node 21 (d06) — nothing in the graph lists it as a prerequisite,
+      // so completing it doesn't unlock anything further.
+      expect(await nodeMap.read.getPrerequisites([16n])).to.deep.equal([2n]);
+      expect(await nodeMap.read.getPrerequisites([21n])).to.deep.equal([
+        20n,
+      ]);
+      for (let nodeId = 1n; nodeId <= 30n; nodeId++) {
         const prereqs = (await nodeMap.read.getPrerequisites([
           nodeId,
         ])) as bigint[];
-        expect(prereqs).to.not.deep.include(7n);
+        expect(prereqs).to.not.deep.include(21n);
       }
 
-      // Node 9 (gauntlet) is reachable either the "long way" — node 2 -> 3
-      // (outpost) -> 4 (junkyard) -> 5 (asteroidField), three intermediate
-      // nodes — or via node 8 (warlordsRedoubt), a single hard fight
-      // branching directly off node 2. ANY-of prerequisite semantics mean
-      // beating node 8 alone unlocks node 9, skipping nodes 3-5 entirely.
-      expect(await nodeMap.read.getPrerequisites([8n])).to.deep.equal([2n]);
-      expect(await nodeMap.read.getPrerequisites([9n])).to.deep.equal([
-        5n,
-        8n,
+      // Node 25 (f01) is reachable either the "long way" — the full
+      // 13-mission mainline stretch m03-m15 (ids 3-15) — or via the
+      // 3-mission shortcut s01-s03 (ids 22-24), which also branches off
+      // m02. ANY-of prerequisite semantics mean beating node 24 (s03)
+      // alone unlocks node 25, skipping the rest of the mainline entirely.
+      expect(await nodeMap.read.getPrerequisites([22n])).to.deep.equal([2n]);
+      expect(await nodeMap.read.getPrerequisites([25n])).to.deep.equal([
+        15n,
+        24n,
       ]);
 
       expect(
-        await nodeMap.read.isNodeUnlocked([human.account.address, 9n]),
+        await nodeMap.read.isNodeUnlocked([human.account.address, 25n]),
       ).to.equal(false);
     });
   });

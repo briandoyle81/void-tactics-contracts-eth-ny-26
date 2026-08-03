@@ -311,6 +311,105 @@ library AIBehavior {
         }
     }
 
+    // True when this ship is already standing on a scoring tile with no
+    // enemy in range from here (caller guarantees the latter — the
+    // free-shoot check already failed) and should therefore just hold
+    // position instead of being lured away by "seek a scoring tile"/
+    // "approach the enemy" movement logic. Overridden only when ALL of:
+    // this ship could actually reach a shot by moving anyway, another
+    // living ally could reach this tile itself if this ship leaves, and no
+    // enemy is currently positioned to threaten the tile — i.e. leaving is
+    // genuinely free. Any one of those failing means hold.
+    function _shouldHoldScoringTile(Ctx memory ctx) private view returns (bool) {
+        if (!_isScoringTile(ctx.scoringPositions, ctx.pos)) return false;
+
+        (Position memory enemyPos, bool enemyFound) = _nearestEnemyPosition(
+            ctx,
+            false
+        );
+        if (enemyFound) {
+            Position memory stepped = _stepToward(
+                ctx.pos,
+                enemyPos,
+                ctx.attrs.movement
+            );
+            (, bool couldShoot) = _bestEnemyInRange(
+                ctx,
+                stepped,
+                ctx.attrs.range
+            );
+            if (
+                couldShoot &&
+                _allyCanCoverTile(ctx) &&
+                !_enemyThreatensTile(ctx, ctx.pos)
+            ) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Any other living ally that could reach this position under its own
+    // movement stat this turn — used to decide whether it's safe for the
+    // ship currently on the tile to leave it uncovered.
+    function _allyCanCoverTile(
+        Ctx memory ctx
+    ) private view returns (bool) {
+        for (uint i = 0; i < ctx.g.shipPositions.length; i++) {
+            ShipPosition memory sp = ctx.g.shipPositions[i];
+            if (sp.shipId == ctx.shipId || sp.status != 0 || sp.isCreator)
+                continue; // own side only, not self
+            (Attributes memory attrs, bool found) = findAttributes(
+                ctx.g,
+                sp.shipId
+            );
+            if (!found) continue;
+            if (_manhattan(sp.position, ctx.pos) <= attrs.movement)
+                return true;
+        }
+        return false;
+    }
+
+    // Any living enemy whose weapon range (with LOS) already reaches the
+    // given tile from its current position — used to decide whether a tile
+    // is actually safe to leave uncovered.
+    function _enemyThreatensTile(
+        Ctx memory ctx,
+        Position memory tilePos
+    ) private view returns (bool) {
+        for (uint i = 0; i < ctx.g.shipPositions.length; i++) {
+            ShipPosition memory sp = ctx.g.shipPositions[i];
+            if (sp.status != 0 || !sp.isCreator) continue;
+            (Attributes memory attrs, bool found) = findAttributes(
+                ctx.g,
+                sp.shipId
+            );
+            if (!found) continue;
+            uint16 dist = _manhattan(sp.position, tilePos);
+            if (dist > attrs.range) continue;
+            if (
+                dist > 1 &&
+                !ctx.maps.hasMaps(
+                    ctx.gameId,
+                    sp.position.row,
+                    sp.position.col,
+                    tilePos.row,
+                    tilePos.col
+                )
+            ) continue;
+            return true;
+        }
+        return false;
+    }
+
+    function _holdDecision(
+        Ctx memory ctx
+    ) private pure returns (Decision memory d) {
+        d.destRow = ctx.pos.row;
+        d.destCol = ctx.pos.col;
+        d.action = ActionType.Pass;
+    }
+
     // Shared fallback movement step used by every archetype whose primary
     // directive (shoot, heal, retreat) didn't produce a decision this turn:
     // close on the nearest enemy, but only follow through on that step if it
@@ -452,6 +551,8 @@ library AIBehavior {
             return d;
         }
 
+        if (_shouldHoldScoringTile(ctx)) return _holdDecision(ctx);
+
         (Position memory enemyPos, bool enemyFound) = _nearestEnemyPosition(
             ctx,
             false
@@ -472,7 +573,10 @@ library AIBehavior {
             ctx,
             false
         );
-        if (!enemyFound) return _approachOrSeekTile(ctx, enemyPos, false);
+        if (!enemyFound) {
+            if (_shouldHoldScoringTile(ctx)) return _holdDecision(ctx);
+            return _approachOrSeekTile(ctx, enemyPos, false);
+        }
         uint16 dist = _manhattan(ctx.pos, enemyPos);
 
         if (dist > 1) {
@@ -488,6 +592,7 @@ library AIBehavior {
                 d.actionTarget = target;
                 return d;
             }
+            if (_shouldHoldScoringTile(ctx)) return _holdDecision(ctx);
             return _approachOrSeekTile(ctx, enemyPos, true);
         }
 
@@ -548,6 +653,8 @@ library AIBehavior {
             return d;
         }
 
+        if (_shouldHoldScoringTile(ctx)) return d; // already Pass-at-current-pos
+
         (Position memory dest, bool destFound) = _bestScoringTile(ctx);
         if (!destFound) {
             // No scoring tile on this map: fall back to staying useful near
@@ -592,8 +699,22 @@ library AIBehavior {
             return d;
         }
 
+        if (_shouldHoldScoringTile(ctx)) return d; // already Pass-at-current-pos
+
         (Position memory tilePos, bool tileFound) = _bestScoringTile(ctx);
         if (!tileFound) return d;
+
+        // The best available tile may already be held by another ship
+        // (everything else on the map is claimed) — standing exactly on it
+        // is an illegal move anyway, so once within 1 tile just hold there
+        // rather than endlessly retrying the last step.
+        if (
+            _isOccupiedByOther(ctx, tilePos) &&
+            _manhattan(ctx.pos, tilePos) <= 1
+        ) {
+            return d;
+        }
+
         Position memory newPos = _stepToward(
             ctx.pos,
             tilePos,
