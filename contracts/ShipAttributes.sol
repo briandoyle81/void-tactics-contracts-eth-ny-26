@@ -15,95 +15,34 @@ contract ShipAttributes is IShipAttributes, Ownable {
     mapping(uint16 => AttributesVersion) public attributesVersions;
     uint16 public currentAttributesVersion;
 
-    // Cost system
-    Costs public costs;
+    // Cost system — per-variant, keyed by traits.variant. A zero-valued
+    // `.version` means the variant has never been configured; reads for an
+    // unconfigured variant revert (fail loud) rather than silently
+    // returning a near-zero cost — same philosophy as VariantAttributeData.
+    mapping(uint16 => Costs) public costsByVariant;
 
     error InvalidAttributesVersion();
     error ShipNotFound();
     error InvalidCostsVersion();
 
-    event CostsSet(uint16 version);
+    event CostsSet(uint16 variant, uint16 version);
     event CurrentAttributesVersionSet(uint16 version);
     event AttributesVersionCreated(uint16 version);
     event VariantAttributesSet(uint16 version, uint16 variant);
 
+    // No variant is seeded here on purpose — variant 1 and variant 2 are
+    // both configured identically via setCosts/setVariantAttributes calls
+    // in ignition/modules/DeployAndConfig.ts (setCostsVariant1Call/
+    // setVariant1AttributesCall alongside their variant-2 counterparts),
+    // not hardcoded here. Every variant, including 1, is unconfigured
+    // (fails loud — see setVariantAttributes's doc comment) until those
+    // calls run.
     constructor(address _ships) Ownable(msg.sender) {
         ships = IShips(_ships);
 
         // Initialize attributes version 1
         currentAttributesVersion = 1;
-
-        // Initialize cost system
-        costs.version = 1;
-        costs.baseCost = 50;
-
-        costs.accuracy = [0, 10, 25];
-        costs.hull = [0, 10, 25];
-        costs.speed = [0, 10, 25];
-
-        costs.mainWeapon = [25, 30, 40, 40];
-        costs.armor = [0, 5, 10, 15];
-        costs.shields = [0, 10, 20, 30];
-        costs.special = [0, 10, 20, 15];
-        // Index 0 is unused (traits.variant is never 0); indices 1-3 are
-        // baseline variants 1-3 (variant 1 is the only one ordinary purchases
-        // can reach via Ships.maxVariant; TutorialClaim mints fixed ships
-        // using variants 1-3 directly for visual variety).
-        costs.variant = [0, 0, 0, 0];
-
-        // Set up default attributes version 1
-        AttributesVersion storage v1 = attributesVersions[1];
-        v1.version = 1;
-        v1.baseHull = 100;
-        v1.baseSpeed = 3;
-
-        // Seed identical baseline hull-piece bonuses and special data for
-        // variants 1-3 — no per-variant differentiation yet (future
-        // setVariantAttributes calls can diverge these once variant balance
-        // is designed).
-        for (uint16 i = 1; i <= 3; i++) {
-            VariantAttributeData storage variantData = v1.variantData[i];
-
-            // Fore accuracy bonuses in whole number percentage additions
-            variantData.foreAccuracy.push(0);
-            variantData.foreAccuracy.push(25);
-            variantData.foreAccuracy.push(50);
-
-            // Hull bonuses in hull points
-            variantData.hull.push(0);
-            variantData.hull.push(10);
-            variantData.hull.push(20);
-
-            // Engine speed in raw movement modifier
-            variantData.engineSpeeds.push(0);
-            variantData.engineSpeeds.push(1);
-            variantData.engineSpeeds.push(2);
-
-            // Initialize special data
-            variantData.specials.push(SpecialData(0, 0, 0)); // None
-            variantData.specials.push(SpecialData(1, 1, 0)); // EMP
-            variantData.specials.push(SpecialData(3, 40, 0)); // RepairDrones
-            variantData.specials.push(SpecialData(3, 30, 0)); // FlakArray
-        }
-
-        // Initialize gun data
-        // Remember, bridge + level extend range
-        v1.guns.push(GunData(3, 50, 0)); // Laser
-        v1.guns.push(GunData(6, 40, 0)); // Railgun
-        v1.guns.push(GunData(4, 60, -1)); // MissileLauncher
-        v1.guns.push(GunData(2, 80, 0)); // PlasmaCannon
-
-        // Initialize armor data
-        v1.armors.push(ArmorData(0, 1)); // None
-        v1.armors.push(ArmorData(15, 0)); // Light
-        v1.armors.push(ArmorData(30, -1)); // Medium
-        v1.armors.push(ArmorData(45, -2)); // Heavy
-
-        // Initialize shield data
-        v1.shields.push(ShieldData(0, 1)); // None
-        v1.shields.push(ShieldData(15, 1)); // Light
-        v1.shields.push(ShieldData(30, 0)); // Medium
-        v1.shields.push(ShieldData(45, -1)); // Heavy
+        attributesVersions[1].version = 1;
     }
 
     function setShipsAddress(address _ships) public onlyOwner {
@@ -132,10 +71,14 @@ contract ShipAttributes is IShipAttributes, Ownable {
             rankMultiplier = 50;
         }
 
+        VariantAttributeData storage variantData = attributesVersions[
+            currentAttributesVersion
+        ].variantData[_ship.traits.variant];
+
         Attributes memory attributes;
         // Calculate base attributes from ship traits and equipment
         attributes.version = currentAttributesVersion;
-        attributes.range = attributesVersions[currentAttributesVersion]
+        attributes.range = variantData
             .guns[uint8(_ship.equipment.mainWeapon)]
             .range;
         // Increase range by the rank multiplier as a percentage (avoid overflow)
@@ -143,12 +86,12 @@ contract ShipAttributes is IShipAttributes, Ownable {
         attributes.range += uint8(calculatedBonus);
 
         // Apply fore accuracy bonus to range as percentage increase (bridge + level extend range)
-        uint8 foreAccuracyBonus = attributesVersions[currentAttributesVersion]
-            .variantData[_ship.traits.variant]
-            .foreAccuracy[uint8(_ship.traits.accuracy)];
+        uint8 foreAccuracyBonus = variantData.foreAccuracy[
+            uint8(_ship.traits.accuracy)
+        ];
         calculatedBonus = (uint(attributes.range) * foreAccuracyBonus) / 100;
         attributes.range += uint8(calculatedBonus);
-        attributes.gunDamage = attributesVersions[currentAttributesVersion]
+        attributes.gunDamage = variantData
             .guns[uint8(_ship.equipment.mainWeapon)]
             .damage;
         // Increase damage by the rank multiplier as a percentage (avoid overflow)
@@ -226,40 +169,34 @@ contract ShipAttributes is IShipAttributes, Ownable {
     function _calculateHullPoints(
         Ship memory _ship
     ) internal view returns (uint8) {
-        AttributesVersion storage version = attributesVersions[
+        VariantAttributeData storage variantData = attributesVersions[
             currentAttributesVersion
-        ];
-        uint8 baseHull = version.baseHull;
+        ].variantData[_ship.traits.variant];
+        uint8 baseHull = variantData.baseHull;
         // uint8 traitBonus = _ship.traits.hull * 10; // Convert trait to hull points
-        uint8 traitBonus = version.variantData[_ship.traits.variant].hull[
-            _ship.traits.hull
-        ];
+        uint8 traitBonus = variantData.hull[_ship.traits.hull];
         return baseHull + traitBonus;
     }
 
     function _calculateMovement(
         Ship memory _ship
     ) internal view returns (uint8) {
-        AttributesVersion storage version = attributesVersions[
+        VariantAttributeData storage variant = attributesVersions[
             currentAttributesVersion
-        ];
-        int8 baseMovement = int8(version.baseSpeed);
-
-        VariantAttributeData storage variant = version.variantData[
-            _ship.traits.variant
-        ];
+        ].variantData[_ship.traits.variant];
+        int8 baseMovement = int8(variant.baseSpeed);
 
         // Add trait bonus
         baseMovement += int8(variant.engineSpeeds[_ship.traits.speed]);
 
         // Extract equipment bonuses as int8 to avoid stack-too-deep or type mismatch
-        int8 gunMovement = version
+        int8 gunMovement = variant
             .guns[uint8(_ship.equipment.mainWeapon)]
             .movement;
-        int8 armorMovement = version
+        int8 armorMovement = variant
             .armors[uint8(_ship.equipment.armor)]
             .movement;
-        int8 shieldMovement = version
+        int8 shieldMovement = variant
             .shields[uint8(_ship.equipment.shields)]
             .movement;
         int8 specialMovement = variant
@@ -278,16 +215,16 @@ contract ShipAttributes is IShipAttributes, Ownable {
     function _calculateDamageReduction(
         Ship memory _ship
     ) internal view returns (uint8) {
-        AttributesVersion storage version = attributesVersions[
+        VariantAttributeData storage variantData = attributesVersions[
             currentAttributesVersion
-        ];
+        ].variantData[_ship.traits.variant];
 
         uint8 damageReduction = 0;
 
-        damageReduction += version
+        damageReduction += variantData
             .armors[uint8(_ship.equipment.armor)]
             .damageReduction;
-        damageReduction += version
+        damageReduction += variantData
             .shields[uint8(_ship.equipment.shields)]
             .damageReduction;
 
@@ -318,28 +255,37 @@ contract ShipAttributes is IShipAttributes, Ownable {
                 .strength;
     }
 
-    // Get gun data from attributes version
+    // Get gun data for a variant from the current attributes version
     function getGunData(
-        MainWeapon _weapon
+        MainWeapon _weapon,
+        uint16 _variant
     ) public view returns (GunData memory) {
         return
-            attributesVersions[currentAttributesVersion].guns[uint8(_weapon)];
+            attributesVersions[currentAttributesVersion]
+                .variantData[_variant]
+                .guns[uint8(_weapon)];
     }
 
-    // Get armor data from attributes version
-    function getArmorData(Armor _armor) public view returns (ArmorData memory) {
+    // Get armor data for a variant from the current attributes version
+    function getArmorData(
+        Armor _armor,
+        uint16 _variant
+    ) public view returns (ArmorData memory) {
         return
-            attributesVersions[currentAttributesVersion].armors[uint8(_armor)];
+            attributesVersions[currentAttributesVersion]
+                .variantData[_variant]
+                .armors[uint8(_armor)];
     }
 
-    // Get shield data from attributes version
+    // Get shield data for a variant from the current attributes version
     function getShieldData(
-        Shields _shields
+        Shields _shields,
+        uint16 _variant
     ) public view returns (ShieldData memory) {
         return
-            attributesVersions[currentAttributesVersion].shields[
-                uint8(_shields)
-            ];
+            attributesVersions[currentAttributesVersion]
+                .variantData[_variant]
+                .shields[uint8(_shields)];
     }
 
     // Get special data from attributes version
@@ -357,6 +303,9 @@ contract ShipAttributes is IShipAttributes, Ownable {
     function calculateShipCost(
         Ship memory ship
     ) external view returns (uint16) {
+        Costs storage costs = costsByVariant[ship.traits.variant];
+        if (costs.version == 0) revert InvalidCostsVersion();
+
         uint16 unadjustedCost = uint16(
             costs.baseCost +
                 costs.accuracy[uint8(ship.traits.accuracy)] +
@@ -365,8 +314,7 @@ contract ShipAttributes is IShipAttributes, Ownable {
                 costs.mainWeapon[uint8(ship.equipment.mainWeapon)] +
                 costs.armor[uint8(ship.equipment.armor)] +
                 costs.shields[uint8(ship.equipment.shields)] +
-                costs.special[uint8(ship.equipment.special)] +
-                costs.variant[ship.traits.variant]
+                costs.special[uint8(ship.equipment.special)]
         );
 
         // TODO: Add rank-based discounts here if needed
@@ -374,23 +322,30 @@ contract ShipAttributes is IShipAttributes, Ownable {
         return unadjustedCost;
     }
 
-    function setCosts(Costs memory _costs) external onlyOwner {
+    function setCosts(
+        uint16 _variant,
+        Costs memory _costs
+    ) external onlyOwner {
         // Compute the new version from current storage before it's overwritten below,
         // and ignore whatever `_costs.version` the caller passed in — otherwise a
         // stale/zero/duplicate caller-supplied version would silently corrupt the
         // costsVersion ships rely on to detect stale cost data (see H-01/M-01).
-        uint16 newVersion = costs.version + 1;
-        costs = _costs;
-        costs.version = newVersion;
-        emit CostsSet(newVersion);
+        uint16 newVersion = costsByVariant[_variant].version + 1;
+        costsByVariant[_variant] = _costs;
+        costsByVariant[_variant].version = newVersion;
+        emit CostsSet(_variant, newVersion);
     }
 
-    function getCosts() external view returns (uint, Costs memory) {
-        return (costs.version, costs);
+    function getCosts(
+        uint16 _variant
+    ) external view returns (uint, Costs memory) {
+        return (costsByVariant[_variant].version, costsByVariant[_variant]);
     }
 
-    function getCurrentCostsVersion() external view returns (uint16) {
-        return costs.version;
+    function getCurrentCostsVersion(
+        uint16 _variant
+    ) external view returns (uint16) {
+        return costsByVariant[_variant].version;
     }
 
     // Attributes version management functions
@@ -404,114 +359,97 @@ contract ShipAttributes is IShipAttributes, Ownable {
     }
 
     function getAttributesVersionBase(
-        uint16 _version
+        uint16 _version,
+        uint16 _variant
     ) external view returns (uint16 version, uint8 baseHull, uint8 baseSpeed) {
         AttributesVersion storage versionData = attributesVersions[_version];
+        VariantAttributeData storage variantData = versionData.variantData[
+            _variant
+        ];
         return (
             versionData.version,
-            versionData.baseHull,
-            versionData.baseSpeed
+            variantData.baseHull,
+            variantData.baseSpeed
         );
     }
 
     /**
-     * @dev Set all attributes for a new version at once and increment the version.
-     * Per-variant hull-piece bonuses and specials are NOT carried forward from the
-     * previous version and must be configured separately via setVariantAttributes
-     * for each variant before ships using this version can be calculated.
-     * @param _baseHull Base hull points
-     * @param _baseSpeed Base speed
-     * @param _guns Array of gun data
-     * @param _armors Array of armor data
-     * @param _shields Array of shield data
+     * @dev Start a new attributes version and increment the version counter.
+     * Every per-variant stat (baseHull/baseSpeed/guns/armors/shields/
+     * foreAccuracy/hull/engineSpeeds/specials) lives on VariantAttributeData
+     * now, so a new version starts completely empty — it must be configured
+     * separately via setVariantAttributes for each variant before ships
+     * using this version can be calculated.
      */
-    function setAllAttributes(
-        uint8 _baseHull,
-        uint8 _baseSpeed,
-        GunData[] memory _guns,
-        ArmorData[] memory _armors,
-        ShieldData[] memory _shields
-    ) external onlyOwner {
-        // Increment version
+    function startNewAttributesVersion()
+        external
+        onlyOwner
+        returns (uint16 newVersion)
+    {
         currentAttributesVersion++;
-        uint16 newVersion = currentAttributesVersion;
-
-        // Set base attributes
-        AttributesVersion storage newVersionData = attributesVersions[
-            newVersion
-        ];
-        newVersionData.version = newVersion;
-        newVersionData.baseHull = _baseHull;
-        newVersionData.baseSpeed = _baseSpeed;
-
-        // Clear existing arrays and set new data
-        delete newVersionData.guns;
-        for (uint i = 0; i < _guns.length; i++) {
-            newVersionData.guns.push(_guns[i]);
-        }
-
-        delete newVersionData.armors;
-        for (uint i = 0; i < _armors.length; i++) {
-            newVersionData.armors.push(_armors[i]);
-        }
-
-        delete newVersionData.shields;
-        for (uint i = 0; i < _shields.length; i++) {
-            newVersionData.shields.push(_shields[i]);
-        }
-
+        newVersion = currentAttributesVersion;
+        attributesVersions[newVersion].version = newVersion;
         emit AttributesVersionCreated(newVersion);
     }
 
     /**
-     * @dev Set per-variant hull-piece bonuses and special data for a given
-     * attributes version. Must be called for a variant before any ship with
-     * that traits.variant can have its attributes calculated under this
-     * version — lookups for an unconfigured variant revert (fail loud) rather
-     * than silently falling back to a default.
-     * @param _version Attributes version to configure (must already exist)
-     * @param _variant Ship variant (traits.variant) to configure
-     * @param _foreAccuracy Array of fore accuracy bonuses (bridge)
-     * @param _hull Array of hull bonuses
-     * @param _engineSpeeds Array of engine speed bonuses
-     * @param _specials Array of special equipment data
+     * @dev Fully configure a variant (faction) under a given attributes
+     * version: base hull/speed, per-tier bonuses, weapon/armor/shield
+     * stats, and equipped-Special data. Must be called for a variant before
+     * any ship with that traits.variant can have its attributes or cost
+     * calculated under this version — lookups for an unconfigured variant
+     * revert (fail loud) rather than silently falling back to a default.
+     * @param params See SetVariantAttributesParams.
      */
     function setVariantAttributes(
-        uint16 _version,
-        uint16 _variant,
-        uint8[] memory _foreAccuracy,
-        uint8[] memory _hull,
-        uint8[] memory _engineSpeeds,
-        SpecialData[] memory _specials
+        SetVariantAttributesParams memory params
     ) external onlyOwner {
-        if (_version == 0 || _version > currentAttributesVersion) {
+        if (params.version == 0 || params.version > currentAttributesVersion) {
             revert InvalidAttributesVersion();
         }
 
         VariantAttributeData storage variantData = attributesVersions[
-            _version
-        ].variantData[_variant];
+            params.version
+        ].variantData[params.variant];
+
+        variantData.baseHull = params.baseHull;
+        variantData.baseSpeed = params.baseSpeed;
 
         delete variantData.foreAccuracy;
-        for (uint i = 0; i < _foreAccuracy.length; i++) {
-            variantData.foreAccuracy.push(_foreAccuracy[i]);
+        for (uint i = 0; i < params.foreAccuracy.length; i++) {
+            variantData.foreAccuracy.push(params.foreAccuracy[i]);
         }
 
         delete variantData.hull;
-        for (uint i = 0; i < _hull.length; i++) {
-            variantData.hull.push(_hull[i]);
+        for (uint i = 0; i < params.hull.length; i++) {
+            variantData.hull.push(params.hull[i]);
         }
 
         delete variantData.engineSpeeds;
-        for (uint i = 0; i < _engineSpeeds.length; i++) {
-            variantData.engineSpeeds.push(_engineSpeeds[i]);
+        for (uint i = 0; i < params.engineSpeeds.length; i++) {
+            variantData.engineSpeeds.push(params.engineSpeeds[i]);
+        }
+
+        delete variantData.guns;
+        for (uint i = 0; i < params.guns.length; i++) {
+            variantData.guns.push(params.guns[i]);
+        }
+
+        delete variantData.armors;
+        for (uint i = 0; i < params.armors.length; i++) {
+            variantData.armors.push(params.armors[i]);
+        }
+
+        delete variantData.shields;
+        for (uint i = 0; i < params.shields.length; i++) {
+            variantData.shields.push(params.shields[i]);
         }
 
         delete variantData.specials;
-        for (uint i = 0; i < _specials.length; i++) {
-            variantData.specials.push(_specials[i]);
+        for (uint i = 0; i < params.specials.length; i++) {
+            variantData.specials.push(params.specials[i]);
         }
 
-        emit VariantAttributesSet(_version, _variant);
+        emit VariantAttributesSet(params.version, params.variant);
     }
 }

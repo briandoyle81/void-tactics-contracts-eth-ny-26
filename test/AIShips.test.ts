@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox-viem/network-helpers";
 import hre from "hardhat";
 import { zeroAddress } from "viem";
+import { seedVariant1Attributes } from "./fixtures/seedVariant1Attributes";
 
 // Standalone unit tests for AIShips.sol's pool mechanics, isolated from
 // SinglePlayerMatch/ShipsRouter. ShipAttributes' constructor takes a
@@ -18,6 +19,7 @@ describe("AIShips", function () {
     const shipAttributes = await hre.viem.deployContract("ShipAttributes", [
       owner.account.address, // stand-in `_ships` address, never dereferenced
     ]);
+    await seedVariant1Attributes(shipAttributes, owner.account);
     const aiShips = await hre.viem.deployContract("AIShips", []);
 
     await aiShips.write.setShipAttributesAddress([shipAttributes.address]);

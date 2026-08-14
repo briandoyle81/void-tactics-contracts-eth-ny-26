@@ -38,15 +38,26 @@ enum Shields {
     future4
 }
 
+// A per-faction (traits.variant) LOCAL slot index, not a global item
+// identity. Slot 0 (None) always means "no special equipped," the same for
+// every faction. Slots 1-7 mean whatever that faction's own
+// ShipAttributes.VariantAttributeData.specials/Game.specialResolvers
+// configuration says they mean — faction A's slot 1 and faction B's slot 1
+// can be (and usually are) completely different specials with different
+// resolvers and different display names (RenderMetadata.specialNames).
+// This enum is deliberately finished at exactly 8 members forever: no
+// faction will ever have more than 8 specials including None, so new
+// specials for new factions reuse these same 8 slot numbers rather than
+// growing this enum.
 enum Special {
     None,
-    EMP,
-    RepairDrones,
-    FlakArray,
-    future1,
-    future2,
-    future3,
-    future4
+    Slot1,
+    Slot2,
+    Slot3,
+    Slot4,
+    Slot5,
+    Slot6,
+    Slot7
 }
 
 // Single-player AI behavior tag, assigned per AIShipConfig (AIEncounters.sol)
@@ -72,10 +83,11 @@ enum MapMode {
     Both
 }
 
-// Declarative outcome of a resolver-backed faction ability (see
-// IFactionAbilityResolver), applied by Game.sol without re-validating
-// anything — the resolver owns all pre-dispatch checks for its ability.
-// One entry per affected ship; a resolver may return any number of these.
+// Declarative outcome of a resolver-backed effect — a faction ability or an
+// equipped Special (see IEffectResolver) — applied by Game.sol without
+// re-validating anything — the resolver owns all pre-dispatch checks for
+// its own effect. One entry per affected ship; a resolver may return any
+// number of these.
 // newRow/newCol double as the "relocate" flag: type(int16).min (an
 // unreachable grid coordinate) means "don't move this ship". Fewer, denser
 // fields keep the external-call ABI decode/encode Game.sol pays for as
@@ -262,6 +274,9 @@ struct ShipData {
     uint timestampDestroyed;
 }
 
+// Costs are per-variant (see ShipAttributes.costsByVariant), so this struct
+// carries no variant field of its own — a same-struct flat addend would be
+// redundant now that every variant has its own full Costs.
 struct Costs {
     uint16 version;
     uint8 baseCost;
@@ -273,7 +288,6 @@ struct Costs {
     uint8[] armor;
     uint8[] shields;
     uint8[] special;
-    uint8[] variant; // indexed by traits.variant
 }
 
 // Be VERY CAREFUL giving negative movement!
@@ -304,25 +318,51 @@ struct SpecialData {
     int8 movement;
 }
 
-// Per-variant hull-piece bonuses (bridge/hull/engine) and per-variant special
-// effects. Nested in a mapping (not an array) inside AttributesVersion since
-// AttributesVersion only ever lives in storage (never copied to memory), so a
-// mapping field is safe here.
+// Everything a faction (traits.variant) needs to fully differentiate itself:
+// base stats, per-tier bonuses, weapon/armor/shield stats, and equipped
+// Special data. Nested in a mapping (not an array) inside AttributesVersion
+// since AttributesVersion only ever lives in storage (never copied to
+// memory), so a mapping field is safe here.
 struct VariantAttributeData {
+    uint8 baseHull;
+    uint8 baseSpeed;
     uint8[] foreAccuracy; // "bridge": indexed by traits.accuracy tier (0-2)
     uint8[] hull; // indexed by traits.hull tier (0-2)
     uint8[] engineSpeeds; // "engine": indexed by traits.speed tier (0-2)
-    SpecialData[] specials; // indexed by Special enum (0-7)
-}
-
-struct AttributesVersion {
-    uint16 version;
-    uint8 baseHull;
-    uint8 baseSpeed;
     GunData[] guns;
     ArmorData[] armors;
     ShieldData[] shields;
+    SpecialData[] specials; // indexed by Special enum (0-7)
+}
+
+// Just a version number and the per-variant data behind it — every stat
+// that used to live directly here (baseHull/baseSpeed/guns/armors/shields)
+// moved into VariantAttributeData so each faction can diverge fully.
+struct AttributesVersion {
+    uint16 version;
     mapping(uint16 => VariantAttributeData) variantData; // keyed by traits.variant
+}
+
+// Bundled into a struct rather than passed as flat parameters to
+// ShipAttributes.setVariantAttributes: it now covers every per-variant stat
+// (base hull/speed, tier bonuses, weapon/armor/shield stats, specials), and
+// legacy Solidity codegen runs out of stack slots quickly across an
+// external function with this many dynamic-array parameters (hit this
+// exact wall building the equipped-Special resolvers earlier this
+// session). Declared here (not nested in ShipAttributes) so
+// IShipAttributes can reference it too without a circular import.
+struct SetVariantAttributesParams {
+    uint16 version;
+    uint16 variant;
+    uint8 baseHull;
+    uint8 baseSpeed;
+    uint8[] foreAccuracy;
+    uint8[] hull;
+    uint8[] engineSpeeds;
+    GunData[] guns;
+    ArmorData[] armors;
+    ShieldData[] shields;
+    SpecialData[] specials;
 }
 
 enum LobbyStatus {

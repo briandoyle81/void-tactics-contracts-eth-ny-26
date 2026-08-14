@@ -142,7 +142,7 @@ contract Fleets is Ownable, IFleets {
             // Validate cost version
             if (
                 ship.shipData.costsVersion !=
-                shipAttributes.getCurrentCostsVersion()
+                shipAttributes.getCurrentCostsVersion(ship.traits.variant)
             ) revert ShipCostVersionMismatch();
 
             totalCost += ship.shipData.cost;

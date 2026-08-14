@@ -73,8 +73,38 @@ function sampleCostsV2() {
     mainWeapon: [30, 35, 45, 45],
     armor: [0, 8, 12, 18],
     shields: [0, 12, 24, 36],
-    special: [0, 12, 24, 18],
-    variant: [0, 0],
+    // Special is a per-faction local slot 0-7 (8 members) — costs.special
+    // must cover the full range, since GenerateNewShip rolls across all 8
+    // slots now, not just the first 4.
+    special: [0, 12, 24, 18, 18, 24, 12, 0],
+  };
+}
+
+// Default gun/armor/shield data — matches ShipAttributes' constructor
+// seed. setVariantAttributes now fully replaces a variant's guns/armors/
+// shields on every call (delete + re-push), so tests that only care about
+// hull/specials still need to supply the full baseline for these to avoid
+// wiping them.
+function defaultGunsArmorsShields() {
+  return {
+    guns: [
+      { range: 3, damage: 50, movement: 0 },
+      { range: 6, damage: 40, movement: 0 },
+      { range: 4, damage: 60, movement: -1 },
+      { range: 2, damage: 80, movement: 0 },
+    ],
+    armors: [
+      { damageReduction: 0, movement: 1 },
+      { damageReduction: 15, movement: 0 },
+      { damageReduction: 30, movement: -1 },
+      { damageReduction: 45, movement: -2 },
+    ],
+    shields: [
+      { damageReduction: 0, movement: 1 },
+      { damageReduction: 15, movement: 1 },
+      { damageReduction: 30, movement: 0 },
+      { damageReduction: 45, movement: -1 },
+    ],
   };
 }
 
@@ -136,17 +166,30 @@ describe("Ship costs, versions, and fleets", function () {
         newHull,
       } = sampleSetAllAttributesArgs();
 
-      await shipAttributes.write.setAllAttributes(
-        [120, 4, newGuns, newArmors, newShields],
-        { account: owner.account },
-      );
+      await shipAttributes.write.startNewAttributesVersion({
+        account: owner.account,
+      });
 
       expect(
         await shipAttributes.read.getCurrentAttributesVersion(),
       ).to.equal(2);
 
       await shipAttributes.write.setVariantAttributes(
-        [2, 1, newForeAccuracy, newHull, newEngineSpeeds, newSpecials],
+        [
+          {
+            version: 2,
+            variant: 1,
+            baseHull: 120,
+            baseSpeed: 4,
+            foreAccuracy: newForeAccuracy,
+            hull: newHull,
+            engineSpeeds: newEngineSpeeds,
+            guns: newGuns,
+            armors: newArmors,
+            shields: newShields,
+            specials: newSpecials,
+          },
+        ],
         { account: owner.account },
       );
 
@@ -158,11 +201,11 @@ describe("Ship costs, versions, and fleets", function () {
         await shipAttributes.read.getCurrentAttributesVersion(),
       ).to.equal(1);
 
-      const v1 = await shipAttributes.read.getAttributesVersionBase([1n]);
+      const v1 = await shipAttributes.read.getAttributesVersionBase([1n, 1]);
       expect(v1[0]).to.equal(1);
       expect(v1[1]).to.equal(100);
 
-      const v2 = await shipAttributes.read.getAttributesVersionBase([2n]);
+      const v2 = await shipAttributes.read.getAttributesVersionBase([2n, 1]);
       expect(v2[0]).to.equal(2);
       expect(v2[1]).to.equal(120);
     });
@@ -170,24 +213,29 @@ describe("Ship costs, versions, and fleets", function () {
 
   describe("Per-variant ship attributes and specials", function () {
     it("gives ships of different variants different hull points and special data", async function () {
-      const { ships, shipAttributes, randomManager, owner, user1 } =
+      const { ships, shipAttributes, randomManager, owner, user1, shatteredHiveMedal } =
         await loadFixture(deployShipsFixture);
 
       // Configure variant 2 with much higher hull bonuses and a much
       // stronger/longer-range EMP than the constructor's variant 1 baseline
       await shipAttributes.write.setVariantAttributes(
         [
-          1,
-          2,
-          [0, 25, 50],
-          [0, 50, 100],
-          [0, 1, 2],
-          [
-            { range: 0, strength: 0, movement: 0 },
-            { range: 5, strength: 99, movement: 0 },
-            { range: 3, strength: 40, movement: 0 },
-            { range: 3, strength: 30, movement: 0 },
-          ],
+          {
+            version: 1,
+            variant: 2,
+            baseHull: 100,
+            baseSpeed: 3,
+            foreAccuracy: [0, 25, 50],
+            hull: [0, 50, 100],
+            engineSpeeds: [0, 1, 2],
+            ...defaultGunsArmorsShields(),
+            specials: [
+              { range: 0, strength: 0, movement: 0 },
+              { range: 5, strength: 99, movement: 0 },
+              { range: 3, strength: 40, movement: 0 },
+              { range: 3, strength: 30, movement: 0 },
+            ],
+          },
         ],
         { account: owner.account },
       );
@@ -195,6 +243,10 @@ describe("Ship costs, versions, and fleets", function () {
       // Tier 0 mints 5 ships per purchase, so ship 1 is the first ship of the
       // variant-1 purchase and ship 6 is the first ship of the variant-2
       // purchase
+      await shatteredHiveMedal.write.ownerMint([user1.account.address], {
+        account: owner.account,
+      });
+
       await ships.write.purchaseWithFlow(
         [user1.account.address, 0n, user1.account.address, 1],
         { value: parseEther("4.99") },
@@ -246,6 +298,147 @@ describe("Ship costs, versions, and fleets", function () {
       expect(empRange2).to.be.greaterThan(empRange1);
     });
 
+    it("gives ships of different variants different weapon/armor/shield stats", async function () {
+      const { ships, shipAttributes, randomManager, owner, user1, shatteredHiveMedal } =
+        await loadFixture(deployShipsFixture);
+
+      // Configure variant 2 with a much stronger Laser and heavier armor
+      // than the constructor's variant 1 baseline. guns/armors/shields are
+      // per-variant now (VariantAttributeData), not shared globally.
+      const { guns: v1Guns, armors: v1Armors, shields: v1Shields } =
+        defaultGunsArmorsShields();
+      await shipAttributes.write.setVariantAttributes(
+        [
+          {
+            version: 1,
+            variant: 2,
+            baseHull: 100,
+            baseSpeed: 3,
+            foreAccuracy: [0, 25, 50],
+            hull: [0, 10, 20],
+            engineSpeeds: [0, 1, 2],
+            guns: [
+              { range: 10, damage: 150, movement: 0 }, // Laser, boosted
+              v1Guns[1],
+              v1Guns[2],
+              v1Guns[3],
+            ],
+            armors: [
+              { damageReduction: 0, movement: 1 },
+              { damageReduction: 60, movement: 0 }, // Light, boosted
+              v1Armors[2],
+              v1Armors[3],
+            ],
+            shields: v1Shields,
+            specials: [
+              { range: 0, strength: 0, movement: 0 },
+              { range: 1, strength: 1, movement: 0 },
+              { range: 3, strength: 40, movement: 0 },
+              { range: 3, strength: 30, movement: 0 },
+            ],
+          },
+        ],
+        { account: owner.account },
+      );
+
+      const gunVariant1 = await shipAttributes.read.getGunData([0, 1]); // Laser
+      const gunVariant2 = await shipAttributes.read.getGunData([0, 2]);
+      expect(gunVariant2.range).to.be.greaterThan(gunVariant1.range);
+      expect(gunVariant2.damage).to.be.greaterThan(gunVariant1.damage);
+
+      const armorVariant1 = await shipAttributes.read.getArmorData([1, 1]); // Light
+      const armorVariant2 = await shipAttributes.read.getArmorData([1, 2]);
+      expect(armorVariant2.damageReduction).to.be.greaterThan(
+        armorVariant1.damageReduction,
+      );
+
+      await shatteredHiveMedal.write.ownerMint([user1.account.address], {
+        account: owner.account,
+      });
+
+      // Tier 0 mints 5 ships per purchase, so ship 1 is the first ship of the
+      // variant-1 purchase and ship 6 is the first ship of the variant-2
+      // purchase
+      await ships.write.purchaseWithFlow(
+        [user1.account.address, 0n, user1.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [user1.account.address, 0n, user1.account.address, 2],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.fulfillRandomRequest([
+          ship.traits.serialNumber,
+        ]);
+      }
+      await ships.write.constructAllMyShips({ account: user1.account });
+
+      // Force both ships onto the same weapon (Laser) so the only variable
+      // left is which variant's gun stats got applied.
+      const ship1 = tupleToShip((await ships.read.ships([1n])) as ShipTuple);
+      const ship6 = tupleToShip((await ships.read.ships([6n])) as ShipTuple);
+      expect(ship1.traits.variant).to.equal(1);
+      expect(ship6.traits.variant).to.equal(2);
+
+      if (ship1.equipment.mainWeapon === 0 && ship6.equipment.mainWeapon === 0) {
+        const attrs1 = await shipAttributes.read.calculateShipAttributesById([
+          1n,
+        ]);
+        const attrs6 = await shipAttributes.read.calculateShipAttributesById([
+          6n,
+        ]);
+        expect(attrs6.gunDamage).to.be.greaterThan(attrs1.gunDamage);
+      }
+    });
+
+    it("changing variant 2's costs leaves variant 1's cost version and fleet eligibility untouched", async function () {
+      const {
+        owner,
+        shipAttributes,
+        creatorLobbies,
+        joinerLobbies,
+        creatorShipIds,
+      } = await loadFixture(deployLobbyFleetFixture);
+
+      // All ships from claimFreeShips are variant 1 (TutorialClaim mints
+      // every fixed reward ship as variant 1).
+      const variant1VersionBefore =
+        await shipAttributes.read.getCurrentCostsVersion([1]);
+
+      await shipAttributes.write.setCosts([2, sampleCostsV2()], {
+        account: owner.account,
+      });
+
+      const variant1VersionAfter =
+        await shipAttributes.read.getCurrentCostsVersion([1]);
+      expect(variant1VersionAfter).to.equal(variant1VersionBefore);
+
+      const costLimit = 1000n;
+      const turnTime = 300n;
+      await creatorLobbies.write.createLobby([
+        costLimit,
+        turnTime,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+
+      // A variant-1 ship's stored costsVersion is still current — creating
+      // a fleet with it must not revert ShipCostVersionMismatch, even
+      // though variant 2's costs version was just bumped.
+      await creatorLobbies.write.createFleet([
+        1n,
+        [creatorShipIds[0]],
+        [{ row: 0, col: 0 }],
+      ]);
+    });
+
     it("reverts (fails loud) when reading an unconfigured variant", async function () {
       const { shipAttributes } = await loadFixture(deployShipsFixture);
 
@@ -253,22 +446,24 @@ describe("Ship costs, versions, and fleets", function () {
         .rejected;
     });
 
-    it("includes the variant cost addend in calculateShipCost", async function () {
+    it("gives variant 2 a genuinely different baseCost than variant 1", async function () {
       const { shipAttributes, owner } = await loadFixture(deployShipsFixture);
 
-      const newCosts = {
-        version: 2,
-        baseCost: 50,
+      // Costs are per-variant now (ShipAttributes.costsByVariant) — set
+      // variant 2's baseCost 50 higher than variant 1's constructor-seeded
+      // default (50), leaving variant 1 untouched.
+      const variant2Costs = {
+        version: 0,
+        baseCost: 100,
         accuracy: [0, 10, 25],
         hull: [0, 10, 25],
         speed: [0, 10, 25],
         mainWeapon: [25, 30, 40, 40],
         armor: [0, 5, 10, 15],
         shields: [0, 10, 20, 30],
-        special: [0, 10, 20, 15],
-        variant: [0, 0, 50, 100],
+        special: [0, 10, 20, 15, 15, 20, 10, 0],
       };
-      await shipAttributes.write.setCosts([newCosts], {
+      await shipAttributes.write.setCosts([2, variant2Costs], {
         account: owner.account,
       });
 
@@ -353,7 +548,7 @@ describe("Ship costs, versions, and fleets", function () {
       await randomManager.write.fulfillRandomRequest([s0.traits.serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
-      const vBefore = await shipAttributes.read.getCurrentCostsVersion();
+      const vBefore = await shipAttributes.read.getCurrentCostsVersion([1]);
       const shipBefore = tupleToShip(
         (await ships.read.ships([1n])) as ShipTuple,
       );
@@ -361,12 +556,12 @@ describe("Ship costs, versions, and fleets", function () {
         Number(vBefore),
       );
 
-      await shipAttributes.write.setCosts([sampleCostsV2()], {
+      await shipAttributes.write.setCosts([1, sampleCostsV2()], {
         account: owner.account,
       });
 
-      const vAfter = await shipAttributes.read.getCurrentCostsVersion();
-      expect(Number(vAfter)).to.equal(2);
+      const vAfter = await shipAttributes.read.getCurrentCostsVersion([1]);
+      expect(Number(vAfter)).to.equal(Number(vBefore) + 1);
 
       const stale = tupleToShip((await ships.read.ships([1n])) as ShipTuple);
       expect(stale.shipData.costsVersion).to.equal(vBefore);
@@ -398,11 +593,11 @@ describe("Ship costs, versions, and fleets", function () {
         await ships.write.constructShip([id], { account: user1.account });
       }
 
-      await shipAttributes.write.setCosts([sampleCostsV2()], {
+      await shipAttributes.write.setCosts([1, sampleCostsV2()], {
         account: owner.account,
       });
 
-      const vAfter = await shipAttributes.read.getCurrentCostsVersion();
+      const vAfter = await shipAttributes.read.getCurrentCostsVersion([1]);
 
       await ships.write.syncShipCosts([[1n, 2n]], { account: user2.account });
 
@@ -456,7 +651,7 @@ describe("Ship costs, versions, and fleets", function () {
         ships.write.setCostOfShip([shipId], { account: owner.account }),
       ).to.be.rejectedWith("ShipInFleet");
 
-      await shipAttributes.write.setCosts([sampleCostsV2()], {
+      await shipAttributes.write.setCosts([1, sampleCostsV2()], {
         account: owner.account,
       });
 
@@ -499,13 +694,13 @@ describe("Ship costs, versions, and fleets", function () {
 
       await creatorLobbies.write.leaveLobby([1n]);
 
-      await shipAttributes.write.setCosts([sampleCostsV2()], {
+      await shipAttributes.write.setCosts([1, sampleCostsV2()], {
         account: owner.account,
       });
 
       await ships.write.setCostOfShip([shipId], { account: owner.account });
 
-      const v = await shipAttributes.read.getCurrentCostsVersion();
+      const v = await shipAttributes.read.getCurrentCostsVersion([1]);
       const updated = tupleToShip((await ships.read.ships([shipId])) as ShipTuple);
       expect(Number(updated.shipData.costsVersion)).to.equal(Number(v));
 
@@ -529,7 +724,7 @@ describe("Ship costs, versions, and fleets", function () {
         creatorShipIds,
       } = await loadFixture(deployLobbyFleetFixture);
 
-      await shipAttributes.write.setCosts([sampleCostsV2()], {
+      await shipAttributes.write.setCosts([1, sampleCostsV2()], {
         account: owner.account,
       });
 

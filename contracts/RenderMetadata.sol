@@ -1,19 +1,35 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Base64.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "./Types.sol";
 import "./IRenderer.sol";
 import "./ImageRenderer.sol";
 
-contract RenderMetadata is IRenderMetadata {
+contract RenderMetadata is IRenderMetadata, Ownable {
     using Strings for uint256;
 
     ImageRenderer public immutable imageRenderer;
 
-    constructor(address _imageRenderer) {
+    // Special is a per-faction local slot (0-7), not a global identity, so
+    // its display name is keyed by (variant, slot) rather than a single
+    // hardcoded if-chain — a per-special branch can't scale to hundreds of
+    // specials across dozens of factions within a 24 KiB contract. None
+    // (slot 0) is the one truly universal case and stays hardcoded below.
+    mapping(uint16 => mapping(Special => string)) public specialNames;
+
+    constructor(address _imageRenderer) Ownable(msg.sender) {
         imageRenderer = ImageRenderer(_imageRenderer);
+    }
+
+    function setSpecialName(
+        uint16 _variant,
+        Special _slot,
+        string memory _name
+    ) external onlyOwner {
+        specialNames[_variant][_slot] = _name;
     }
 
     function getBasicTraitsString(
@@ -65,12 +81,12 @@ contract RenderMetadata is IRenderMetadata {
 
     function getEquipmentTraitsString(
         Ship memory ship
-    ) internal pure returns (string memory) {
+    ) internal view returns (string memory) {
         return
             string(
                 abi.encodePacked(
                     '{"trait_type": "Main Weapon", "value": "',
-                    getMainWeaponString(ship.equipment.mainWeapon),
+                    getMainWeaponString(ship.equipment.mainWeapon, ship.traits.variant),
                     '"},',
                     '{"trait_type": "Armor", "value": "',
                     getArmorString(ship.equipment.armor),
@@ -79,7 +95,7 @@ contract RenderMetadata is IRenderMetadata {
                     getShieldsString(ship.equipment.shields),
                     '"},',
                     '{"trait_type": "Special", "value": "',
-                    getSpecialString(ship.equipment.special),
+                    getSpecialString(ship.equipment.special, ship.traits.variant),
                     '"}'
                 )
             );
@@ -87,7 +103,7 @@ contract RenderMetadata is IRenderMetadata {
 
     function getTraitsString(
         Ship memory ship
-    ) internal pure returns (string memory) {
+    ) internal view returns (string memory) {
         return
             string(
                 abi.encodePacked(
@@ -101,8 +117,16 @@ contract RenderMetadata is IRenderMetadata {
     }
 
     function getMainWeaponString(
-        MainWeapon weapon
+        MainWeapon weapon,
+        uint16 variant
     ) internal pure returns (string memory) {
+        if (variant == 2) {
+            if (weapon == MainWeapon.Laser) return "Mining Laser";
+            if (weapon == MainWeapon.Railgun) return "Mass Driver";
+            if (weapon == MainWeapon.MissileLauncher) return "Attack Drones";
+            if (weapon == MainWeapon.PlasmaCannon) return "Plasma Beam";
+            return "Unknown";
+        }
         if (weapon == MainWeapon.Laser) return "Laser";
         if (weapon == MainWeapon.Railgun) return "Railgun";
         if (weapon == MainWeapon.MissileLauncher) return "Missile Launcher";
@@ -129,13 +153,13 @@ contract RenderMetadata is IRenderMetadata {
     }
 
     function getSpecialString(
-        Special special
-    ) internal pure returns (string memory) {
+        Special special,
+        uint16 variant
+    ) internal view returns (string memory) {
         if (special == Special.None) return "No Special";
-        if (special == Special.EMP) return "EMP";
-        if (special == Special.RepairDrones) return "Repair Drones";
-        if (special == Special.FlakArray) return "Flak Array";
-        return "Unknown";
+        string memory name = specialNames[variant][special];
+        if (bytes(name).length == 0) return "Unknown";
+        return name;
     }
 
     function tokenURI(

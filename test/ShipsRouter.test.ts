@@ -2,6 +2,7 @@ import { expect } from "chai";
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox-viem/network-helpers";
 import hre from "hardhat";
 import { zeroAddress } from "viem";
+import { seedVariant1Attributes } from "./fixtures/seedVariant1Attributes";
 
 // Standalone unit tests for ShipsRouter.sol's dispatch logic: does an id
 // resolve to Ships.sol (human) or AIShips.sol (AI) correctly, and does
@@ -24,6 +25,7 @@ describe("ShipsRouter", function () {
     const shipAttributes = await hre.viem.deployContract("ShipAttributes", [
       ships.address,
     ]);
+    await seedVariant1Attributes(shipAttributes, owner.account);
     const universalCredits = await hre.viem.deployContract("UniversalCredits");
     const droneEnergyCores = await hre.viem.deployContract("DroneEnergyCores");
     const mockLobbyCheck = await hre.viem.deployContract(
@@ -52,6 +54,7 @@ describe("ShipsRouter", function () {
       shipAttributes.address,
       universalCredits.address,
       droneEnergyCores.address,
+      zeroAddress, // purchaseGate (unused here)
     ]);
     await ships.write.setIsAllowedToCreateShips([owner.account.address, true]);
 

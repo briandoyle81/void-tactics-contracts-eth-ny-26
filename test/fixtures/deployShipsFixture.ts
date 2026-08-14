@@ -45,6 +45,8 @@ export async function deployShipsFixture() {
     shipAttributes,
     droneYard,
     generateNewShip,
+    variantPurchaseGate,
+    shatteredHiveMedal,
   } = await hre.ignition.deploy(DeployModule);
 
   const user1Ships = await hre.viem.getContractAt("Ships", ships.address, {
@@ -203,5 +205,7 @@ export async function deployShipsFixture() {
     user2DroneYard,
     user3DroneYard,
     generateNewShip,
+    variantPurchaseGate,
+    shatteredHiveMedal,
   };
 }

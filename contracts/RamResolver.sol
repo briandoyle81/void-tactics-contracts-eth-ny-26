@@ -2,23 +2,8 @@
 pragma solidity ^0.8.28;
 
 import "./Types.sol";
-import "./IFactionAbilityResolver.sol";
-
-// Minimal read-only view of Game.sol this resolver needs — same pattern
-// Tournament.sol already uses for its own local IGame, rather than
-// importing the whole Game contract. getShipPosition (O(1), a single
-// mapping read) rather than getGame/getAllShipPositions (which scans the
-// entire grid) — this resolver only ever needs two specific ships.
-interface IGameView {
-    function getShipPosition(
-        uint _gameId,
-        uint _shipId
-    ) external view returns (ShipPosition memory);
-    function getShipAttributes(
-        uint _gameId,
-        uint _shipId
-    ) external view returns (Attributes memory);
-}
+import "./IEffectResolver.sol";
+import "./IGameView.sol";
 
 // Ram: the faction 1 innate ability. Every variant-1 ship has it regardless
 // of loadout (dispatched via ActionType.FactionAbility, not tied to
@@ -27,10 +12,10 @@ interface IGameView {
 // resolver-backed replacement for what used to be an automatic side effect
 // of any ship's plain move. Owns every pre-dispatch check for Ram itself
 // (Game.sol/SpecialEffectsLib trust its output completely, per
-// IFactionAbilityResolver's contract); reachability is already gated to
-// faction 1 by Game.factionAbilityResolvers[1] being the only mapping entry
-// pointing here, so this contract doesn't re-check variant itself.
-contract RamResolver is IFactionAbilityResolver {
+// IEffectResolver's contract); reachability is already gated to faction 1
+// by Game.factionAbilityResolvers[1] being the only mapping entry pointing
+// here, so this contract doesn't re-check variant itself.
+contract RamResolver is IEffectResolver {
     IGameView public game;
     address public owner;
 
@@ -59,7 +44,7 @@ contract RamResolver is IFactionAbilityResolver {
         range = _range;
     }
 
-    function resolveFactionAbility(
+    function resolveEffect(
         uint gameId,
         uint shipId,
         uint16 /* variant */,

@@ -104,8 +104,12 @@ contract GenerateNewShip {
         }
 
         randomBase++;
+        // Special is a per-faction local slot 0-7 (see Types.sol) — roll
+        // across the full fixed range, not just the first 4. Still not
+        // variant-aware (a ship can randomly land on a slot that's inert
+        // for its own faction) — that's a separate, deliberate follow-up.
         newShip.equipment.special = Special(
-            uint(keccak256(abi.encodePacked(randomBase))) % 4
+            uint(keccak256(abi.encodePacked(randomBase))) % 8
         );
 
         // TODO: Should it be adjustable chance for shiny?

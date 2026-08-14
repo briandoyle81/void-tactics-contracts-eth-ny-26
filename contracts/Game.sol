@@ -30,9 +30,20 @@ contract Game is Ownable {
     // Owner-authorized resolver contract for each faction's (traits.variant)
     // innate ability, dispatched via ActionType.FactionAbility — independent
     // of equipment.special/ActionType.Special entirely. See
-    // IFactionAbilityResolver — the resolver owns all pre-dispatch checks
+    // IEffectResolver — the resolver owns all pre-dispatch checks
     // for its ability and Game.sol just applies whatever it returns.
     mapping(uint16 => address) public factionAbilityResolvers;
+
+    // Owner-authorized resolver contract for each equipped Special item,
+    // dispatched via ActionType.Special — keyed by BOTH traits.variant and
+    // equipment.special, since Special is a per-faction local slot (0-7),
+    // not a global item identity: slot 1 means something different for
+    // every faction, so the same slot number needs a different resolver
+    // per variant. Same IEffectResolver contract and
+    // SpecialEffectsLib.resolveAndApply dispatch as factionAbilityResolvers;
+    // this is what lets new factions ship a custom Special without touching
+    // Game.sol's bytecode.
+    mapping(uint16 => mapping(Special => address)) public specialResolvers;
 
     mapping(uint => GameData) games;
     uint public gameCount;
@@ -102,6 +113,14 @@ contract Game is Ownable {
         address _resolver
     ) public onlyOwner {
         factionAbilityResolvers[_variant] = _resolver;
+    }
+
+    function setSpecialResolver(
+        uint16 _variant,
+        Special _slot,
+        address _resolver
+    ) public onlyOwner {
+        specialResolvers[_variant][_slot] = _resolver;
     }
 
     function startGame(
@@ -953,7 +972,11 @@ contract Game is Ownable {
         return false;
     }
 
-    // Internal function to perform special action
+    // Internal function to perform special action — dispatched by equipped
+    // slot (equipment.special) AND faction (traits.variant), since a slot's
+    // meaning is per-faction (see specialResolvers' own comment). Resolved
+    // entirely by an owner-authorized resolver contract via
+    // specialResolvers; see _dispatchEffects.
     function _performSpecial(
         uint _gameId,
         uint _shipId,
@@ -962,70 +985,26 @@ contract Game is Ownable {
         uint _targetShipId,
         Ship memory _usingShip
     ) internal {
-        Special special = _usingShip.equipment.special;
-
-        if (special == Special.RepairDrones || special == Special.EMP) {
-            GameData storage game = games[_gameId];
-            Ship memory targetShip = _validateShipExistsAndNotDestroyed(
-                _targetShipId
-            );
-            // RepairDrones can only target friendly ships; EMP only enemy ships
-            bool isRepair = special == Special.RepairDrones;
-            if (isRepair == (targetShip.owner != _usingShip.owner))
-                revert InvalidMove();
-            SpecialEffectsLib.validateSpecialRange(
-                game,
-                shipAttributes,
-                _newRow,
-                _newCol,
-                _targetShipId,
-                special,
-                _usingShip.traits.variant
-            );
-            if (isRepair) {
-                SpecialEffectsLib.performRepairDrones(
-                    game,
-                    shipAttributes,
-                    _targetShipId,
-                    _usingShip.traits.variant
-                );
-            } else {
-                bool critical = SpecialEffectsLib.performEMP(
-                    game,
-                    shipAttributes,
-                    _shipId,
-                    _targetShipId,
-                    _usingShip.traits.variant
-                );
-                if (critical) {
-                    _removeShipFromGame(_gameId, _targetShipId, false, targetShip);
-                }
-            }
-        } else if (special == Special.FlakArray) {
-            SpecialEffectsLib.performFlakArray(
-                games[_gameId],
-                shipAttributes,
-                _shipId,
-                _newRow,
-                _newCol,
-                _usingShip.traits.variant
-            );
-        } else {
-            revert InvalidMove(); // Other specials not implemented yet
-        }
+        address resolver = specialResolvers[_usingShip.traits.variant][
+            _usingShip.equipment.special
+        ];
+        if (resolver == address(0)) revert InvalidMove();
+        _dispatchEffects(
+            _gameId,
+            resolver,
+            _usingShip.traits.variant,
+            _shipId,
+            _newRow,
+            _newCol,
+            _targetShipId
+        );
     }
 
     // Internal function to perform a faction's innate ability
     // (ActionType.FactionAbility) — dispatched by traits.variant, not by an
     // equipped item, so every ship of that faction has it regardless of
-    // loadout. Resolved entirely by an owner-authorized resolver contract:
-    // it owns all pre-dispatch validation for its ability and returns a
-    // declarative effect list. SpecialEffectsLib (a separately-deployed
-    // library — see its header comment) owns the resolver call and all
-    // hull/reactor/relocate arithmetic against game storage, and hands back
-    // only the ships that need removing; Game.sol applies those through its
-    // own _removeShipFromGame so fleet cleanup/game-end/orchestrator
-    // callback stay correct.
+    // loadout. Resolved entirely by an owner-authorized resolver contract
+    // via factionAbilityResolvers; see _dispatchEffects.
     function _performFactionAbility(
         uint _gameId,
         int16 _newRow,
@@ -1035,16 +1014,44 @@ contract Game is Ownable {
     ) internal {
         address resolver = factionAbilityResolvers[_usingShip.traits.variant];
         if (resolver == address(0)) revert InvalidMove();
+        _dispatchEffects(
+            _gameId,
+            resolver,
+            _usingShip.traits.variant,
+            _usingShip.id,
+            _newRow,
+            _newCol,
+            _targetShipId
+        );
+    }
+
+    // Shared by _performSpecial and _performFactionAbility: it owns all
+    // pre-dispatch validation for its effect and returns a declarative
+    // effect list. SpecialEffectsLib (a separately-deployed library — see
+    // its header comment) owns the resolver call and all
+    // hull/reactor/relocate arithmetic against game storage, and hands back
+    // only the ships that need removing; Game.sol applies those through its
+    // own _removeShipFromGame so fleet cleanup/game-end/orchestrator
+    // callback stay correct.
+    function _dispatchEffects(
+        uint _gameId,
+        address _resolver,
+        uint16 _variant,
+        uint _shipId,
+        int16 _newRow,
+        int16 _newCol,
+        uint _targetShipId
+    ) internal {
         GameData storage game = games[_gameId];
         SpecialEffectsLib.EffectResults memory results = SpecialEffectsLib
             .resolveAndApply(
                 game,
-                resolver,
+                _resolver,
                 ships,
                 SpecialEffectsLib.ResolveContext({
                     gameId: _gameId,
-                    shipId: _usingShip.id,
-                    variant: _usingShip.traits.variant,
+                    shipId: _shipId,
+                    variant: _variant,
                     targetShipId: _targetShipId,
                     newRow: _newRow,
                     newCol: _newCol

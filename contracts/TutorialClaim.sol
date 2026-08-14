@@ -72,7 +72,7 @@ contract TutorialClaim is ReentrancyGuard {
             mainWeapon: MainWeapon.PlasmaCannon,
             armor: Armor.None,
             shields: Shields.Medium,
-            special: Special.EMP
+            special: Special.Slot1
         });
         s.traits = Traits({
             serialNumber: 0,
@@ -108,7 +108,7 @@ contract TutorialClaim is ReentrancyGuard {
             mainWeapon: MainWeapon.Railgun,
             armor: Armor.None,
             shields: Shields.Light,
-            special: Special.RepairDrones
+            special: Special.Slot2
         });
         s.traits = Traits({
             serialNumber: 0,
@@ -123,7 +123,7 @@ contract TutorialClaim is ReentrancyGuard {
                 s3: 0,
                 l3: 0
             }),
-            variant: 2,
+            variant: 1,
             accuracy: 1,
             hull: 0,
             speed: 0
@@ -155,7 +155,7 @@ contract TutorialClaim is ReentrancyGuard {
                 s3: 0,
                 l3: 0
             }),
-            variant: 3,
+            variant: 1,
             accuracy: 1,
             hull: 0,
             speed: 0

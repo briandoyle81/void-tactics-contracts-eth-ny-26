@@ -626,9 +626,19 @@ library AIBehavior {
         d.destCol = ctx.pos.col;
         d.action = ActionType.Pass;
 
-        if (mySpecial == Special.RepairDrones) {
+        // KNOWN LIMITATION: this hardcodes "faction 1's healer lives at
+        // slot 2" (Slot2 == RepairDrones for variant 1 today). Special is a
+        // per-faction local slot now, not a global identity — slot 2 could
+        // be a damage special for some other faction, and this check would
+        // silently misfire (treating a non-heal special as a heal, or vice
+        // versa skipping a real heal at a different slot). Needs a
+        // data-driven signal (e.g. a SpecialData.isHeal-style flag) before
+        // this Support archetype can work correctly for factions other
+        // than variant 1 — out of scope for the slot-based dispatch
+        // refactor that introduced this comment.
+        if (mySpecial == Special.Slot2) {
             uint8 healRange = shipAttributes.getSpecialRange(
-                Special.RepairDrones,
+                Special.Slot2,
                 myVariant
             );
             (uint allyTarget, bool allyFound) = _bestAllyToHeal(

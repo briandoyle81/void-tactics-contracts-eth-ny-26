@@ -98,7 +98,9 @@ contract AIShips is Ownable, IAIShips {
         // Recomputed live every allocation — Fleets.createFleet reverts on
         // a stale costsVersion, so a remembered value from a prior
         // occupant's allocation is not safe to reuse.
-        ship.shipData.costsVersion = shipAttributes.getCurrentCostsVersion();
+        ship.shipData.costsVersion = shipAttributes.getCurrentCostsVersion(
+            ship.traits.variant
+        );
         ship.shipData.cost = shipAttributes.calculateShipCost(ship);
     }
 

@@ -12,7 +12,7 @@ import starterContent from "../data/singlePlayerStarterContent.json";
 // — this is a plain build-time boolean (not an Ignition parameter) so gated
 // m.call(...) invocations are simply never added to the deployment graph
 // when false, rather than being skipped at execution time.
-const PRODUCTION = true;
+const PRODUCTION = false;
 
 // Address allowed to mint ships from the Firebase Flow backend, with the same
 // rights as ShipPurchaser.
@@ -151,6 +151,15 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // Finally deploy Ships with all dependencies
   const ships = m.contract("Ships", [metadataRenderer]);
 
+  // Generic per-variant purchase gate registry (variant -> required NFT,
+  // address(0) == ungated). Ships.sol calls into this unconditionally and
+  // stays ignorant of which variants are gated or on what — future gated
+  // variants (e.g. a third faction with its own campaign medal) only need
+  // a setRequiredNft call here, not a Ships.sol change. Wired to require
+  // the Shattered Hive Campaign medal for variant 2 further below, once
+  // that medal contract (and the campaign's final node id) exist.
+  const variantPurchaseGate = m.contract("VariantPurchaseGate");
+
   // Deploy AIShips: non-NFT, poolable store for single-player AI ships,
   // sitting behind ShipsRouter below instead of Ships.sol. AI ships are
   // never owned/traded by players, so this has no ERC-721/mint machinery —
@@ -261,10 +270,51 @@ const DeployModule = buildModule("DeployModule", (m) => {
   const tutorialClaim = m.contract("TutorialClaim", [ships, gameResults]);
 
   // Deploy RamResolver: the faction 1 innate ability (traits.variant == 1),
-  // resolver-backed per IFactionAbilityResolver and dispatched via
+  // resolver-backed per IEffectResolver and dispatched via
   // ActionType.FactionAbility rather than the old
   // automatic-side-effect-of-movement ramming mechanic.
   const ramResolver = m.contract("RamResolver", [game]);
+
+  // Deploy the equipped-Special resolvers: EMP/RepairDrones/FlakArray are
+  // dispatched via Game.specialResolvers[variant][slot] (IEffectResolver),
+  // the same resolver-backed pattern as RamResolver above, migrated off
+  // their old hardcoded Game.sol/SpecialEffectsLib.sol branches so future
+  // factions can add their own equipped Special without spending Game.sol
+  // bytecode. Each reads range/strength from the shared per-variant
+  // SpecialData table via shipAttributes, so numbers stay retunable via
+  // ShipAttributes.setVariantAttributes without redeploying a resolver.
+  // Special is a per-faction local slot (0-7), not a global identity, so
+  // each resolver is told its own slot at deploy time (third constructor
+  // arg) — these three happen to be faction 1's slots 1/2/3.
+  const empResolver = m.contract("EMPResolver", [game, shipAttributes, 1]);
+  const repairDronesResolver = m.contract("RepairDronesResolver", [
+    game,
+    shipAttributes,
+    2,
+  ]);
+  const flakArrayResolver = m.contract("FlakArrayResolver", [
+    game,
+    shipAttributes,
+    3,
+  ]);
+
+  // Faction 2's equipped-Special resolvers: Electric Storm and Drone Swarm,
+  // deployed the same way as faction 1's EMP/RepairDrones/FlakArray above —
+  // faction 2's slots 4/5. Additional Thruster (the third variant-2
+  // special, slot 6) is deliberately never registered as a resolver — it's
+  // a pure passive movement bonus (SpecialData.movement), so
+  // Game.specialResolvers[2][Slot6] staying unset is what makes trying to
+  // *use* it as an action revert.
+  const electricStormResolver = m.contract("ElectricStormResolver", [
+    game,
+    shipAttributes,
+    4,
+  ]);
+  const droneSwarmResolver = m.contract("DroneSwarmResolver", [
+    game,
+    shipAttributes,
+    5,
+  ]);
 
   // Set all config values in a single call. gameAddress/fleetsAddress are
   // ShipsRouter's address, not Game.sol's/Fleets.sol's directly — Game.sol
@@ -284,6 +334,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
     shipAttributes, // shipAttributes
     universalCredits, // universalCredits
     droneEnergyCores, // droneEnergyCores
+    variantPurchaseGate, // purchaseGate
   ]);
 
   // ShipsRouter's own auth config: gameAddress/fleetsAddress gate its
@@ -338,6 +389,236 @@ const DeployModule = buildModule("DeployModule", (m) => {
     game,
     "setFactionAbilityResolver",
     [1, ramResolver],
+  );
+
+  // Wire the equipped-Special resolvers in — keyed by (variant, slot), since
+  // Special is a per-faction local slot (0-7), not a global identity.
+  // Faction 1: Slot1=EMP, Slot2=RepairDrones, Slot3=FlakArray. Faction 2:
+  // Slot4=ElectricStorm, Slot5=DroneSwarm, Slot6=AdditionalThruster (no
+  // resolver — passive-only), Slot7=unused.
+  const setEMPResolverCall = m.call(game, "setSpecialResolver", [
+    1,
+    1,
+    empResolver,
+  ], { id: "SetEMPResolver" });
+  const setRepairDronesResolverCall = m.call(game, "setSpecialResolver", [
+    1,
+    2,
+    repairDronesResolver,
+  ], { id: "SetRepairDronesResolver" });
+  const setFlakArrayResolverCall = m.call(game, "setSpecialResolver", [
+    1,
+    3,
+    flakArrayResolver,
+  ], { id: "SetFlakArrayResolver" });
+  const setElectricStormResolverCall = m.call(game, "setSpecialResolver", [
+    2,
+    4,
+    electricStormResolver,
+  ], { id: "SetElectricStormResolver" });
+  const setDroneSwarmResolverCall = m.call(game, "setSpecialResolver", [
+    2,
+    5,
+    droneSwarmResolver,
+  ], { id: "SetDroneSwarmResolver" });
+
+  // Display names for each faction's real specials — RenderMetadata.
+  // specialNames, keyed by (variant, slot) since a slot's meaning (and so
+  // its name) is per-faction. Slot 0 (None) needs no entry — RenderMetadata
+  // hardcodes "No Special" for it universally. Unset (variant, slot) pairs
+  // (e.g. faction 1's slots 4-7, faction 2's slots 1-3/6/7) fall back to
+  // "Unknown" — those slots are either inert or unused for that faction.
+  const setEMPNameCall = m.call(metadataRenderer, "setSpecialName", [
+    1,
+    1,
+    "EMP",
+  ], { id: "SetEMPName" });
+  const setRepairDronesNameCall = m.call(metadataRenderer, "setSpecialName", [
+    1,
+    2,
+    "Repair Drones",
+  ], { id: "SetRepairDronesName" });
+  const setFlakArrayNameCall = m.call(metadataRenderer, "setSpecialName", [
+    1,
+    3,
+    "Flak Array",
+  ], { id: "SetFlakArrayName" });
+  const setElectricStormNameCall = m.call(metadataRenderer, "setSpecialName", [
+    2,
+    4,
+    "Electric Storm",
+  ], { id: "SetElectricStormName" });
+  const setDroneSwarmNameCall = m.call(metadataRenderer, "setSpecialName", [
+    2,
+    5,
+    "Drone Swarm",
+  ], { id: "SetDroneSwarmName" });
+  const setAdditionalThrusterNameCall = m.call(
+    metadataRenderer,
+    "setSpecialName",
+    [2, 6, "Additional Thruster"],
+    { id: "SetAdditionalThrusterName" },
+  );
+
+  // Costs and attributes are both per-variant (ShipAttributes.
+  // costsByVariant / VariantAttributeData.{baseHull,baseSpeed,guns,armors,
+  // shields}) — each variant needs its own setCosts + setVariantAttributes
+  // call, and neither is seeded in the constructor: every variant,
+  // including 1, is unconfigured (fails loud) until these calls run. This
+  // IS variant 1's and variant 2's data, not an override of some default —
+  // edit the numbers here directly to rebalance either faction. Variant 1
+  // and variant 2 each have their own fully separate set of consts below
+  // (deliberately not shared) so they can be given different initial
+  // values independently.
+
+  // ---- Variant 1 ----
+  // Costs.special is indexed by the raw Special enum value — covers
+  // None/EMP/RepairDrones/FlakArray plus the three variant-2-only specials
+  // (ElectricStorm/DroneSwarm/AdditionalThruster). Point-costs currently
+  // match variant 2's numbers exactly (same values, independently editable
+  // consts) — retune either side's array on its own anytime.
+  const variant1SpecialCosts = [0, 10, 20, 15, 15, 20, 10, 0];
+  const variant1Guns = [
+    { range: 3, damage: 50, movement: 0 }, // Laser
+    { range: 6, damage: 40, movement: 0 }, // Railgun
+    { range: 4, damage: 60, movement: -1 }, // MissileLauncher
+    { range: 2, damage: 80, movement: 0 }, // PlasmaCannon
+  ];
+  const variant1Armors = [
+    { damageReduction: 0, movement: 1 }, // None
+    { damageReduction: 15, movement: 0 }, // Light
+    { damageReduction: 30, movement: -1 }, // Medium
+    { damageReduction: 45, movement: -2 }, // Heavy
+  ];
+  const variant1Shields = [
+    { damageReduction: 0, movement: 1 }, // None
+    { damageReduction: 15, movement: 1 }, // Light
+    { damageReduction: 30, movement: 0 }, // Medium
+    { damageReduction: 45, movement: -1 }, // Heavy
+  ];
+
+  const setCostsVariant1Call = m.call(
+    shipAttributes,
+    "setCosts",
+    [
+      1, // variant
+      {
+        version: 0, // ignored by setCosts, which always computes version+1 itself
+        baseCost: 50,
+        accuracy: [0, 10, 25],
+        hull: [0, 10, 25],
+        speed: [0, 10, 25],
+        mainWeapon: [25, 30, 40, 40],
+        armor: [0, 5, 10, 15],
+        shields: [0, 10, 20, 30],
+        special: variant1SpecialCosts,
+      },
+    ],
+    { id: "SetCostsVariant1" },
+  );
+
+  const setVariant1AttributesCall = m.call(
+    shipAttributes,
+    "setVariantAttributes",
+    [
+      {
+        version: 1,
+        variant: 1,
+        baseHull: 100,
+        baseSpeed: 3,
+        foreAccuracy: [0, 25, 50],
+        hull: [0, 10, 20],
+        engineSpeeds: [0, 1, 2],
+        guns: variant1Guns,
+        armors: variant1Armors,
+        shields: variant1Shields,
+        specials: [
+          { range: 0, strength: 0, movement: 0 }, // None
+          { range: 1, strength: 1, movement: 0 }, // EMP
+          { range: 3, strength: 40, movement: 0 }, // RepairDrones
+          { range: 3, strength: 30, movement: 0 }, // FlakArray
+          { range: 0, strength: 0, movement: 0 }, // ElectricStorm (inert for variant 1)
+          { range: 0, strength: 0, movement: 0 }, // DroneSwarm (inert for variant 1)
+          { range: 0, strength: 0, movement: 0 }, // AdditionalThruster (inert for variant 1)
+          { range: 0, strength: 0, movement: 0 }, // future4
+        ],
+      },
+    ],
+    { id: "SetVariant1Attributes" },
+  );
+
+  // ---- Variant 2 ----
+  // Point-costs for its own three specials (ElectricStorm/DroneSwarm/
+  // AdditionalThruster) are placeholders (loosely mirroring FlakArray/EMP/
+  // a cheap passive tier) — retune anytime via another setCosts call.
+  const variant2SpecialCosts = [0, 10, 20, 15, 15, 20, 10, 0];
+  const variant2Guns = [
+    { range: 3, damage: 50, movement: 0 }, // Laser
+    { range: 6, damage: 40, movement: 0 }, // Railgun
+    { range: 4, damage: 60, movement: -1 }, // MissileLauncher
+    { range: 2, damage: 80, movement: 0 }, // PlasmaCannon
+  ];
+  const variant2Armors = [
+    { damageReduction: 0, movement: 1 }, // None
+    { damageReduction: 15, movement: 0 }, // Light
+    { damageReduction: 30, movement: -1 }, // Medium
+    { damageReduction: 45, movement: -2 }, // Heavy
+  ];
+  const variant2Shields = [
+    { damageReduction: 0, movement: 1 }, // None
+    { damageReduction: 15, movement: 1 }, // Light
+    { damageReduction: 30, movement: 0 }, // Medium
+    { damageReduction: 45, movement: -1 }, // Heavy
+  ];
+
+  const setCostsVariant2Call = m.call(
+    shipAttributes,
+    "setCosts",
+    [
+      2, // variant
+      {
+        version: 0,
+        baseCost: 50,
+        accuracy: [0, 10, 25],
+        hull: [0, 10, 25],
+        speed: [0, 10, 25],
+        mainWeapon: [25, 30, 40, 40],
+        armor: [0, 5, 10, 15],
+        shields: [0, 10, 20, 30],
+        special: variant2SpecialCosts,
+      },
+    ],
+    { id: "SetCostsVariant2" },
+  );
+
+  const setVariant2AttributesCall = m.call(
+    shipAttributes,
+    "setVariantAttributes",
+    [
+      {
+        version: 1,
+        variant: 2,
+        baseHull: 100,
+        baseSpeed: 3,
+        foreAccuracy: [0, 25, 50],
+        hull: [0, 10, 20],
+        engineSpeeds: [0, 1, 2],
+        guns: variant2Guns,
+        armors: variant2Armors,
+        shields: variant2Shields,
+        specials: [
+          { range: 0, strength: 0, movement: 0 }, // None
+          { range: 0, strength: 0, movement: 0 }, // EMP (inert for variant 2)
+          { range: 0, strength: 0, movement: 0 }, // RepairDrones (inert for variant 2)
+          { range: 0, strength: 0, movement: 0 }, // FlakArray (inert for variant 2)
+          { range: 2, strength: 1, movement: 0 }, // ElectricStorm
+          { range: 5, strength: 40, movement: 0 }, // DroneSwarm
+          { range: 0, strength: 0, movement: 3 }, // AdditionalThruster
+          { range: 0, strength: 0, movement: 0 }, // future4
+        ],
+      },
+    ],
+    { id: "SetVariant2Attributes" },
   );
 
   // Set PvPMatch contract address in GameResults contract (PvPMatch now
@@ -579,6 +860,26 @@ const DeployModule = buildModule("DeployModule", (m) => {
     nodeIds[node.key] = BigInt(i + 1);
   });
 
+  // Shattered Hive Campaign medal: soulbound, awarded via player-initiated
+  // claimMedal() once the campaign's true final node (f06 — the end of the
+  // reconverged m/s/f storyline, not d06's dead-end branch; see
+  // singlePlayerStarterContent.json) has been completed. Deployed after the
+  // node-seeding loop above so nodeIds["f06"] is populated; the constructor
+  // arg is just a JS-side number by this point (createNode's own `after`
+  // chaining is what makes nodeIds trustworthy in the first place), but the
+  // deploy is still ordered after f06's own createNode call for good measure.
+  const shatteredHiveMedal = m.contract(
+    "ShatteredHiveMedal",
+    [nodeMap, nodeIds["f06"]],
+    { after: [nodeCalls["f06"]] },
+  );
+
+  // Gate variant-2 purchases on holding the medal.
+  const setVariant2GateCall = m.call(variantPurchaseGate, "setRequiredNft", [
+    2,
+    shatteredHiveMedal,
+  ]);
+
   // Set PvPMatch address in Lobbies contract
   const setLobbiesPvpMatchAddressCall = m.call(lobbies, "setPvpMatchAddress", [
     pvpMatch,
@@ -673,11 +974,12 @@ const DeployModule = buildModule("DeployModule", (m) => {
     { id: "SetTutorialClaimOnGameResults" },
   );
 
-  // Tutorial ships use trait variants 1–3; default maxVariant is 1
+  // Only 2 variants exist: variant 1 (default/tutorial faction) and
+  // variant 2 (the new faction); default maxVariant is 1
   const setMaxVariantForTutorialShipsCall = m.call(
     ships,
     "setMaxVariant",
-    [3],
+    [2],
     {
       id: "SetMaxVariantForTutorialShips",
     },
@@ -864,7 +1166,25 @@ const DeployModule = buildModule("DeployModule", (m) => {
 
     m.call(shipAttributes, "transferOwnership", [MAP_EDITOR], {
       id: "TransferShipAttributesOwnership",
-      after: [setShipAttributesShipsAddressCall],
+      after: [
+        setShipAttributesShipsAddressCall,
+        setCostsVariant1Call,
+        setCostsVariant2Call,
+        setVariant1AttributesCall,
+        setVariant2AttributesCall,
+      ],
+    });
+
+    m.call(metadataRenderer, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferMetadataRendererOwnership",
+      after: [
+        setEMPNameCall,
+        setRepairDronesNameCall,
+        setFlakArrayNameCall,
+        setElectricStormNameCall,
+        setDroneSwarmNameCall,
+        setAdditionalThrusterNameCall,
+      ],
     });
 
     m.call(shipPurchaser, "transferOwnership", [MAP_EDITOR], {
@@ -904,6 +1224,11 @@ const DeployModule = buildModule("DeployModule", (m) => {
         allowPvPMatchToStartGamesCall,
         allowSinglePlayerMatchToStartGamesCall,
         setFactionAbilityResolverCall,
+        setEMPResolverCall,
+        setRepairDronesResolverCall,
+        setFlakArrayResolverCall,
+        setElectricStormResolverCall,
+        setDroneSwarmResolverCall,
       ],
     });
 
@@ -944,6 +1269,15 @@ const DeployModule = buildModule("DeployModule", (m) => {
         allowSinglePlayerMatchToCompleteNodesCall,
         ...Object.values(nodeCalls),
       ],
+    });
+
+    m.call(variantPurchaseGate, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferVariantPurchaseGateOwnership",
+      after: [setVariant2GateCall],
+    });
+
+    m.call(shatteredHiveMedal, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferShatteredHiveMedalOwnership",
     });
 
     m.call(universalCredits, "transferOwnership", [MAP_EDITOR], {
@@ -1026,6 +1360,8 @@ const DeployModule = buildModule("DeployModule", (m) => {
     fleets,
     lobbies,
     nodeMap,
+    variantPurchaseGate,
+    shatteredHiveMedal,
     tutorialClaim,
     worldId,
     tournament,
@@ -1033,6 +1369,11 @@ const DeployModule = buildModule("DeployModule", (m) => {
     specialEffectsLib,
     destroyRewardLib,
     ramResolver,
+    empResolver,
+    repairDronesResolver,
+    flakArrayResolver,
+    electricStormResolver,
+    droneSwarmResolver,
     aiEncounters,
   };
 });

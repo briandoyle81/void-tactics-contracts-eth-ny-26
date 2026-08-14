@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "./Types.sol";
-import "./IFactionAbilityResolver.sol";
+import "./IEffectResolver.sol";
 import "./IShipAttributes.sol";
 import "./IShips.sol";
 
@@ -13,162 +13,21 @@ import "./IShips.sol";
 // sites instead of being inlined), per CLAUDE.md: reduce bytecode via
 // libraries rather than touching the contract-size check.
 //
-// Two things live here:
-// 1. RepairDrones/EMP/FlakArray arithmetic — the three natively-implemented
-//    equipment.special abilities, unchanged logic, just relocated.
-// 2. Faction-ability dispatch (resolveAndApply): the resolver call, the
-//    SpecialEffect[] ABI decode, and all hull/reactor/relocate arithmetic
-//    directly against game storage. The one thing it deliberately does NOT
-//    do is remove a ship from the game itself — that needs Game.sol's
-//    `ships`/`fleets` references and its existing, heavily-invariant
-//    `_removeShipFromGame` (fleet cleanup, game-end checks, orchestrator
-//    callback). Instead this returns a normalized list of ships to remove
-//    (and how), which Game.sol applies via that existing function.
+// Effect dispatch (resolveAndApply) is the one thing that lives here: the
+// resolver call (IEffectResolver — shared by faction abilities and equipped
+// Specials alike, see Game.sol's factionAbilityResolvers/specialResolvers
+// mappings), the SpecialEffect[] ABI decode, and all hull/reactor/relocate
+// arithmetic directly against game storage. The one thing it deliberately
+// does NOT do is remove a ship from the game itself — that needs Game.sol's
+// `ships`/`fleets` references and its existing, heavily-invariant
+// `_removeShipFromGame` (fleet cleanup, game-end checks, orchestrator
+// callback). Instead this returns a normalized list of ships to remove
+// (and how), which Game.sol applies via that existing function.
 library SpecialEffectsLib {
     int16 constant NO_RELOCATE = type(int16).min;
 
-    error InvalidMove();
     error ShipNotFound();
     error ShipDestroyed();
-
-    // RepairDrones/EMP range + arithmetic, moved here from Game.sol for the
-    // same bytecode-headroom reason as everything else in this file — same
-    // math and revert conditions as before, just relocated.
-    function validateSpecialRange(
-        GameData storage game,
-        IShipAttributes shipAttributes,
-        int16 _newRow,
-        int16 _newCol,
-        uint _targetShipId,
-        Special _special,
-        uint16 _variant
-    ) external view {
-        Position storage targetPos = game.shipPositions[_targetShipId].position;
-        uint8 specialRange = shipAttributes.getSpecialRange(_special, _variant);
-        uint8 manhattan = _manhattanDistance(Position(_newRow, _newCol), targetPos);
-        if (manhattan > specialRange) revert InvalidMove();
-    }
-
-    function performRepairDrones(
-        GameData storage game,
-        IShipAttributes shipAttributes,
-        uint _targetShipId,
-        uint16 _variant
-    ) external {
-        Attributes storage targetAttributes = game.shipAttributes[_targetShipId];
-        uint8 repairStrength = shipAttributes.getSpecialStrength(
-            Special.RepairDrones,
-            _variant
-        );
-        uint16 newHullPoints;
-        unchecked {
-            newHullPoints = uint16(targetAttributes.hullPoints) + uint16(repairStrength);
-        }
-        targetAttributes.hullPoints = newHullPoints > targetAttributes.maxHullPoints
-            ? targetAttributes.maxHullPoints
-            : uint8(newHullPoints);
-        EnumerableSet.remove(game.shipsWithZeroHP, _targetShipId);
-    }
-
-    // Returns true once the target's reactor timer reaches critical (>= 3);
-    // caller (Game.sol) still owns the actual removal via its own
-    // _removeShipFromGame, same as every other removal path in this file.
-    function performEMP(
-        GameData storage game,
-        IShipAttributes shipAttributes,
-        uint _actingShipId,
-        uint _targetShipId,
-        uint16 _variant
-    ) external returns (bool critical) {
-        Attributes storage targetAttributes = game.shipAttributes[_targetShipId];
-        uint8 empStrength = shipAttributes.getSpecialStrength(Special.EMP, _variant);
-        game.lastDamage[_targetShipId] = _actingShipId;
-        targetAttributes.reactorCriticalTimer += empStrength;
-        return targetAttributes.reactorCriticalTimer >= 3;
-    }
-
-    // FlakArray: self-centered AoE against both fleets, moved here from
-    // Game.sol for the same reason as everything else in this file — same
-    // math as before, just relocated.
-    struct FlakContext {
-        uint shipId; // ship using the FlakArray
-        int16 row;
-        int16 col;
-        uint8 range;
-        uint8 strength;
-    }
-
-    function performFlakArray(
-        GameData storage game,
-        IShipAttributes shipAttributes,
-        uint _shipId,
-        int16 _newRow,
-        int16 _newCol,
-        uint16 _variant
-    ) external {
-        FlakContext memory ctx = FlakContext({
-            shipId: _shipId,
-            row: _newRow,
-            col: _newCol,
-            range: shipAttributes.getSpecialRange(Special.FlakArray, _variant),
-            strength: shipAttributes.getSpecialStrength(Special.FlakArray, _variant)
-        });
-
-        _processFlakArrayForFleet(
-            game,
-            ctx,
-            game.playerActiveShipIds[game.metadata.creator]
-        );
-        _processFlakArrayForFleet(
-            game,
-            ctx,
-            game.playerActiveShipIds[game.metadata.joiner]
-        );
-    }
-
-    function _processFlakArrayForFleet(
-        GameData storage game,
-        FlakContext memory ctx,
-        EnumerableSet.UintSet storage shipIds
-    ) private {
-        uint shipCount = EnumerableSet.length(shipIds);
-        Position memory flakPos = Position(ctx.row, ctx.col);
-
-        for (uint i = 0; i < shipCount; i++) {
-            uint targetShipId = EnumerableSet.at(shipIds, i);
-            Position storage shipPos = game.shipPositions[targetShipId].position;
-            uint8 distance = _manhattanDistance(flakPos, shipPos);
-
-            if (distance <= ctx.range && targetShipId != ctx.shipId) {
-                game.lastDamage[targetShipId] = ctx.shipId;
-                Attributes storage targetAttrs = game.shipAttributes[targetShipId];
-                uint8 damage = uint8(
-                    ctx.strength -
-                        ((uint16(ctx.strength) * targetAttrs.damageReduction) / 100)
-                );
-                if (damage >= targetAttrs.hullPoints) {
-                    targetAttrs.hullPoints = 0;
-                    EnumerableSet.remove(game.shipMovedThisRound, targetShipId);
-                    EnumerableSet.add(game.shipsWithZeroHP, targetShipId);
-                } else {
-                    targetAttrs.hullPoints -= damage;
-                }
-            }
-        }
-    }
-
-    function _manhattanDistance(
-        Position memory a,
-        Position memory b
-    ) private pure returns (uint8) {
-        uint8 rowDiff = a.row > b.row
-            ? uint8(uint16(a.row - b.row))
-            : uint8(uint16(b.row - a.row));
-        uint8 colDiff = a.col > b.col
-            ? uint8(uint16(a.col - b.col))
-            : uint8(uint16(b.col - a.col));
-        return rowDiff + colDiff;
-    }
 
     // Bundled to keep resolveAndApply's own parameter/local count low
     // (Solidity's legacy codegen runs out of stack slots quickly across a
@@ -219,15 +78,14 @@ library SpecialEffectsLib {
             if (targetShip.shipData.timestampDestroyed != 0) revert ShipDestroyed();
         }
 
-        SpecialEffect[] memory effects = IFactionAbilityResolver(resolver)
-            .resolveFactionAbility(
-                ctx.gameId,
-                ctx.shipId,
-                ctx.variant,
-                ctx.targetShipId,
-                ctx.newRow,
-                ctx.newCol
-            );
+        SpecialEffect[] memory effects = IEffectResolver(resolver).resolveEffect(
+            ctx.gameId,
+            ctx.shipId,
+            ctx.variant,
+            ctx.targetShipId,
+            ctx.newRow,
+            ctx.newCol
+        );
 
         // Allocate for the worst case (every effect turns out to need
         // removal, or every effect turns out to relocate), fill in a single
@@ -285,6 +143,14 @@ library SpecialEffectsLib {
         Attributes storage attrs = game.shipAttributes[_effect.shipId];
 
         if (_effect.reactorTimerDelta != 0) {
+            // Matches the old native EMP's unconditional lastDamage write on
+            // every hit (not just the one that tips the timer critical) —
+            // only the value in place when the ship actually gets removed
+            // (read at Game.sol's _removeShipFromGame) ever matters, but
+            // writing it here on every delta is the minimal-diff match for
+            // prior behavior and self-attributes a rammer that destroys
+            // itself on its own 3rd ram.
+            game.lastDamage[_effect.shipId] = _actingShipId;
             int16 newTimer = int16(uint16(attrs.reactorCriticalTimer)) +
                 int16(_effect.reactorTimerDelta);
             if (newTimer < 0) newTimer = 0;

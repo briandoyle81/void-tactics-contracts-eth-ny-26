@@ -112,6 +112,13 @@ contract DroneYard is Ownable, ReentrancyGuard {
             _newShip.traits.variant > ships.maxVariant()
         ) revert InvalidVariant(_newShip.traits.variant);
 
+        // DroneYard never changes a ship's variant — closes the
+        // buy-cheap-then-convert bypass around variant purchase gates
+        // (e.g. VariantPurchaseGate.sol) at the root, rather than
+        // duplicating a gate check here.
+        if (_newShip.traits.variant != currentShip.traits.variant)
+            revert InvalidVariant(_newShip.traits.variant);
+
         // One of armor or shields must be None
         if (
             _newShip.equipment.armor != Armor.None &&

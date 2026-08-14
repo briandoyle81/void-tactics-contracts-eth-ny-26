@@ -3521,8 +3521,13 @@ describe("Game", function () {
         // (e.g., ship doesn't have special ability, out of range, etc.)
         const errorMessage =
           error instanceof Error ? error.message : String(error);
-        // Since we consolidated errors, InvalidMove is now acceptable
-        expect(errorMessage).to.include("InvalidMove");
+        // Resolvers revert with a descriptive error (e.g. OutOfRange,
+        // TargetNotEnemy) rather than the generic InvalidMove Game.sol uses
+        // elsewhere — a generic InvalidMove here would mean the failure
+        // came from somewhere else (e.g. a line-of-sight check leaking into
+        // the special-action path), which is exactly what this test guards
+        // against.
+        expect(errorMessage).to.not.include("InvalidMove");
         // The error should be something like "ship doesn't have special ability" not "line of sight blocked"
       }
     });
@@ -5552,6 +5557,564 @@ describe("Game", function () {
       // 10. Make sure that the ships out of range are undamaged
       expect(ship3AttrsAfter.hullPoints).to.equal(ship3AttrsBefore.hullPoints);
       expect(ship7AttrsAfter.hullPoints).to.equal(ship7AttrsBefore.hullPoints);
+    });
+  });
+
+  describe("Variant 2 (new faction) equipped Specials", function () {
+    const baseColors = {
+      h1: 0,
+      s1: 0,
+      l1: 0,
+      h2: 0,
+      s2: 0,
+      l2: 0,
+      h3: 0,
+      s3: 0,
+      l3: 0,
+    };
+
+    function buildCustomShip(overrides: {
+      name: string;
+      id: bigint;
+      owner: `0x${string}`;
+      special: number;
+      variant: number;
+    }): Ship {
+      return {
+        name: overrides.name,
+        id: overrides.id,
+        equipment: {
+          mainWeapon: 0, // Laser
+          armor: 0, // None
+          shields: 0, // None
+          special: overrides.special,
+        },
+        traits: {
+          serialNumber: 12345n,
+          colors: baseColors,
+          variant: overrides.variant,
+          accuracy: 0,
+          hull: 0,
+          speed: 2,
+        },
+        shipData: {
+          shipsDestroyed: 0,
+          costsVersion: 1,
+          cost: 0,
+          shiny: false,
+          constructed: false,
+          inFleet: false,
+          isFreeShip: false,
+          modified: 0,
+          timestampDestroyed: 0n,
+        },
+        owner: overrides.owner,
+      };
+    }
+
+    it("should allow ships with Drone Swarm to damage an enemy ship in range", async function () {
+      const { creatorLobbies, joinerLobbies, creator, joiner, ships, game, randomManager, owner } =
+        await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.fulfillRandomRequest([ship.traits.serialNumber]);
+      }
+
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+
+      const droneSwarmShip = buildCustomShip({
+        name: "Drone Swarm Ship",
+        id: 1n,
+        owner: creator.account.address,
+        special: 5, // DroneSwarm
+        variant: 2,
+      });
+      await ships.write.customizeShip([1n, droneSwarmShip], {
+        account: owner.account,
+      });
+
+      await ships.write.constructShip([6n], { account: joiner.account });
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n],
+        generateStartingPositions([1n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n],
+        generateStartingPositions([6n], false),
+      ]);
+
+      // Drone Swarm has range 5 — place the enemy 5 squares away (still in range).
+      await game.write.debugSetShipPosition([1n, 1n, 5, 0], {
+        account: owner.account,
+      });
+      await game.write.debugSetShipPosition([1n, 6n, 5, 5], {
+        account: owner.account,
+      });
+
+      const targetAttrsBefore = await game.read.getShipAttributes([1n, 6n]);
+
+      await game.write.moveShip([1n, 1n, 5, 0, ActionType.Special, 6n], {
+        account: creator.account,
+      });
+
+      const targetAttrsAfter = await game.read.getShipAttributes([1n, 6n]);
+      const strength = 40;
+      const expectedDamage = Math.max(
+        0,
+        strength -
+          Math.floor((strength * targetAttrsBefore.damageReduction) / 100),
+      );
+      expect(targetAttrsAfter.hullPoints).to.equal(
+        Math.max(0, targetAttrsBefore.hullPoints - expectedDamage),
+      );
+    });
+
+    it("should revert OutOfRange for Drone Swarm beyond range 5", async function () {
+      const { creatorLobbies, joinerLobbies, creator, joiner, ships, game, randomManager, owner } =
+        await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.fulfillRandomRequest([ship.traits.serialNumber]);
+      }
+
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+
+      const droneSwarmShip = buildCustomShip({
+        name: "Drone Swarm Ship",
+        id: 1n,
+        owner: creator.account.address,
+        special: 5, // DroneSwarm
+        variant: 2,
+      });
+      await ships.write.customizeShip([1n, droneSwarmShip], {
+        account: owner.account,
+      });
+      await ships.write.constructShip([6n], { account: joiner.account });
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n],
+        generateStartingPositions([1n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n],
+        generateStartingPositions([6n], false),
+      ]);
+
+      // Manhattan distance 6 — one past Drone Swarm's range of 5.
+      await game.write.debugSetShipPosition([1n, 1n, 0, 0], {
+        account: owner.account,
+      });
+      await game.write.debugSetShipPosition([1n, 6n, 0, 6], {
+        account: owner.account,
+      });
+
+      await expect(
+        game.write.moveShip([1n, 1n, 0, 0, ActionType.Special, 6n], {
+          account: creator.account,
+        }),
+      ).to.be.rejectedWith("OutOfRange");
+    });
+
+    it("should revert TargetNotEnemy for Drone Swarm targeting a friendly ship", async function () {
+      const { creatorLobbies, joinerLobbies, creator, joiner, ships, game, randomManager, owner } =
+        await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.fulfillRandomRequest([ship.traits.serialNumber]);
+      }
+
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+
+      const droneSwarmShip = buildCustomShip({
+        name: "Drone Swarm Ship",
+        id: 1n,
+        owner: creator.account.address,
+        special: 5, // DroneSwarm
+        variant: 2,
+      });
+      await ships.write.customizeShip([1n, droneSwarmShip], {
+        account: owner.account,
+      });
+      await ships.write.constructShip([2n], { account: creator.account });
+      await ships.write.constructShip([6n], { account: joiner.account });
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n, 2n],
+        generateStartingPositions([1n, 2n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n],
+        generateStartingPositions([6n], false),
+      ]);
+
+      await game.write.debugSetShipPosition([1n, 1n, 5, 0], {
+        account: owner.account,
+      });
+      await game.write.debugSetShipPosition([1n, 2n, 5, 1], {
+        account: owner.account,
+      });
+
+      await expect(
+        game.write.moveShip([1n, 1n, 5, 0, ActionType.Special, 2n], {
+          account: creator.account,
+        }),
+      ).to.be.rejectedWith("TargetNotEnemy");
+    });
+
+    it("should have Electric Storm hit friendly, enemy, and the caster's own ship with reactor damage", async function () {
+      const { creatorLobbies, joinerLobbies, creator, joiner, ships, game, randomManager, owner } =
+        await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.fulfillRandomRequest([ship.traits.serialNumber]);
+      }
+
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+
+      const stormShip = buildCustomShip({
+        name: "Electric Storm Ship",
+        id: 1n,
+        owner: creator.account.address,
+        special: 4, // ElectricStorm
+        variant: 2,
+      });
+      await ships.write.customizeShip([1n, stormShip], {
+        account: owner.account,
+      });
+      await ships.write.constructShip([2n], { account: creator.account }); // ally
+      await ships.write.constructShip([6n], { account: joiner.account }); // enemy
+      await ships.write.constructShip([7n], { account: joiner.account }); // enemy, out of range
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n, 2n],
+        generateStartingPositions([1n, 2n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n, 7n],
+        generateStartingPositions([6n, 7n], false),
+      ]);
+
+      // Electric Storm has range 2, centered on the caster's own position.
+      await game.write.debugSetShipPosition([1n, 1n, 5, 8], {
+        account: owner.account,
+      });
+      await game.write.debugSetShipPosition([1n, 2n, 5, 9], { // ally, distance 1 (in range)
+        account: owner.account,
+      });
+      await game.write.debugSetShipPosition([1n, 6n, 6, 9], { // enemy, distance 2 (in range)
+        account: owner.account,
+      });
+      await game.write.debugSetShipPosition([1n, 7n, 0, 0], { // enemy, far away (out of range)
+        account: owner.account,
+      });
+
+      const gameData = (await game.read.getGame([
+        1n,
+      ])) as unknown as GameDataView;
+      const stormPos = findShipPosition(gameData, 1n);
+      await game.write.moveShip(
+        [1n, 1n, stormPos.row, stormPos.col, ActionType.Special, 0n],
+        { account: creator.account },
+      );
+
+      const casterAttrs = await game.read.getShipAttributes([1n, 1n]);
+      const allyAttrs = await game.read.getShipAttributes([1n, 2n]);
+      const enemyInRangeAttrs = await game.read.getShipAttributes([1n, 6n]);
+      const enemyOutOfRangeAttrs = await game.read.getShipAttributes([
+        1n,
+        7n,
+      ]);
+
+      // Electric Storm strength is 1 (same per-hit reactor damage as EMP).
+      expect(casterAttrs.reactorCriticalTimer).to.equal(1); // hits itself too
+      expect(allyAttrs.reactorCriticalTimer).to.equal(1);
+      expect(enemyInRangeAttrs.reactorCriticalTimer).to.equal(1);
+      expect(enemyOutOfRangeAttrs.reactorCriticalTimer).to.equal(0);
+    });
+
+    it("should give a ship with Additional Thruster +3 movement, but revert InvalidMove if used as an action", async function () {
+      const { creatorLobbies, joinerLobbies, creator, joiner, ships, game, randomManager, owner } =
+        await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.fulfillRandomRequest([ship.traits.serialNumber]);
+      }
+
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+
+      const thrusterShip = buildCustomShip({
+        name: "Thruster Ship",
+        id: 1n,
+        owner: creator.account.address,
+        special: 6, // AdditionalThruster
+        variant: 2,
+      });
+      await ships.write.customizeShip([1n, thrusterShip], {
+        account: owner.account,
+      });
+
+      const noSpecialShip = buildCustomShip({
+        name: "No Special Ship",
+        id: 2n,
+        owner: creator.account.address,
+        special: 0, // None
+        variant: 2,
+      });
+      await ships.write.customizeShip([2n, noSpecialShip], {
+        account: owner.account,
+      });
+
+      await ships.write.constructShip([6n], { account: joiner.account });
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n, 2n],
+        generateStartingPositions([1n, 2n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n],
+        generateStartingPositions([6n], false),
+      ]);
+
+      const thrusterAttrs = await game.read.getShipAttributes([1n, 1n]);
+      const noSpecialAttrs = await game.read.getShipAttributes([1n, 2n]);
+      expect(thrusterAttrs.movement).to.equal(noSpecialAttrs.movement + 3);
+
+      const gameData = (await game.read.getGame([
+        1n,
+      ])) as unknown as GameDataView;
+      const thrusterPos = findShipPosition(gameData, 1n);
+      await expect(
+        game.write.moveShip(
+          [1n, 1n, thrusterPos.row, thrusterPos.col, ActionType.Special, 0n],
+          { account: creator.account },
+        ),
+      ).to.be.rejectedWith("InvalidMove");
+    });
+
+    it("should revert InvalidMove for Drone Swarm's slot equipped on a variant 1 ship (no resolver registered for that (variant, slot) pair)", async function () {
+      const { creatorLobbies, joinerLobbies, creator, joiner, ships, game, randomManager, owner } =
+        await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.fulfillRandomRequest([ship.traits.serialNumber]);
+      }
+
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+
+      // Special is a per-faction local slot now — Game.specialResolvers is
+      // keyed by (variant, slot), and Drone Swarm's resolver is only
+      // registered at (variant 2, slot 5). A variant-1 ship equipping slot
+      // 5 hits an unregistered (variant, slot) pair entirely, reverting
+      // InvalidMove before any range check ever runs.
+      const wrongFactionShip = buildCustomShip({
+        name: "Wrong Faction Ship",
+        id: 1n,
+        owner: creator.account.address,
+        special: 5, // DroneSwarm
+        variant: 1,
+      });
+      await ships.write.customizeShip([1n, wrongFactionShip], {
+        account: owner.account,
+      });
+      await ships.write.constructShip([6n], { account: joiner.account });
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n],
+        generateStartingPositions([1n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n],
+        generateStartingPositions([6n], false),
+      ]);
+
+      await game.write.debugSetShipPosition([1n, 1n, 5, 0], {
+        account: owner.account,
+      });
+      await game.write.debugSetShipPosition([1n, 6n, 5, 1], {
+        account: owner.account,
+      });
+
+      await expect(
+        game.write.moveShip([1n, 1n, 5, 0, ActionType.Special, 6n], {
+          account: creator.account,
+        }),
+      ).to.be.rejectedWith("InvalidMove");
+    });
+
+    it("should revert InvalidVariant when minting a ship with variant 3 (only 2 variants exist now)", async function () {
+      const { ships, owner, creator } = await loadFixture(deployGameFixture);
+
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+
+      const variant3Ship = buildCustomShip({
+        name: "Phantom Variant Ship",
+        id: 0n,
+        owner: creator.account.address,
+        special: 0,
+        variant: 3,
+      });
+
+      await expect(
+        ships.write.createSpecificShip(
+          [creator.account.address, variant3Ship],
+          { account: owner.account },
+        ),
+      ).to.be.rejectedWith("InvalidVariant");
     });
   });
 

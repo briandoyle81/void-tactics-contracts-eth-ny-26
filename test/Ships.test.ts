@@ -96,6 +96,7 @@ describe("Ships", function () {
         "0x0000000000000000000000000000000000000000", // shipAttributes
         "0x0000000000000000000000000000000000000000", // universalCredits
         "0x0000000000000000000000000000000000000000", // droneEnergyCores
+        "0x0000000000000000000000000000000000000000", // purchaseGate
       ]);
 
       const config = await ships.read.config();
@@ -399,6 +400,7 @@ describe("Ships", function () {
         "0x0000000000000000000000000000000000000000", // shipAttributes
         "0x0000000000000000000000000000000000000000", // universalCredits
         "0x0000000000000000000000000000000000000000", // droneEnergyCores
+        "0x0000000000000000000000000000000000000000", // purchaseGate
       ]);
 
       const config = await ships.read.config();
@@ -780,6 +782,172 @@ describe("Ships", function () {
       expect(attributeMap.get("Armor")).to.be.a("string");
       expect(attributeMap.get("Shields")).to.be.a("string");
       expect(attributeMap.get("Special")).to.be.a("string");
+    });
+
+    it("Should show variant 2's own weapon/special names, distinct from variant 1's", async function () {
+      const { ships, owner, user1 } = await loadFixture(deployShipsFixture);
+
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+
+      await ships.write.createShips([user1.account.address, 1, 1, 0], {
+        account: owner.account,
+      });
+
+      const variant2Ship = {
+        name: "Variant 2 Ship",
+        id: 1n,
+        equipment: {
+          mainWeapon: 0, // Laser -> "Mining Laser" for variant 2
+          armor: 0,
+          shields: 0,
+          special: 4, // ElectricStorm
+        },
+        traits: {
+          serialNumber: 999n,
+          colors: {
+            h1: 0,
+            s1: 0,
+            l1: 0,
+            h2: 0,
+            s2: 0,
+            l2: 0,
+            h3: 0,
+            s3: 0,
+            l3: 0,
+          },
+          variant: 2,
+          accuracy: 0,
+          hull: 0,
+          speed: 0,
+        },
+        shipData: {
+          constructed: false,
+          inFleet: false,
+          isFreeShip: false,
+          modified: 0,
+          timestampDestroyed: 0n,
+          shiny: false,
+          shipsDestroyed: 0,
+          costsVersion: 1,
+          cost: 0,
+        },
+        owner: user1.account.address,
+      };
+
+      await ships.write.customizeShip([1n, variant2Ship], {
+        account: owner.account,
+      });
+
+      const tokenURI = await ships.read.tokenURI([1n]);
+      const base64Content = tokenURI.replace(
+        "data:application/json;base64,",
+        "",
+      );
+      const decodedContent = Buffer.from(base64Content, "base64").toString();
+      const metadata = JSON.parse(decodedContent);
+      const attributeMap = new Map(
+        metadata.attributes.map(
+          (attr: { trait_type: string; value: string | number | boolean }) => [
+            attr.trait_type,
+            attr.value,
+          ],
+        ),
+      );
+
+      expect(attributeMap.get("Main Weapon")).to.equal("Mining Laser");
+      expect(attributeMap.get("Special")).to.equal("Electric Storm");
+    });
+
+    it("Should show 'Unknown' for a special name never set for that (variant, slot) pair", async function () {
+      const { ships, owner, user1 } = await loadFixture(deployShipsFixture);
+
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+
+      await ships.write.createShips([user1.account.address, 1, 1, 0], {
+        account: owner.account,
+      });
+
+      // Slot 4 (Electric Storm) only has a name set for variant 2 — a
+      // variant-1 ship equipped with slot 4 (inert for that faction) has
+      // no configured name for (variant 1, slot 4).
+      const variant1SlotFourShip = {
+        name: "Variant 1 Slot 4 Ship",
+        id: 1n,
+        equipment: {
+          mainWeapon: 0,
+          armor: 0,
+          shields: 0,
+          special: 4,
+        },
+        traits: {
+          serialNumber: 999n,
+          colors: {
+            h1: 0,
+            s1: 0,
+            l1: 0,
+            h2: 0,
+            s2: 0,
+            l2: 0,
+            h3: 0,
+            s3: 0,
+            l3: 0,
+          },
+          variant: 1,
+          accuracy: 0,
+          hull: 0,
+          speed: 0,
+        },
+        shipData: {
+          constructed: false,
+          inFleet: false,
+          isFreeShip: false,
+          modified: 0,
+          timestampDestroyed: 0n,
+          shiny: false,
+          shipsDestroyed: 0,
+          costsVersion: 1,
+          cost: 0,
+        },
+        owner: user1.account.address,
+      };
+
+      await ships.write.customizeShip([1n, variant1SlotFourShip], {
+        account: owner.account,
+      });
+
+      const tokenURI = await ships.read.tokenURI([1n]);
+      const base64Content = tokenURI.replace(
+        "data:application/json;base64,",
+        "",
+      );
+      const decodedContent = Buffer.from(base64Content, "base64").toString();
+      const metadata = JSON.parse(decodedContent);
+      const attributeMap = new Map(
+        metadata.attributes.map(
+          (attr: { trait_type: string; value: string | number | boolean }) => [
+            attr.trait_type,
+            attr.value,
+          ],
+        ),
+      );
+
+      expect(attributeMap.get("Special")).to.equal("Unknown");
+    });
+
+    it("Should not allow non-owner to set a special name", async function () {
+      const { metadataRenderer, user1 } = await loadFixture(deployShipsFixture);
+
+      await expect(
+        metadataRenderer.write.setSpecialName([1, 1, "Not Allowed"], {
+          account: user1.account,
+        }),
+      ).to.be.rejectedWith("OwnableUnauthorizedAccount");
     });
 
     it("Should reflect modified flag changes in metadata", async function () {
@@ -1391,6 +1559,61 @@ describe("Ships", function () {
       expect(user1Ships[0]).to.equal(1n);
       expect(user1Ships[1]).to.equal(2n);
       expect(user1Ships[2]).to.equal(3n);
+    });
+  });
+
+  describe("Variant Purchase Gate", function () {
+    it("Should reject minting a variant-2 ship without the Shattered Hive medal", async function () {
+      const { ships, user1, owner } = await loadFixture(deployShipsFixture);
+
+      await ships.write.setIsAllowedToCreateShips(
+        [user1.account.address, true],
+        { account: owner.account },
+      );
+
+      await expect(
+        ships.write.createShips([user1.account.address, 1n, 2, 0], {
+          account: user1.account,
+        }),
+      ).to.be.rejectedWith("GateRequirementNotMet");
+    });
+
+    it("Should allow minting a variant-2 ship once the recipient holds the medal", async function () {
+      const { ships, shatteredHiveMedal, user1, owner } =
+        await loadFixture(deployShipsFixture);
+
+      await ships.write.setIsAllowedToCreateShips(
+        [user1.account.address, true],
+        { account: owner.account },
+      );
+
+      await shatteredHiveMedal.write.ownerMint([user1.account.address], {
+        account: owner.account,
+      });
+
+      await ships.write.createShips([user1.account.address, 1n, 2, 0], {
+        account: user1.account,
+      });
+
+      const shipTuple = (await ships.read.ships([1n])) as ShipTuple;
+      const ship = tupleToShip(shipTuple);
+      expect(ship.traits.variant).to.equal(2);
+    });
+
+    it("Should not require the medal for variant-1 ships", async function () {
+      const { ships, user1, owner } = await loadFixture(deployShipsFixture);
+
+      await ships.write.setIsAllowedToCreateShips(
+        [user1.account.address, true],
+        { account: owner.account },
+      );
+
+      await ships.write.createShips([user1.account.address, 1n, 1, 0], {
+        account: user1.account,
+      });
+
+      const shipCount = await ships.read.shipCount();
+      expect(shipCount).to.equal(1n);
     });
   });
 
@@ -2020,6 +2243,7 @@ describe("Ships", function () {
           shipAttributes.address, // shipAttributes - use actual
           universalCredits.address, // universalCredits - use actual
           "0x0000000000000000000000000000000000000000", // droneEnergyCores
+          "0x0000000000000000000000000000000000000000", // purchaseGate
         ],
         {
           account: owner.account,
@@ -2875,21 +3099,28 @@ describe("Ships", function () {
       const newHull = [0, 10, 20, 30];
 
       await expect(
-        shipAttributes.write.setAllAttributes(
-          [
-            120, // baseHull
-            7, // baseSpeed
-            newGuns,
-            newArmors,
-            newShields,
-          ],
-          { account: user1.account },
-        ),
+        shipAttributes.write.startNewAttributesVersion({
+          account: user1.account,
+        }),
       ).to.be.rejectedWith("OwnableUnauthorizedAccount");
 
       await expect(
         shipAttributes.write.setVariantAttributes(
-          [1, 1, newForeAccuracy, newHull, newEngineSpeeds, newSpecials],
+          [
+            {
+              version: 1,
+              variant: 1,
+              baseHull: 120,
+              baseSpeed: 7,
+              foreAccuracy: newForeAccuracy,
+              hull: newHull,
+              engineSpeeds: newEngineSpeeds,
+              guns: newGuns,
+              armors: newArmors,
+              shields: newShields,
+              specials: newSpecials,
+            },
+          ],
           { account: user1.account },
         ),
       ).to.be.rejectedWith("OwnableUnauthorizedAccount");
@@ -2898,9 +3129,9 @@ describe("Ships", function () {
     it("Should allow owner to update costs", async function () {
       const { shipAttributes, owner } = await loadFixture(deployShipsFixture);
 
-      // Get current costs
-      const currentCosts = await shipAttributes.read.getCosts();
-      expect(currentCosts[0]).to.equal(1n); // version should be 1
+      // Get current costs for variant 1
+      const currentCosts = await shipAttributes.read.getCosts([1]);
+      expect(currentCosts[0]).to.equal(1n); // version should be 1 (the deploy module's own setCostsVariant1Call is the only seed — nothing in the constructor pre-bumps it)
 
       // Create new costs
       const newCosts = {
@@ -2912,24 +3143,25 @@ describe("Ships", function () {
         mainWeapon: [30, 35, 45, 45],
         armor: [0, 8, 12, 18],
         shields: [0, 12, 24, 36],
-        special: [0, 12, 24, 18],
-        variant: [0, 0],
+        special: [0, 12, 24, 18, 18, 24, 12, 0],
       };
 
-      // Update costs
-      await shipAttributes.write.setCosts([newCosts], {
+      // Update costs for variant 1
+      await shipAttributes.write.setCosts([1, newCosts], {
         account: owner.account,
       });
 
       // Verify costs were updated
-      const updatedCosts = await shipAttributes.read.getCosts();
+      const updatedCosts = await shipAttributes.read.getCosts([1]);
       expect(updatedCosts[0]).to.equal(2n); // version should be 2
       expect(updatedCosts[1].baseCost).to.equal(60);
       expect(updatedCosts[1].accuracy[1]).to.equal(15); // accuracy tier 1 cost
       expect(updatedCosts[1].mainWeapon[0]).to.equal(30); // laser cost
 
       // Verify current costs version
-      const costsVersion = await shipAttributes.read.getCurrentCostsVersion();
+      const costsVersion = await shipAttributes.read.getCurrentCostsVersion([
+        1,
+      ]);
       expect(costsVersion).to.equal(2);
     });
 
@@ -2945,13 +3177,14 @@ describe("Ships", function () {
         mainWeapon: [30, 35, 45, 45],
         armor: [0, 8, 12, 18],
         shields: [0, 12, 24, 36],
-        special: [0, 12, 24, 18],
-        variant: [0, 0],
+        special: [0, 12, 24, 18, 18, 24, 12, 0],
       };
 
       // Try to update costs as non-owner
       await expect(
-        shipAttributes.write.setCosts([newCosts], { account: user1.account }),
+        shipAttributes.write.setCosts([1, newCosts], {
+          account: user1.account,
+        }),
       ).to.be.rejectedWith("OwnableUnauthorizedAccount");
     });
 
@@ -2992,19 +3225,10 @@ describe("Ships", function () {
       const newEngineSpeeds = [0, 2, 3];
       const newHull = [0, 10, 20];
 
-      // Update all attributes
-      await shipAttributes.write.setAllAttributes(
-        [
-          120, // baseHull
-          4, // baseSpeed
-          newGuns,
-          newArmors,
-          newShields,
-        ],
-        {
-          account: owner.account,
-        },
-      );
+      // Start a new attributes version
+      await shipAttributes.write.startNewAttributesVersion({
+        account: owner.account,
+      });
 
       // Verify version incremented
       const newVersion =
@@ -3012,7 +3236,21 @@ describe("Ships", function () {
       expect(newVersion).to.equal(2);
 
       await shipAttributes.write.setVariantAttributes(
-        [2, 1, newForeAccuracy, newHull, newEngineSpeeds, newSpecials],
+        [
+          {
+            version: 2,
+            variant: 1,
+            baseHull: 120,
+            baseSpeed: 4,
+            foreAccuracy: newForeAccuracy,
+            hull: newHull,
+            engineSpeeds: newEngineSpeeds,
+            guns: newGuns,
+            armors: newArmors,
+            shields: newShields,
+            specials: newSpecials,
+          },
+        ],
         {
           account: owner.account,
         },
@@ -3021,6 +3259,7 @@ describe("Ships", function () {
       // Verify new attributes are set correctly
       const versionData = await shipAttributes.read.getAttributesVersionBase([
         2,
+        1,
       ]);
       expect(versionData[0]).to.equal(2); // version
       expect(versionData[1]).to.equal(120); // baseHull
@@ -3059,23 +3298,28 @@ describe("Ships", function () {
       const newHull = [0, 10, 20];
 
       await expect(
-        shipAttributes.write.setAllAttributes(
-          [
-            120, // baseHull
-            4, // baseSpeed
-            newGuns,
-            newArmors,
-            newShields,
-          ],
-          {
-            account: user1.account,
-          },
-        ),
+        shipAttributes.write.startNewAttributesVersion({
+          account: user1.account,
+        }),
       ).to.be.rejectedWith("OwnableUnauthorizedAccount");
 
       await expect(
         shipAttributes.write.setVariantAttributes(
-          [1, 1, newForeAccuracy, newHull, newEngineSpeeds, newSpecials],
+          [
+            {
+              version: 1,
+              variant: 1,
+              baseHull: 120,
+              baseSpeed: 4,
+              foreAccuracy: newForeAccuracy,
+              hull: newHull,
+              engineSpeeds: newEngineSpeeds,
+              guns: newGuns,
+              armors: newArmors,
+              shields: newShields,
+              specials: newSpecials,
+            },
+          ],
           {
             account: user1.account,
           },
@@ -3511,6 +3755,42 @@ describe("Ships", function () {
           account: user1.account,
         }),
       ).to.be.rejectedWith("ArmorAndShieldsBothSet");
+    });
+
+    it("Should not allow modifying a ship to change its variant", async function () {
+      const { ships, user1, user2, randomManager, user1DroneYard } =
+        await loadFixture(deployShipsFixture);
+
+      await ships.write.purchaseWithFlow(
+        [user1.account.address, 0n, user2.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      const shipTuple = (await ships.read.ships([1n])) as ShipTuple;
+      const ship = tupleToShip(shipTuple);
+      const serialNumber = ship.traits.serialNumber;
+
+      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await ships.write.constructShip([1n], { account: user1.account });
+
+      const currentShipTuple = (await ships.read.ships([1n])) as ShipTuple;
+      const currentShip = tupleToShip(currentShipTuple);
+
+      // Try to convert the variant-1 ship into a variant-2 ship, bypassing
+      // the purchase-time medal gate.
+      const modifiedShip: Ship = {
+        ...currentShip,
+        traits: {
+          ...currentShip.traits,
+          variant: 2,
+        },
+      };
+
+      await expect(
+        user1DroneYard.write.modifyShip([1n, modifiedShip], {
+          account: user1.account,
+        }),
+      ).to.be.rejectedWith("InvalidVariant");
     });
 
     it("Should preserve name and colors when modifying ship", async function () {

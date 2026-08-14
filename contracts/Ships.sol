@@ -17,6 +17,7 @@ import "./IGenerateNewShip.sol";
 import "./IUniversalCredits.sol";
 import "./IShipAttributes.sol";
 import "./IDroneEnergyCores.sol";
+import "./IVariantPurchaseGate.sol";
 
 contract Ships is ERC721, Ownable, ReentrancyGuard {
     using EnumerableSet for EnumerableSet.UintSet;
@@ -85,6 +86,12 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
 
     IUniversalCredits public universalCredits;
     IDroneEnergyCores public droneEnergyCores;
+    // Per-variant purchase gate registry (e.g. requiring the Shattered Hive
+    // Campaign medal for variant 2) — see _mintShip/VariantPurchaseGate.sol.
+    // Ships.sol deliberately knows nothing about which variants are gated or
+    // on what; that's owner-configured entirely inside the gate contract, so
+    // future gated variants need zero Ships.sol changes.
+    address purchaseGate;
     uint public recycleReward = 0.1 ether; // 0.1 UC tokens
 
     // Only Owner TODO
@@ -378,9 +385,9 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         if (ship.shipData.inFleet) {
             revert ShipInFleet(_id);
         }
-        ship.shipData.costsVersion = config
-            .shipAttributes
-            .getCurrentCostsVersion();
+        ship.shipData.costsVersion = config.shipAttributes.getCurrentCostsVersion(
+            ship.traits.variant
+        );
         ship.shipData.cost = config.shipAttributes.calculateShipCost(ship);
     }
 
@@ -475,8 +482,13 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         if (_variant > maxVariant || _variant == 0) {
             revert InvalidVariant(_variant);
         }
+        if (purchaseGate != address(0)) {
+            IVariantPurchaseGate(purchaseGate).checkGate(_variant, _to);
+        }
 
-        shipCount++;
+        unchecked {
+            shipCount++;
+        }
         Ship storage newShip = ships[shipCount];
         newShip.id = shipCount;
 
@@ -588,7 +600,8 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         address _metadataRenderer,
         address _shipAttributes,
         address _universalCredits,
-        address _droneEnergyCores
+        address _droneEnergyCores,
+        address _purchaseGate
     ) public onlyOwner {
         config.gameAddress = _gameAddress;
         config.lobbyAddress = _lobbyAddress;
@@ -599,6 +612,7 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         config.shipAttributes = IShipAttributes(_shipAttributes);
         universalCredits = IUniversalCredits(_universalCredits);
         droneEnergyCores = IDroneEnergyCores(_droneEnergyCores);
+        purchaseGate = _purchaseGate;
     }
 
     function setPaused(bool _paused) external onlyOwner {
@@ -714,15 +728,6 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
             shipsFetched[i] = ships[_ids[i]];
         }
         return shipsFetched;
-    }
-
-    /**
-     * @dev PURE
-     */
-
-    // TODO: Do tiers need to be adjustable?
-    function getTierOfTrait(uint _trait) external pure returns (uint8) {
-        return _trait < 50 ? 0 : (_trait < 80 ? 1 : 2);
     }
 
     function shipBreaker(uint[] calldata _shipIds) external nonReentrant {
