@@ -792,7 +792,7 @@ describe("Ships", function () {
         { account: owner.account },
       );
 
-      await ships.write.createShips([user1.account.address, 1, 1, 0], {
+      await ships.write.createShips([user1.account.address, 1, 1, 0, false], {
         account: owner.account,
       });
 
@@ -869,7 +869,7 @@ describe("Ships", function () {
         { account: owner.account },
       );
 
-      await ships.write.createShips([user1.account.address, 1, 1, 0], {
+      await ships.write.createShips([user1.account.address, 1, 1, 0, false], {
         account: owner.account,
       });
 
@@ -958,7 +958,7 @@ describe("Ships", function () {
         { account: owner.account },
       );
 
-      await ships.write.createShips([user1.account.address, 1, 1, 0], {
+      await ships.write.createShips([user1.account.address, 1, 1, 0, false], {
         account: owner.account,
       });
 
@@ -1446,7 +1446,7 @@ describe("Ships", function () {
       );
 
       // Create 3 ships for user1
-      await ships.write.createShips([user1.account.address, 3n, 1, 0], {
+      await ships.write.createShips([user1.account.address, 3n, 1, 0, false], {
         account: user1.account,
       });
 
@@ -1469,7 +1469,7 @@ describe("Ships", function () {
 
       // Try to create ships without authorization
       await expect(
-        ships.write.createShips([user1.account.address, 3n, 1, 0], {
+        ships.write.createShips([user1.account.address, 3n, 1, 0, false], {
           account: user2.account,
         }),
       ).to.be.rejectedWith("NotAuthorized");
@@ -1487,7 +1487,7 @@ describe("Ships", function () {
       );
 
       // Create 10 ships for user1
-      await ships.write.createShips([user1.account.address, 10n, 1, 0], {
+      await ships.write.createShips([user1.account.address, 10n, 1, 0, false], {
         account: user1.account,
       });
 
@@ -1517,7 +1517,7 @@ describe("Ships", function () {
       );
 
       // Create 5 ships for user1 using owner account
-      await ships.write.createShips([user1.account.address, 5n, 1, 0], {
+      await ships.write.createShips([user1.account.address, 5n, 1, 0, false], {
         account: user1.account,
       });
 
@@ -1547,7 +1547,7 @@ describe("Ships", function () {
       );
 
       // Create 3 ships for user1
-      await ships.write.createShips([user1.account.address, 3n, 1, 0], {
+      await ships.write.createShips([user1.account.address, 3n, 1, 0, false], {
         account: user1.account,
       });
 
@@ -1572,7 +1572,7 @@ describe("Ships", function () {
       );
 
       await expect(
-        ships.write.createShips([user1.account.address, 1n, 2, 0], {
+        ships.write.createShips([user1.account.address, 1n, 2, 0, false], {
           account: user1.account,
         }),
       ).to.be.rejectedWith("GateRequirementNotMet");
@@ -1591,7 +1591,7 @@ describe("Ships", function () {
         account: owner.account,
       });
 
-      await ships.write.createShips([user1.account.address, 1n, 2, 0], {
+      await ships.write.createShips([user1.account.address, 1n, 2, 0, false], {
         account: user1.account,
       });
 
@@ -1608,7 +1608,7 @@ describe("Ships", function () {
         { account: owner.account },
       );
 
-      await ships.write.createShips([user1.account.address, 1n, 1, 0], {
+      await ships.write.createShips([user1.account.address, 1n, 1, 0, false], {
         account: user1.account,
       });
 
@@ -1630,7 +1630,7 @@ describe("Ships", function () {
       );
 
       // Create a ship first
-      await ships.write.createShips([user1.account.address, 1, 1, 0], {
+      await ships.write.createShips([user1.account.address, 1, 1, 0, false], {
         account: user1.account,
       });
 
@@ -1718,7 +1718,7 @@ describe("Ships", function () {
       );
 
       // Create a ship first
-      await ships.write.createShips([user1.account.address, 1, 1, 0], {
+      await ships.write.createShips([user1.account.address, 1, 1, 0, false], {
         account: user1.account,
       });
 
@@ -1784,7 +1784,7 @@ describe("Ships", function () {
       );
 
       // Create a ship first
-      await ships.write.createShips([user1.account.address, 1, 1, 0], {
+      await ships.write.createShips([user1.account.address, 1, 1, 0, false], {
         account: user1.account,
       });
 
@@ -1884,7 +1884,7 @@ describe("Ships", function () {
       );
 
       // Create a ship first
-      await ships.write.createShips([user1.account.address, 1, 1, 0], {
+      await ships.write.createShips([user1.account.address, 1, 1, 0, false], {
         account: user1.account,
       });
 
@@ -2167,6 +2167,188 @@ describe("Ships", function () {
       ).to.be.rejectedWith("OwnableUnauthorizedAccount");
     });
 
+    it("Should pay DEC (not UC) when recycling a variant-2 ship", async function () {
+      const {
+        ships,
+        universalCredits,
+        droneEnergyCores,
+        shatteredHiveMedal,
+        shipPurchaser,
+        user1,
+        user2,
+        owner,
+      } = await loadFixture(deployShipsFixture);
+
+      // Purchase enough ships to clear the amountPurchased >= 10 transfer
+      // guard (see Ships.sol's ERC721 _update override), then mint one
+      // variant-2 ship on top via the authorized-minter path.
+      await universalCredits.write.approve(
+        [shipPurchaser.address, parseEther("100")],
+        { account: user1.account },
+      );
+      await shipPurchaser.write.purchaseWithUC(
+        [user1.account.address, 1n, user2.account.address, 1],
+        { account: user1.account },
+      );
+
+      await ships.write.setIsAllowedToCreateShips(
+        [user1.account.address, true],
+        { account: owner.account },
+      );
+      await shatteredHiveMedal.write.ownerMint([user1.account.address], {
+        account: owner.account,
+      });
+      await ships.write.createShips([user1.account.address, 1n, 2, 0, false], {
+        account: user1.account,
+      });
+
+      const allShipIds = await ships.read.getShipIdsOwned([
+        user1.account.address,
+      ]);
+      const variant2ShipId = allShipIds[allShipIds.length - 1];
+      const variant2Reward = await ships.read.variant2RecycleReward();
+
+      const initialUcBalance = await universalCredits.read.balanceOf([
+        user1.account.address,
+      ]);
+      const initialDecBalance = await droneEnergyCores.read.balanceOf([
+        user1.account.address,
+      ]);
+
+      await ships.write.shipBreaker([[variant2ShipId]], {
+        account: user1.account,
+      });
+
+      expect(
+        (await droneEnergyCores.read.balanceOf([user1.account.address])) -
+          initialDecBalance,
+      ).to.equal(variant2Reward);
+      expect(
+        await universalCredits.read.balanceOf([user1.account.address]),
+      ).to.equal(initialUcBalance);
+    });
+
+    it("Should halve the variant-2 DEC reward when recycling an already-destroyed variant-2 ship", async function () {
+      const {
+        ships,
+        droneEnergyCores,
+        shatteredHiveMedal,
+        shipPurchaser,
+        universalCredits,
+        user1,
+        user2,
+        owner,
+      } = await loadFixture(deployShipsFixture);
+
+      await universalCredits.write.approve(
+        [shipPurchaser.address, parseEther("100")],
+        { account: user1.account },
+      );
+      await shipPurchaser.write.purchaseWithUC(
+        [user1.account.address, 1n, user2.account.address, 1],
+        { account: user1.account },
+      );
+
+      await ships.write.setIsAllowedToCreateShips(
+        [user1.account.address, true],
+        { account: owner.account },
+      );
+      await shatteredHiveMedal.write.ownerMint([user1.account.address], {
+        account: owner.account,
+      });
+      await ships.write.createShips([user1.account.address, 1n, 2, 0, false], {
+        account: user1.account,
+      });
+
+      const allShipIds = await ships.read.getShipIdsOwned([
+        user1.account.address,
+      ]);
+      const variant2ShipId = allShipIds[allShipIds.length - 1];
+      const variant2Reward = await ships.read.variant2RecycleReward();
+
+      // Mark the ship as already destroyed (mirrors how the recycle-vs-kill
+      // halving interacts elsewhere in this file), then recycle it.
+      await ships.write.markDestroyed([variant2ShipId], {
+        account: owner.account,
+      });
+
+      const initialDecBalance = await droneEnergyCores.read.balanceOf([
+        user1.account.address,
+      ]);
+
+      await ships.write.shipBreaker([[variant2ShipId]], {
+        account: user1.account,
+      });
+
+      expect(
+        (await droneEnergyCores.read.balanceOf([user1.account.address])) -
+          initialDecBalance,
+      ).to.equal(variant2Reward >> 1n);
+    });
+
+    it("Should mint both UC and DEC totals correctly for a mixed variant-1/variant-2 recycle batch", async function () {
+      const {
+        ships,
+        universalCredits,
+        droneEnergyCores,
+        shatteredHiveMedal,
+        shipPurchaser,
+        user1,
+        user2,
+        owner,
+      } = await loadFixture(deployShipsFixture);
+
+      await universalCredits.write.approve(
+        [shipPurchaser.address, parseEther("100")],
+        { account: user1.account },
+      );
+      await shipPurchaser.write.purchaseWithUC(
+        [user1.account.address, 1n, user2.account.address, 1],
+        { account: user1.account },
+      );
+
+      await ships.write.setIsAllowedToCreateShips(
+        [user1.account.address, true],
+        { account: owner.account },
+      );
+      await shatteredHiveMedal.write.ownerMint([user1.account.address], {
+        account: owner.account,
+      });
+      await ships.write.createShips([user1.account.address, 1n, 2, 0, false], {
+        account: user1.account,
+      });
+
+      const allShipIds = await ships.read.getShipIdsOwned([
+        user1.account.address,
+      ]);
+      // Recycle 2 of the purchased variant-1 ships plus the 1 variant-2 ship.
+      const recycleIds = [
+        allShipIds[0],
+        allShipIds[1],
+        allShipIds[allShipIds.length - 1],
+      ];
+      const recycleReward = await ships.read.recycleReward();
+      const variant2Reward = await ships.read.variant2RecycleReward();
+
+      const initialUcBalance = await universalCredits.read.balanceOf([
+        user1.account.address,
+      ]);
+      const initialDecBalance = await droneEnergyCores.read.balanceOf([
+        user1.account.address,
+      ]);
+
+      await ships.write.shipBreaker([recycleIds], { account: user1.account });
+
+      expect(
+        (await universalCredits.read.balanceOf([user1.account.address])) -
+          initialUcBalance,
+      ).to.equal(recycleReward * 2n);
+      expect(
+        (await droneEnergyCores.read.balanceOf([user1.account.address])) -
+          initialDecBalance,
+      ).to.equal(variant2Reward);
+    });
+
     it("Should allow users to recycle their ships and receive UC tokens", async function () {
       const { ships, universalCredits, user1, user2, shipPurchaser } =
         await loadFixture(deployShipsFixture);
@@ -2312,11 +2494,11 @@ describe("Ships", function () {
     });
 
     it("Should not allow recycling free ships", async function () {
-      const { ships, universalCredits, user1 } =
+      const { ships, universalCredits, user1, freeShipClaim } =
         await loadFixture(deployShipsFixture);
 
       // Claim free ships
-      await ships.write.claimFreeShips([1], { account: user1.account });
+      await freeShipClaim.write.claimFreeShips([1], { account: user1.account });
 
       // Get ship IDs owned by user1 (these are free ships)
       const shipIds = await ships.read.getShipIdsOwned([user1.account.address]);
@@ -2337,11 +2519,11 @@ describe("Ships", function () {
     });
 
     it("Should allow recycling purchased ships but not free ships in the same call", async function () {
-      const { ships, universalCredits, user1, user2, shipPurchaser } =
+      const { ships, universalCredits, user1, user2, shipPurchaser, freeShipClaim } =
         await loadFixture(deployShipsFixture);
 
       // Claim free ships first
-      await ships.write.claimFreeShips([1], { account: user1.account });
+      await freeShipClaim.write.claimFreeShips([1], { account: user1.account });
       const freeShipIds = await ships.read.getShipIdsOwned([
         user1.account.address,
       ]);
@@ -2412,13 +2594,14 @@ describe("Ships", function () {
 
   describe("Free Ship Claiming", function () {
     it("Should allow users to claim free ships initially", async function () {
-      const { ships, user1 } = await loadFixture(deployShipsFixture);
+      const { ships, user1, freeShipClaim } =
+        await loadFixture(deployShipsFixture);
 
       // Get initial ship count
       const initialShipCount = await ships.read.shipCount();
 
       // Claim free ships
-      await ships.write.claimFreeShips([1], { account: user1.account });
+      await freeShipClaim.write.claimFreeShips([1], { account: user1.account });
 
       // Verify ship count increased by 10
       const finalShipCount = await ships.read.shipCount();
@@ -2436,30 +2619,74 @@ describe("Ships", function () {
       }
 
       // Verify lastClaimTimestamp is set
-      const lastClaim = await ships.read.lastClaimTimestamp([
+      const lastClaim = await freeShipClaim.read.lastClaimTimestamp([
         user1.account.address,
       ]);
       expect(Number(lastClaim)).to.be.greaterThan(0);
     });
 
     it("Should not allow claiming again before cooldown period", async function () {
-      const { ships, user1 } = await loadFixture(deployShipsFixture);
-
-      // Claim free ships first time
-      await ships.write.claimFreeShips([1], { account: user1.account });
-
-      // Try to claim again immediately - should fail
-      await expect(
-        ships.write.claimFreeShips([1], { account: user1.account }),
-      ).to.be.rejectedWith("ClaimCooldownNotPassed");
-    });
-
-    it("Should allow claiming again after cooldown period", async function () {
-      const { ships, user1, publicClient } =
+      const { ships, user1, freeShipClaim } =
         await loadFixture(deployShipsFixture);
 
       // Claim free ships first time
-      const firstTx = await ships.write.claimFreeShips([1], {
+      await freeShipClaim.write.claimFreeShips([1], { account: user1.account });
+
+      // Try to claim again immediately - should fail
+      await expect(
+        freeShipClaim.write.claimFreeShips([1], { account: user1.account }),
+      ).to.be.rejectedWith("ClaimCooldownNotPassed");
+    });
+
+    it("Should grant 10 + droneCoreTier bonus ships once a player has turned in drone cores", async function () {
+      const { ships, droneStorefront, droneEnergyCores, freeShipClaim, owner, user1 } =
+        await loadFixture(deployShipsFixture);
+
+      // Give user1 tier 1 (10 DEC) on DroneStorefront before claiming.
+      await droneEnergyCores.write.setAuthorizedToMint(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+      await droneEnergyCores.write.mint([user1.account.address, 10n], {
+        account: owner.account,
+      });
+
+      const user1DEC = await hre.viem.getContractAt(
+        "DroneEnergyCores",
+        droneEnergyCores.address,
+        { client: { wallet: user1 } },
+      );
+      await user1DEC.write.approve([droneStorefront.address, 10n]);
+
+      const user1Storefront = await hre.viem.getContractAt(
+        "DroneStorefront",
+        droneStorefront.address,
+        { client: { wallet: user1 } },
+      );
+      await user1Storefront.write.turnInCores([10n]);
+
+      const user1FreeShipClaim = await hre.viem.getContractAt(
+        "FreeShipClaim",
+        freeShipClaim.address,
+        { client: { wallet: user1 } },
+      );
+
+      const initialShipCount = await ships.read.shipCount();
+      await user1FreeShipClaim.write.claimFreeShips([1]);
+      const finalShipCount = await ships.read.shipCount();
+
+      expect(finalShipCount - initialShipCount).to.equal(11n);
+
+      const shipIds = await ships.read.getShipIdsOwned([user1.account.address]);
+      expect(shipIds.length).to.equal(11);
+    });
+
+    it("Should allow claiming again after cooldown period", async function () {
+      const { ships, user1, publicClient, freeShipClaim } =
+        await loadFixture(deployShipsFixture);
+
+      // Claim free ships first time
+      const firstTx = await freeShipClaim.write.claimFreeShips([1], {
         account: user1.account,
       });
       const firstReceipt = await publicClient.getTransactionReceipt({
@@ -2471,7 +2698,7 @@ describe("Ships", function () {
       const firstClaimCount = await ships.read.shipCount();
 
       // Get the last claim timestamp
-      const lastClaim = await ships.read.lastClaimTimestamp([
+      const lastClaim = await freeShipClaim.read.lastClaimTimestamp([
         user1.account.address,
       ]);
       const blockTimestamp =
@@ -2481,7 +2708,7 @@ describe("Ships", function () {
       expect(lastClaim.toString()).to.equal(blockTimestamp.toString());
 
       // Get the cooldown period
-      const cooldownPeriod = await ships.read.claimCooldownPeriod();
+      const cooldownPeriod = await freeShipClaim.read.claimCooldownPeriod();
 
       // Fast forward time by cooldown period + 1 second
       await hre.network.provider.send("evm_increaseTime", [
@@ -2499,7 +2726,7 @@ describe("Ships", function () {
       );
 
       // Claim again - should succeed
-      await ships.write.claimFreeShips([1], { account: user1.account });
+      await freeShipClaim.write.claimFreeShips([1], { account: user1.account });
       const secondClaimCount = await ships.read.shipCount();
 
       // Verify ship count increased by another 10
@@ -2517,54 +2744,56 @@ describe("Ships", function () {
       }
 
       // Verify lastClaimTimestamp was updated
-      const newLastClaim = await ships.read.lastClaimTimestamp([
+      const newLastClaim = await freeShipClaim.read.lastClaimTimestamp([
         user1.account.address,
       ]);
       expect(Number(newLastClaim)).to.be.greaterThan(Number(lastClaim));
     });
 
     it("Should allow owner to modify claim cooldown period", async function () {
-      const { ships, owner } = await loadFixture(deployShipsFixture);
+      const { ships, owner, freeShipClaim } =
+        await loadFixture(deployShipsFixture);
 
       // Get initial cooldown period (should be 28 days)
-      const initialCooldown = await ships.read.claimCooldownPeriod();
+      const initialCooldown = await freeShipClaim.read.claimCooldownPeriod();
       expect(initialCooldown).to.equal(28n * 24n * 60n * 60n); // 28 days in seconds
 
       // Set new cooldown period (7 days)
       const newCooldown = 7n * 24n * 60n * 60n;
-      await ships.write.setClaimCooldownPeriod([newCooldown], {
+      await freeShipClaim.write.setClaimCooldownPeriod([newCooldown], {
         account: owner.account,
       });
 
       // Verify cooldown period was updated
-      const updatedCooldown = await ships.read.claimCooldownPeriod();
+      const updatedCooldown = await freeShipClaim.read.claimCooldownPeriod();
       expect(updatedCooldown).to.equal(newCooldown);
     });
 
     it("Should not allow non-owner to modify claim cooldown period", async function () {
-      const { ships, user1 } = await loadFixture(deployShipsFixture);
+      const { ships, user1, freeShipClaim } =
+        await loadFixture(deployShipsFixture);
 
       const newCooldown = 7n * 24n * 60n * 60n;
 
       await expect(
-        ships.write.setClaimCooldownPeriod([newCooldown], {
+        freeShipClaim.write.setClaimCooldownPeriod([newCooldown], {
           account: user1.account,
         }),
       ).to.be.rejectedWith("OwnableUnauthorizedAccount");
     });
 
     it("Should correctly track lastClaimTimestamp", async function () {
-      const { ships, user1, publicClient } =
+      const { ships, user1, publicClient, freeShipClaim } =
         await loadFixture(deployShipsFixture);
 
       // Initially, lastClaimTimestamp should be 0
-      const initialClaim = await ships.read.lastClaimTimestamp([
+      const initialClaim = await freeShipClaim.read.lastClaimTimestamp([
         user1.account.address,
       ]);
       expect(initialClaim).to.equal(0n);
 
       // Claim free ships
-      const tx = await ships.write.claimFreeShips([1], {
+      const tx = await freeShipClaim.write.claimFreeShips([1], {
         account: user1.account,
       });
       const receipt = await publicClient.getTransactionReceipt({ hash: tx });
@@ -2575,7 +2804,7 @@ describe("Ships", function () {
       });
 
       // Verify lastClaimTimestamp is set to block timestamp
-      const lastClaim = await ships.read.lastClaimTimestamp([
+      const lastClaim = await freeShipClaim.read.lastClaimTimestamp([
         user1.account.address,
       ]);
       expect(Number(lastClaim)).to.be.greaterThan(0);

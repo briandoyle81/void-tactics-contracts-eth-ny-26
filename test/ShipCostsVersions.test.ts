@@ -13,6 +13,7 @@ async function deployLobbyFleetFixture() {
   const deployed = await hre.ignition.deploy(DeployModule);
 
   const ships = deployed.ships;
+  const freeShipClaim = deployed.freeShipClaim;
   const randomManager = deployed.randomManager;
   const shipAttributes = deployed.shipAttributes;
 
@@ -27,8 +28,8 @@ async function deployLobbyFleetFixture() {
     { client: { wallet: joiner } },
   );
 
-  await ships.write.claimFreeShips([1], { account: creator.account });
-  await ships.write.claimFreeShips([1], { account: joiner.account });
+  await freeShipClaim.write.claimFreeShips([1], { account: creator.account });
+  await freeShipClaim.write.claimFreeShips([1], { account: joiner.account });
 
   const fulfillRandomnessForPlayer = async (address: `0x${string}`) => {
     const shipIds = await ships.read.getShipIdsOwned([address]);

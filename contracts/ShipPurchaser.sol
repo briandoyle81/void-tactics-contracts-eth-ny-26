@@ -73,7 +73,7 @@ contract ShipPurchaser is Ownable, ReentrancyGuard {
         );
 
         // Create ships for the buyer
-        ships.createShips(_to, totalShips, _variant, _tier);
+        ships.createShips(_to, totalShips, _variant, _tier, false);
 
         if (_referral != address(0)) {
             _processReferral(_referral, totalShips, price);

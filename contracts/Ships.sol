@@ -26,11 +26,7 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
     uint public shipCount;
 
     mapping(address => EnumerableSet.UintSet) private shipsOwned;
-    mapping(address => uint256) public lastClaimTimestamp;
     mapping(address => uint) public amountPurchased;
-
-    // 4 weeks in seconds (28 days * 24 hours * 60 minutes * 60 seconds)
-    uint256 public claimCooldownPeriod = 28 days;
 
     mapping(address => uint) public referralCount;
 
@@ -52,7 +48,6 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
     error InvalidVariant(uint16);
     error ReferralTransferFailed();
     error WithdrawalFailed();
-    error ClaimCooldownNotPassed();
 
     struct ContractConfig {
         address gameAddress;
@@ -93,6 +88,7 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
     // future gated variants need zero Ships.sol changes.
     address purchaseGate;
     uint public recycleReward = 0.1 ether; // 0.1 UC tokens
+    uint public constant variant2RecycleReward = 2; // flat DEC reward for recycling a variant-2 ship
 
     // Only Owner TODO
     // Withdrawal
@@ -126,7 +122,8 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         address _to,
         uint _amount,
         uint16 _variant,
-        uint8 _tier
+        uint8 _tier,
+        bool _isFreeShip
     ) external {
         if (!isAllowedToCreateShips[msg.sender]) {
             revert NotAuthorized(msg.sender);
@@ -134,17 +131,24 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
 
         uint8 tierRankCount = _tier + 1;
         for (uint i = 0; i < _amount; i++) {
-            if (i < tierRankCount) {
+            if (!_isFreeShip && i < tierRankCount) {
                 uint8 rank = _tier + 1 - uint8(i);
                 _mintShip(_to, _variant, _getKillsForRank(rank));
             } else {
                 _mintShip(_to, _variant, 0);
             }
+            if (_isFreeShip) {
+                ships[shipCount].shipData.isFreeShip = true;
+            }
         }
 
         // TODO: CRITICAL -> Evaluate side effects of this
 
-        amountPurchased[_to] += _amount;
+        // Free-ship claims don't count as purchases (referral/tier stats key
+        // off actual paid volume).
+        if (!_isFreeShip) {
+            amountPurchased[_to] += _amount;
+        }
     }
 
     function purchaseWithFlow(
@@ -634,12 +638,6 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         recycleReward = _newReward;
     }
 
-    function setClaimCooldownPeriod(
-        uint256 _newCooldownPeriod
-    ) public onlyOwner {
-        claimCooldownPeriod = _newCooldownPeriod;
-    }
-
     // function setShipModified(uint _id, bool _modified) public onlyOwner {
     //     Ship storage ship = ships[_id];
     //     if (ship.id == 0) {
@@ -648,28 +646,6 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
     //     ship.shipData.modified = _modified;
     //     emit MetadataUpdate(_id);
     // }
-
-    function claimFreeShips(uint16 _variant) external {
-        uint256 lastClaim = lastClaimTimestamp[msg.sender];
-        uint256 currentTime = block.timestamp;
-
-        // Check if 4 weeks have passed since last claim
-        // Note: When lastClaim == 0 (first claim), currentTime (block.timestamp) will always be
-        // much larger than claimCooldownPeriod (28 days), so the check won't revert for new users
-        if (currentTime < lastClaim + claimCooldownPeriod) {
-            revert ClaimCooldownNotPassed();
-        }
-
-        // Grant 10 free ships
-        for (uint i = 0; i < 10; i++) {
-            _mintShip(msg.sender, _variant, 0);
-            // Mark the ship as free (shipCount was incremented in _mintShip, so it's the ID of the ship just minted)
-            ships[shipCount].shipData.isFreeShip = true;
-        }
-
-        // Record the timestamp of this claim
-        lastClaimTimestamp[msg.sender] = currentTime;
-    }
 
     /**
      * @dev VIEW
@@ -730,8 +706,16 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         return shipsFetched;
     }
 
+    function _halveIfDestroyed(
+        uint _base,
+        bool _wasDestroyed
+    ) internal pure returns (uint) {
+        return _wasDestroyed ? (_base >> 1) : _base;
+    }
+
     function shipBreaker(uint[] calldata _shipIds) external nonReentrant {
-        uint totalReward = 0;
+        uint totalUtcReward = 0;
+        uint totalDecReward = 0;
 
         for (uint i = 0; i < _shipIds.length; i++) {
             uint shipId = _shipIds[i];
@@ -760,22 +744,29 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
 
             // Determine recycle reward based on destruction state PRIOR to this call
             bool wasDestroyed = s.shipData.timestampDestroyed != 0;
-            uint rewardForThisShip = wasDestroyed
-                ? (recycleReward >> 1) // Division by 2
-                : recycleReward;
+
+            // Variant-2 (drone) ships pay out in DEC instead of UTC
+            if (s.traits.variant == 2) {
+                totalDecReward += _halveIfDestroyed(
+                    variant2RecycleReward,
+                    wasDestroyed
+                );
+            } else {
+                totalUtcReward += _halveIfDestroyed(recycleReward, wasDestroyed);
+            }
 
             // Mark ship as destroyed and burn it
             s.shipData.timestampDestroyed = block.timestamp;
             emit Locked(shipId);
             _burn(shipId);
-
-            // Add to total reward
-            totalReward += rewardForThisShip;
         }
 
         // Mint reward tokens to the owner
-        if (totalReward > 0) {
-            universalCredits.mint(msg.sender, totalReward);
+        if (totalUtcReward > 0) {
+            universalCredits.mint(msg.sender, totalUtcReward);
+        }
+        if (totalDecReward > 0) {
+            droneEnergyCores.mint(msg.sender, totalDecReward);
         }
     }
 }

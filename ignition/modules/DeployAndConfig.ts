@@ -269,6 +269,12 @@ const DeployModule = buildModule("DeployModule", (m) => {
 
   const tutorialClaim = m.contract("TutorialClaim", [ships, gameResults]);
 
+  // Deploy FreeShipClaim: the recurring (28-day) free-ship claim, split out
+  // of Ships.sol entirely (no bytecode headroom left there) — mints through
+  // Ships' existing isAllowedToCreateShips allowlist, same as
+  // DroneYard/ShipPurchaser/TutorialClaim.
+  const freeShipClaim = m.contract("FreeShipClaim", [ships]);
+
   // Deploy RamResolver: the faction 1 innate ability (traits.variant == 1),
   // resolver-backed per IEffectResolver and dispatched via
   // ActionType.FactionAbility rather than the old
@@ -1028,13 +1034,57 @@ const DeployModule = buildModule("DeployModule", (m) => {
     { id: "AuthorizeShipsRouterToMintDec" },
   );
 
+  // Ships.shipBreaker mints DEC directly (not through the router) when a
+  // player recycles a variant-2 ship, so Ships.sol itself needs minting
+  // rights too.
+  const authorizeShipsToMintDecCall = m.call(
+    droneEnergyCores,
+    "setAuthorizedToMint",
+    [ships, true],
+    { id: "AuthorizeShipsToMintDec" },
+  );
+
   // DEC is soulbound except to/from this address — makes it spendable at
-  // DroneStorefront (a stub for now) instead of fully unspendable.
+  // DroneStorefront instead of fully unspendable.
   const setDecTransferExemptAddressCall = m.call(
     droneEnergyCores,
     "setTransferExemptAddress",
     [droneStorefront],
   );
+
+  // FreeShipClaim.claimFreeShips reads a player's bonus directly from
+  // DroneStorefront.droneCoreTier (1 tier = +1 ship).
+  const setFreeShipClaimDroneStorefrontCall = m.call(
+    freeShipClaim,
+    "setDroneStorefront",
+    [droneStorefront],
+  );
+
+  // FreeShipClaim mints through Ships' existing authorized-minter allowlist,
+  // same as DroneYard/ShipPurchaser/TutorialClaim.
+  const allowFreeShipClaimToCreateShipsCall = m.call(
+    ships,
+    "setIsAllowedToCreateShips",
+    [freeShipClaim, true],
+    { id: "AllowFreeShipClaimToCreateShips" },
+  );
+
+  // Seed the drone-core turn-in tier ladder: cumulative cost to reach tier N
+  // grants +N to a player's permanent free-ship bonus (see
+  // DroneStorefront.turnInCores / Ships.claimFreeShips). Costs ramp ~1.76x
+  // per tier so tier 1 is reachable in a handful of variant-2 kills while
+  // the top tier takes a very long time — tune via addTier post-deploy.
+  const droneCoreTierCosts = [10, 20, 30, 55, 95, 170, 300, 525, 925, 1625];
+  const addTierCalls: ReturnType<typeof m.call>[] = [];
+  droneCoreTierCosts.forEach((cost, index) => {
+    const previousAddTierCall =
+      index > 0 ? addTierCalls[index - 1] : undefined;
+    const call = m.call(droneStorefront, "addTier", [cost], {
+      id: `AddDroneCoreTier${index + 1}`,
+      ...(previousAddTierCall ? { after: [previousAddTierCall] } : {}),
+    });
+    addTierCalls.push(call);
+  });
 
   // Let SinglePlayerMatch withdraw the UTC it accumulates whenever the AI
   // (owner of its own ships) destroys a human ship — DestroyRewardLib only
@@ -1143,6 +1193,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
         allowTutorialClaimToCreateShipsCall,
         allowFirebaseFlowMinterToCreateShipsCall,
         setMaxVariantForTutorialShipsCall,
+        allowFreeShipClaimToCreateShipsCall,
       ],
     });
 
@@ -1295,12 +1346,14 @@ const DeployModule = buildModule("DeployModule", (m) => {
       after: [
         setDecMintIsActiveCall,
         authorizeShipsRouterToMintDecCall,
+        authorizeShipsToMintDecCall,
         setDecTransferExemptAddressCall,
       ],
     });
 
     m.call(droneStorefront, "transferOwnership", [MAP_EDITOR], {
       id: "TransferDroneStorefrontOwnership",
+      after: [...addTierCalls],
     });
 
     m.call(tournament, "transferOwnership", [MAP_EDITOR], {
@@ -1363,6 +1416,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
     variantPurchaseGate,
     shatteredHiveMedal,
     tutorialClaim,
+    freeShipClaim,
     worldId,
     tournament,
     gameBlobRegistry,

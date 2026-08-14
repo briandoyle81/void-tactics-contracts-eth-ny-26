@@ -70,6 +70,7 @@ describe("Lobbies", function () {
       creatorFleets,
       joinerFleets,
       ships: deployed.ships,
+      freeShipClaim: deployed.freeShipClaim,
       game: deployed.game,
       maps: deployed.maps,
       randomManager: deployed.randomManager,
@@ -443,6 +444,7 @@ describe("Lobbies", function () {
         creatorLobbies,
         joinerLobbies,
         ships,
+        freeShipClaim,
         randomManager,
         game,
         owner,
@@ -457,8 +459,12 @@ describe("Lobbies", function () {
       );
 
       // Both players claim their free ships
-      await ships.write.claimFreeShips([1], { account: creator.account });
-      await ships.write.claimFreeShips([1], { account: joiner.account });
+      await freeShipClaim.write.claimFreeShips([1], {
+        account: creator.account,
+      });
+      await freeShipClaim.write.claimFreeShips([1], {
+        account: joiner.account,
+      });
 
       const fulfillRandomnessForPlayer = async (accountAddress: string) => {
         const shipIds = await ships.read.getShipIdsOwned([accountAddress]);

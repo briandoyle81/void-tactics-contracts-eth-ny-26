@@ -32,14 +32,27 @@ async function main() {
     process.exit(1);
   }
 
-  console.log("Healthcheck — using addresses:", { chainId, shipsAddress });
+  const freeShipClaimAddress: `0x${string}` =
+    addresses["DeployModule#FreeShipClaim"];
+  if (!freeShipClaimAddress) {
+    console.error("FreeShipClaim address missing in deployed_addresses.json");
+    process.exit(1);
+  }
 
-  // Minimal liveness test: simulate claimFreeShips to ensure config.randomManager (and other deps) are set.
+  console.log("Healthcheck — using addresses:", {
+    chainId,
+    shipsAddress,
+    freeShipClaimAddress,
+  });
+
+  // Minimal liveness test: simulate claimFreeShips (now on FreeShipClaim,
+  // not Ships) to ensure config.randomManager (and other deps) are set.
   try {
     await publicClient.simulateContract({
-      address: shipsAddress,
-      abi: (await hre.artifacts.readArtifact("Ships")).abi as any,
+      address: freeShipClaimAddress,
+      abi: (await hre.artifacts.readArtifact("FreeShipClaim")).abi as any,
       functionName: "claimFreeShips",
+      args: [1],
       account: wallet.account,
     });
     console.log(
