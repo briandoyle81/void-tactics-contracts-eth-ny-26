@@ -88,7 +88,6 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
     // future gated variants need zero Ships.sol changes.
     address purchaseGate;
     uint public recycleReward = 0.1 ether; // 0.1 UC tokens
-    uint public constant variant2RecycleReward = 2; // flat DEC reward for recycling a variant-2 ship
 
     // Only Owner TODO
     // Withdrawal
@@ -706,16 +705,8 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         return shipsFetched;
     }
 
-    function _halveIfDestroyed(
-        uint _base,
-        bool _wasDestroyed
-    ) internal pure returns (uint) {
-        return _wasDestroyed ? (_base >> 1) : _base;
-    }
-
     function shipBreaker(uint[] calldata _shipIds) external nonReentrant {
-        uint totalUtcReward = 0;
-        uint totalDecReward = 0;
+        uint totalReward = 0;
 
         for (uint i = 0; i < _shipIds.length; i++) {
             uint shipId = _shipIds[i];
@@ -744,29 +735,22 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
 
             // Determine recycle reward based on destruction state PRIOR to this call
             bool wasDestroyed = s.shipData.timestampDestroyed != 0;
-
-            // Variant-2 (drone) ships pay out in DEC instead of UTC
-            if (s.traits.variant == 2) {
-                totalDecReward += _halveIfDestroyed(
-                    variant2RecycleReward,
-                    wasDestroyed
-                );
-            } else {
-                totalUtcReward += _halveIfDestroyed(recycleReward, wasDestroyed);
-            }
+            uint rewardForThisShip = wasDestroyed
+                ? (recycleReward >> 1) // Division by 2
+                : recycleReward;
 
             // Mark ship as destroyed and burn it
             s.shipData.timestampDestroyed = block.timestamp;
             emit Locked(shipId);
             _burn(shipId);
+
+            // Add to total reward
+            totalReward += rewardForThisShip;
         }
 
         // Mint reward tokens to the owner
-        if (totalUtcReward > 0) {
-            universalCredits.mint(msg.sender, totalUtcReward);
-        }
-        if (totalDecReward > 0) {
-            droneEnergyCores.mint(msg.sender, totalDecReward);
+        if (totalReward > 0) {
+            universalCredits.mint(msg.sender, totalReward);
         }
     }
 }

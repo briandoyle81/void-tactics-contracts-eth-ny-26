@@ -4,11 +4,11 @@ pragma solidity 0.8.28;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./IDroneEnergyCores.sol";
 
-// DroneEnergyCores' transferExemptAddress — the one address DEC (soulbound
-// otherwise) can be sent to — so players have somewhere to spend it: turn in
-// an exact tier's worth of cores to permanently step up droneCoreTier, which
-// FreeShipClaim.claimFreeShips reads directly as a player's free-ship bonus
-// (1 tier = +1 ship — see IDroneStorefront.sol/FreeShipClaim.sol).
+// Where players spend DEC (a freely transferable ERC20 — see
+// DroneEnergyCores.sol): turn in an exact tier's worth of cores to
+// permanently step up droneCoreTier, which FreeShipClaim.claimFreeShips
+// reads directly as a player's free-ship bonus (1 tier = +1 ship — see
+// IDroneStorefront.sol/FreeShipClaim.sol).
 contract DroneStorefront is Ownable {
     address public droneEnergyCores;
 

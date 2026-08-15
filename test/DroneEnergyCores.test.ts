@@ -66,7 +66,7 @@ describe("DroneEnergyCores", function () {
     });
   });
 
-  describe("Soulbound transfers", function () {
+  describe("Transfers", function () {
     async function mintTo(droneEnergyCores: any, owner: any, to: string, amount: bigint) {
       await droneEnergyCores.write.setMintIsActive([true], {
         account: owner.account,
@@ -80,51 +80,13 @@ describe("DroneEnergyCores", function () {
       });
     }
 
-    it("Should revert a direct wallet-to-wallet transfer between two non-exempt addresses", async function () {
+    // DEC is deliberately NOT soulbound (unlike ShatteredHiveMedal) — a
+    // player who has time but not money can grind DEC and sell it to a
+    // player who has money but not time; see DroneEnergyCores.sol's header
+    // comment for why wallet-level transfer restrictions were removed.
+    it("Should allow a direct wallet-to-wallet transfer between two ordinary addresses", async function () {
       const { droneEnergyCores, owner, user1, user2 } =
         await loadFixture(deployShipsFixture);
-      await mintTo(droneEnergyCores, owner, user1.account.address, parseEther("5"));
-
-      const user1DEC = await hre.viem.getContractAt(
-        "DroneEnergyCores",
-        droneEnergyCores.address,
-        { client: { wallet: user1 } },
-      );
-
-      await expect(
-        user1DEC.write.transfer([user2.account.address, parseEther("1")]),
-      ).to.be.rejectedWith("Soulbound");
-    });
-
-    it("Should allow a transfer to the designated exempt address", async function () {
-      const { droneEnergyCores, owner, user1, user2 } =
-        await loadFixture(deployShipsFixture);
-      await mintTo(droneEnergyCores, owner, user1.account.address, parseEther("5"));
-
-      await droneEnergyCores.write.setTransferExemptAddress(
-        [user2.account.address],
-        { account: owner.account },
-      );
-
-      const user1DEC = await hre.viem.getContractAt(
-        "DroneEnergyCores",
-        droneEnergyCores.address,
-        { client: { wallet: user1 } },
-      );
-      await user1DEC.write.transfer([user2.account.address, parseEther("1")]);
-
-      expect(
-        await droneEnergyCores.read.balanceOf([user2.account.address]),
-      ).to.equal(parseEther("1"));
-    });
-
-    it("Should allow a transfer from the designated exempt address", async function () {
-      const { droneEnergyCores, owner, user1, user2 } =
-        await loadFixture(deployShipsFixture);
-      await droneEnergyCores.write.setTransferExemptAddress(
-        [user1.account.address],
-        { account: owner.account },
-      );
       await mintTo(droneEnergyCores, owner, user1.account.address, parseEther("5"));
 
       const user1DEC = await hre.viem.getContractAt(
@@ -137,26 +99,33 @@ describe("DroneEnergyCores", function () {
       expect(
         await droneEnergyCores.read.balanceOf([user2.account.address]),
       ).to.equal(parseEther("1"));
+      expect(
+        await droneEnergyCores.read.balanceOf([user1.account.address]),
+      ).to.equal(parseEther("4"));
     });
 
-    it("Should still revert a transfer between two non-exempt wallets even with an exempt address set elsewhere", async function () {
-      const { droneEnergyCores, owner, user1, user2, user3 } =
+    it("Should allow transferFrom via a standard approve, e.g. for DroneStorefront.turnInCores", async function () {
+      const { droneEnergyCores, droneStorefront, owner, user1 } =
         await loadFixture(deployShipsFixture);
-      await mintTo(droneEnergyCores, owner, user1.account.address, parseEther("5"));
-      await droneEnergyCores.write.setTransferExemptAddress(
-        [user3.account.address],
-        { account: owner.account },
-      );
+      await mintTo(droneEnergyCores, owner, user1.account.address, 10n);
 
       const user1DEC = await hre.viem.getContractAt(
         "DroneEnergyCores",
         droneEnergyCores.address,
         { client: { wallet: user1 } },
       );
+      await user1DEC.write.approve([droneStorefront.address, 10n]);
 
-      await expect(
-        user1DEC.write.transfer([user2.account.address, parseEther("1")]),
-      ).to.be.rejectedWith("Soulbound");
+      const user1Storefront = await hre.viem.getContractAt(
+        "DroneStorefront",
+        droneStorefront.address,
+        { client: { wallet: user1 } },
+      );
+      await user1Storefront.write.turnInCores([10n]);
+
+      expect(
+        await droneStorefront.read.droneCoreTier([user1.account.address]),
+      ).to.equal(1);
     });
   });
 });

@@ -131,14 +131,14 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // Deploy UniversalCredits token
   const universalCredits = m.contract("UniversalCredits");
 
-  // Deploy DroneEnergyCores ("DEC"): soulbound reward token minted when a
-  // player destroys an AI-owned ship (Ships.setTimestampDestroyed via
-  // DestroyRewardLib), instead of UTC.
+  // Deploy DroneEnergyCores ("DEC"): freely transferable ERC20 reward token
+  // minted when a player destroys an AI-owned ship
+  // (Ships.setTimestampDestroyed via DestroyRewardLib), instead of UTC. Not
+  // soulbound on purpose — see DroneEnergyCores.sol's header comment.
   const droneEnergyCores = m.contract("DroneEnergyCores");
 
-  // Deploy DroneStorefront: stub — does nothing yet beyond existing as
-  // DEC's transferExemptAddress, so DEC has somewhere to be spent later
-  // instead of being fully soulbound.
+  // Deploy DroneStorefront: where players turn in DEC for a permanent
+  // free-ship claim bonus (see DroneStorefront.turnInCores).
   const droneStorefront = m.contract("DroneStorefront", [droneEnergyCores]);
 
   // Deploy DestroyRewardLib: decides UTC vs DEC for a kill reward, split
@@ -1034,24 +1034,6 @@ const DeployModule = buildModule("DeployModule", (m) => {
     { id: "AuthorizeShipsRouterToMintDec" },
   );
 
-  // Ships.shipBreaker mints DEC directly (not through the router) when a
-  // player recycles a variant-2 ship, so Ships.sol itself needs minting
-  // rights too.
-  const authorizeShipsToMintDecCall = m.call(
-    droneEnergyCores,
-    "setAuthorizedToMint",
-    [ships, true],
-    { id: "AuthorizeShipsToMintDec" },
-  );
-
-  // DEC is soulbound except to/from this address — makes it spendable at
-  // DroneStorefront instead of fully unspendable.
-  const setDecTransferExemptAddressCall = m.call(
-    droneEnergyCores,
-    "setTransferExemptAddress",
-    [droneStorefront],
-  );
-
   // FreeShipClaim.claimFreeShips reads a player's bonus directly from
   // DroneStorefront.droneCoreTier (1 tier = +1 ship).
   const setFreeShipClaimDroneStorefrontCall = m.call(
@@ -1071,9 +1053,12 @@ const DeployModule = buildModule("DeployModule", (m) => {
 
   // Seed the drone-core turn-in tier ladder: cumulative cost to reach tier N
   // grants +N to a player's permanent free-ship bonus (see
-  // DroneStorefront.turnInCores / Ships.claimFreeShips). Costs ramp ~1.76x
-  // per tier so tier 1 is reachable in a handful of variant-2 kills while
-  // the top tier takes a very long time — tune via addTier post-deploy.
+  // DroneStorefront.turnInCores / FreeShipClaim.claimFreeShips). Costs ramp
+  // ~1.76x per tier so tier 1 is reachable in a handful of AI kills while
+  // the top tier takes a very long time to earn — tune via addTier
+  // post-deploy. DEC is a freely transferable ERC20 (not soulbound), so a
+  // player can also just buy cores from someone else's grind instead of
+  // earning them directly — see DroneEnergyCores.sol.
   const droneCoreTierCosts = [10, 20, 30, 55, 95, 170, 300, 525, 925, 1625];
   const addTierCalls: ReturnType<typeof m.call>[] = [];
   droneCoreTierCosts.forEach((cost, index) => {
@@ -1343,12 +1328,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
 
     m.call(droneEnergyCores, "transferOwnership", [MAP_EDITOR], {
       id: "TransferDroneEnergyCoresOwnership",
-      after: [
-        setDecMintIsActiveCall,
-        authorizeShipsRouterToMintDecCall,
-        authorizeShipsToMintDecCall,
-        setDecTransferExemptAddressCall,
-      ],
+      after: [setDecMintIsActiveCall, authorizeShipsRouterToMintDecCall],
     });
 
     m.call(droneStorefront, "transferOwnership", [MAP_EDITOR], {

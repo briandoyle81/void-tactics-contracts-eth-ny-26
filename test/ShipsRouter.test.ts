@@ -4,75 +4,6 @@ import hre from "hardhat";
 import { zeroAddress } from "viem";
 import { seedVariant1Attributes } from "./fixtures/seedVariant1Attributes";
 
-// Minimal variant-2 seed so the variant-2-specific reward tests below can
-// mint/cost a variant-2 ship — mirrors seedVariant1Attributes.ts's shape,
-// values aren't meaningful beyond "non-zero and self-consistent".
-async function seedVariant2Attributes(
-  shipAttributes: any,
-  ownerAccount: { address: `0x${string}` },
-) {
-  await shipAttributes.write.setCosts(
-    [
-      2,
-      {
-        version: 0,
-        baseCost: 50,
-        accuracy: [0, 10, 25],
-        hull: [0, 10, 25],
-        speed: [0, 10, 25],
-        mainWeapon: [25, 30, 40, 40],
-        armor: [0, 5, 10, 15],
-        shields: [0, 10, 20, 30],
-        special: [0, 10, 20, 15, 15, 20, 10, 0],
-      },
-    ],
-    { account: ownerAccount },
-  );
-
-  await shipAttributes.write.setVariantAttributes(
-    [
-      {
-        version: 1,
-        variant: 2,
-        baseHull: 100,
-        baseSpeed: 3,
-        foreAccuracy: [0, 25, 50],
-        hull: [0, 10, 20],
-        engineSpeeds: [0, 1, 2],
-        guns: [
-          { range: 3, damage: 50, movement: 0 },
-          { range: 6, damage: 40, movement: 0 },
-          { range: 4, damage: 60, movement: -1 },
-          { range: 2, damage: 80, movement: 0 },
-        ],
-        armors: [
-          { damageReduction: 0, movement: 1 },
-          { damageReduction: 15, movement: 0 },
-          { damageReduction: 30, movement: -1 },
-          { damageReduction: 45, movement: -2 },
-        ],
-        shields: [
-          { damageReduction: 0, movement: 1 },
-          { damageReduction: 15, movement: 1 },
-          { damageReduction: 30, movement: 0 },
-          { damageReduction: 45, movement: -1 },
-        ],
-        specials: [
-          { range: 0, strength: 0, movement: 0 },
-          { range: 1, strength: 1, movement: 0 },
-          { range: 3, strength: 40, movement: 0 },
-          { range: 3, strength: 30, movement: 0 },
-          { range: 0, strength: 0, movement: 0 },
-          { range: 0, strength: 0, movement: 0 },
-          { range: 0, strength: 0, movement: 0 },
-          { range: 0, strength: 0, movement: 0 },
-        ],
-      },
-    ],
-    { account: ownerAccount },
-  );
-}
-
 // Standalone unit tests for ShipsRouter.sol's dispatch logic: does an id
 // resolve to Ships.sol (human) or AIShips.sol (AI) correctly, and does
 // setTimestampDestroyed's cross-contract kill-reward orchestration work in
@@ -202,42 +133,18 @@ describe("ShipsRouter", function () {
     timestampDestroyed: 0n,
   };
 
-  async function mintHumanShip(
-    ships: any,
-    to: `0x${string}`,
-    name: string,
-    variant = 1,
-  ) {
+  async function mintHumanShip(ships: any, to: `0x${string}`, name: string) {
     await ships.write.createSpecificShip([
       to,
-      {
-        name,
-        id: 0n,
-        equipment: defaultEquipment,
-        traits: { ...defaultTraits, variant },
-        shipData,
-        owner: zeroAddress,
-      },
+      { name, id: 0n, equipment: defaultEquipment, traits: defaultTraits, shipData, owner: zeroAddress },
     ]);
     return await ships.read.shipCount();
   }
 
-  async function allocateAiShip(
-    aiShips: any,
-    to: `0x${string}`,
-    name: string,
-    variant = 1,
-  ) {
+  async function allocateAiShip(aiShips: any, to: `0x${string}`, name: string) {
     await aiShips.write.allocateShip([
       to,
-      {
-        name,
-        id: 0n,
-        equipment: defaultEquipment,
-        traits: { ...defaultTraits, variant },
-        shipData,
-        owner: zeroAddress,
-      },
+      { name, id: 0n, equipment: defaultEquipment, traits: defaultTraits, shipData, owner: zeroAddress },
     ]);
     return AI_SHIP_ID_OFFSET + (await aiShips.read.slotCount());
   }
@@ -364,93 +271,6 @@ describe("ShipsRouter", function () {
       ).to.equal(recycleReward >> 2n);
       expect(
         await droneEnergyCores.read.balanceOf([other.account.address]),
-      ).to.equal(0n);
-    });
-
-    it("pays the destroyer the flat variant2DestroyReward in DEC when a human destroys a variant-2 AI-owned ship", async function () {
-      const {
-        gameRouter,
-        shipsRouter,
-        ships,
-        aiShips,
-        shipAttributes,
-        universalCredits,
-        droneEnergyCores,
-        owner,
-        human,
-        aiOwner,
-      } = await loadFixture(deployFixture);
-
-      await seedVariant2Attributes(shipAttributes, owner.account);
-      await ships.write.setMaxVariant([2]);
-
-      const humanId = await mintHumanShip(
-        ships,
-        human.account.address,
-        "Human Ship",
-      );
-      const aiId = await allocateAiShip(
-        aiShips,
-        aiOwner.account.address,
-        "AI Drone Ship",
-        2,
-      );
-
-      const variant2DestroyReward =
-        await shipsRouter.read.variant2DestroyReward();
-      await gameRouter.write.setTimestampDestroyed([aiId, humanId]);
-
-      expect(
-        await droneEnergyCores.read.balanceOf([human.account.address]),
-      ).to.equal(variant2DestroyReward);
-      expect(
-        await universalCredits.read.balanceOf([human.account.address]),
-      ).to.equal(0n);
-    });
-
-    it("pays DEC to BOTH parties when a human destroys another human's variant-2 ship (PvP)", async function () {
-      const {
-        gameRouter,
-        shipsRouter,
-        ships,
-        shipAttributes,
-        universalCredits,
-        droneEnergyCores,
-        owner,
-        human,
-        other,
-      } = await loadFixture(deployFixture);
-
-      await seedVariant2Attributes(shipAttributes, owner.account);
-      await ships.write.setMaxVariant([2]);
-
-      const destroyedId = await mintHumanShip(
-        ships,
-        human.account.address,
-        "Victim Drone Ship",
-        2,
-      );
-      const destroyerId = await mintHumanShip(
-        ships,
-        other.account.address,
-        "Attacker",
-      );
-
-      const variant2DestroyReward =
-        await shipsRouter.read.variant2DestroyReward();
-      await gameRouter.write.setTimestampDestroyed([
-        destroyedId,
-        destroyerId,
-      ]);
-
-      expect(
-        await droneEnergyCores.read.balanceOf([other.account.address]),
-      ).to.equal(variant2DestroyReward);
-      expect(
-        await droneEnergyCores.read.balanceOf([human.account.address]),
-      ).to.equal(variant2DestroyReward);
-      expect(
-        await universalCredits.read.balanceOf([other.account.address]),
       ).to.equal(0n);
     });
   });

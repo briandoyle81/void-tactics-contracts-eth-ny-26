@@ -39,11 +39,6 @@ contract ShipsRouter is IShips, Ownable {
     address public fleetsAddress;
     address public lobbyAddress; // SinglePlayerMatch — see DestroyRewardLib
 
-    // Flat DEC reward per party on a variant-2 kill — lives here rather than
-    // on Ships.sol (which has almost no size headroom left) since this
-    // router already orchestrates the whole destroy-reward flow.
-    uint public variant2DestroyReward = 1;
-
     error NotAuthorized(address);
 
     constructor(
@@ -69,10 +64,6 @@ contract ShipsRouter is IShips, Ownable {
 
     function setLobbyAddress(address _lobbyAddress) external onlyOwner {
         lobbyAddress = _lobbyAddress;
-    }
-
-    function setVariant2DestroyReward(uint _newReward) external onlyOwner {
-        variant2DestroyReward = _newReward;
     }
 
     function _isAI(uint _id) internal view returns (bool) {
@@ -109,13 +100,6 @@ contract ShipsRouter is IShips, Ownable {
             revert NotAuthorized(msg.sender);
         }
 
-        // Read the destroyed ship's variant before it's marked destroyed —
-        // destruction doesn't change traits.variant, but reading first
-        // avoids relying on that remaining true forever.
-        uint16 destroyedVariant = (
-            _isAI(_id) ? aiShips.getShip(_id) : ships.getShip(_id)
-        ).traits.variant;
-
         address destroyedOwner = _isAI(_id)
             ? aiShips.markDestroyed(_id)
             : ships.markDestroyed(_id);
@@ -129,9 +113,7 @@ contract ShipsRouter is IShips, Ownable {
                 lobbyAddress,
                 destroyedOwner,
                 destroyerOwner,
-                destroyedVariant,
                 ships.recycleReward() >> 2, // Division by 4
-                variant2DestroyReward,
                 universalCredits,
                 droneEnergyCores
             );

@@ -2167,188 +2167,6 @@ describe("Ships", function () {
       ).to.be.rejectedWith("OwnableUnauthorizedAccount");
     });
 
-    it("Should pay DEC (not UC) when recycling a variant-2 ship", async function () {
-      const {
-        ships,
-        universalCredits,
-        droneEnergyCores,
-        shatteredHiveMedal,
-        shipPurchaser,
-        user1,
-        user2,
-        owner,
-      } = await loadFixture(deployShipsFixture);
-
-      // Purchase enough ships to clear the amountPurchased >= 10 transfer
-      // guard (see Ships.sol's ERC721 _update override), then mint one
-      // variant-2 ship on top via the authorized-minter path.
-      await universalCredits.write.approve(
-        [shipPurchaser.address, parseEther("100")],
-        { account: user1.account },
-      );
-      await shipPurchaser.write.purchaseWithUC(
-        [user1.account.address, 1n, user2.account.address, 1],
-        { account: user1.account },
-      );
-
-      await ships.write.setIsAllowedToCreateShips(
-        [user1.account.address, true],
-        { account: owner.account },
-      );
-      await shatteredHiveMedal.write.ownerMint([user1.account.address], {
-        account: owner.account,
-      });
-      await ships.write.createShips([user1.account.address, 1n, 2, 0, false], {
-        account: user1.account,
-      });
-
-      const allShipIds = await ships.read.getShipIdsOwned([
-        user1.account.address,
-      ]);
-      const variant2ShipId = allShipIds[allShipIds.length - 1];
-      const variant2Reward = await ships.read.variant2RecycleReward();
-
-      const initialUcBalance = await universalCredits.read.balanceOf([
-        user1.account.address,
-      ]);
-      const initialDecBalance = await droneEnergyCores.read.balanceOf([
-        user1.account.address,
-      ]);
-
-      await ships.write.shipBreaker([[variant2ShipId]], {
-        account: user1.account,
-      });
-
-      expect(
-        (await droneEnergyCores.read.balanceOf([user1.account.address])) -
-          initialDecBalance,
-      ).to.equal(variant2Reward);
-      expect(
-        await universalCredits.read.balanceOf([user1.account.address]),
-      ).to.equal(initialUcBalance);
-    });
-
-    it("Should halve the variant-2 DEC reward when recycling an already-destroyed variant-2 ship", async function () {
-      const {
-        ships,
-        droneEnergyCores,
-        shatteredHiveMedal,
-        shipPurchaser,
-        universalCredits,
-        user1,
-        user2,
-        owner,
-      } = await loadFixture(deployShipsFixture);
-
-      await universalCredits.write.approve(
-        [shipPurchaser.address, parseEther("100")],
-        { account: user1.account },
-      );
-      await shipPurchaser.write.purchaseWithUC(
-        [user1.account.address, 1n, user2.account.address, 1],
-        { account: user1.account },
-      );
-
-      await ships.write.setIsAllowedToCreateShips(
-        [user1.account.address, true],
-        { account: owner.account },
-      );
-      await shatteredHiveMedal.write.ownerMint([user1.account.address], {
-        account: owner.account,
-      });
-      await ships.write.createShips([user1.account.address, 1n, 2, 0, false], {
-        account: user1.account,
-      });
-
-      const allShipIds = await ships.read.getShipIdsOwned([
-        user1.account.address,
-      ]);
-      const variant2ShipId = allShipIds[allShipIds.length - 1];
-      const variant2Reward = await ships.read.variant2RecycleReward();
-
-      // Mark the ship as already destroyed (mirrors how the recycle-vs-kill
-      // halving interacts elsewhere in this file), then recycle it.
-      await ships.write.markDestroyed([variant2ShipId], {
-        account: owner.account,
-      });
-
-      const initialDecBalance = await droneEnergyCores.read.balanceOf([
-        user1.account.address,
-      ]);
-
-      await ships.write.shipBreaker([[variant2ShipId]], {
-        account: user1.account,
-      });
-
-      expect(
-        (await droneEnergyCores.read.balanceOf([user1.account.address])) -
-          initialDecBalance,
-      ).to.equal(variant2Reward >> 1n);
-    });
-
-    it("Should mint both UC and DEC totals correctly for a mixed variant-1/variant-2 recycle batch", async function () {
-      const {
-        ships,
-        universalCredits,
-        droneEnergyCores,
-        shatteredHiveMedal,
-        shipPurchaser,
-        user1,
-        user2,
-        owner,
-      } = await loadFixture(deployShipsFixture);
-
-      await universalCredits.write.approve(
-        [shipPurchaser.address, parseEther("100")],
-        { account: user1.account },
-      );
-      await shipPurchaser.write.purchaseWithUC(
-        [user1.account.address, 1n, user2.account.address, 1],
-        { account: user1.account },
-      );
-
-      await ships.write.setIsAllowedToCreateShips(
-        [user1.account.address, true],
-        { account: owner.account },
-      );
-      await shatteredHiveMedal.write.ownerMint([user1.account.address], {
-        account: owner.account,
-      });
-      await ships.write.createShips([user1.account.address, 1n, 2, 0, false], {
-        account: user1.account,
-      });
-
-      const allShipIds = await ships.read.getShipIdsOwned([
-        user1.account.address,
-      ]);
-      // Recycle 2 of the purchased variant-1 ships plus the 1 variant-2 ship.
-      const recycleIds = [
-        allShipIds[0],
-        allShipIds[1],
-        allShipIds[allShipIds.length - 1],
-      ];
-      const recycleReward = await ships.read.recycleReward();
-      const variant2Reward = await ships.read.variant2RecycleReward();
-
-      const initialUcBalance = await universalCredits.read.balanceOf([
-        user1.account.address,
-      ]);
-      const initialDecBalance = await droneEnergyCores.read.balanceOf([
-        user1.account.address,
-      ]);
-
-      await ships.write.shipBreaker([recycleIds], { account: user1.account });
-
-      expect(
-        (await universalCredits.read.balanceOf([user1.account.address])) -
-          initialUcBalance,
-      ).to.equal(recycleReward * 2n);
-      expect(
-        (await droneEnergyCores.read.balanceOf([user1.account.address])) -
-          initialDecBalance,
-      ).to.equal(variant2Reward);
-    });
-
     it("Should allow users to recycle their ships and receive UC tokens", async function () {
       const { ships, universalCredits, user1, user2, shipPurchaser } =
         await loadFixture(deployShipsFixture);
@@ -2623,6 +2441,31 @@ describe("Ships", function () {
         user1.account.address,
       ]);
       expect(Number(lastClaim)).to.be.greaterThan(0);
+    });
+
+    it("Should block claiming a gated variant without the required NFT, and allow it once held", async function () {
+      const { ships, shatteredHiveMedal, freeShipClaim, user1, owner } =
+        await loadFixture(deployShipsFixture);
+
+      // Variant 2 is gated to the Shattered Hive medal (see
+      // DeployAndConfig.ts's setVariant2GateCall) — claiming it without the
+      // medal should revert via VariantPurchaseGate, same as a paid mint.
+      await expect(
+        freeShipClaim.write.claimFreeShips([2], { account: user1.account }),
+      ).to.be.rejectedWith("GateRequirementNotMet");
+
+      // Once the medal is held, the same claim should succeed and mint
+      // variant-2 ships.
+      await shatteredHiveMedal.write.ownerMint([user1.account.address], {
+        account: owner.account,
+      });
+      await freeShipClaim.write.claimFreeShips([2], { account: user1.account });
+
+      const shipIds = await ships.read.getShipIdsOwned([user1.account.address]);
+      expect(shipIds.length).to.equal(10);
+      const shipTuple = (await ships.read.ships([shipIds[0]])) as ShipTuple;
+      const ship = tupleToShip(shipTuple);
+      expect(ship.traits.variant).to.equal(2);
     });
 
     it("Should not allow claiming again before cooldown period", async function () {
