@@ -6,12 +6,16 @@ import "@openzeppelin/contracts/utils/Base64.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "./Types.sol";
 import "./IRenderer.sol";
-import "./ImageRenderer.sol";
 
 contract RenderMetadata is IRenderMetadata, Ownable {
     using Strings for uint256;
 
-    ImageRenderer public immutable imageRenderer;
+    // Typed against the shared interface (not the concrete ImageRenderer
+    // contract) so a new variant's image renderer -- e.g. ImageRendererV2 --
+    // can be wired in via the same constructor param without this contract
+    // depending on that concrete type.
+    IImageRenderer public immutable imageRenderer;
+    IImageRenderer public immutable imageRendererV2;
 
     // Special is a per-faction local slot (0-7), not a global identity, so
     // its display name is keyed by (variant, slot) rather than a single
@@ -20,8 +24,12 @@ contract RenderMetadata is IRenderMetadata, Ownable {
     // (slot 0) is the one truly universal case and stays hardcoded below.
     mapping(uint16 => mapping(Special => string)) public specialNames;
 
-    constructor(address _imageRenderer) Ownable(msg.sender) {
-        imageRenderer = ImageRenderer(_imageRenderer);
+    constructor(
+        address _imageRenderer,
+        address _imageRendererV2
+    ) Ownable(msg.sender) {
+        imageRenderer = IImageRenderer(_imageRenderer);
+        imageRendererV2 = IImageRenderer(_imageRendererV2);
     }
 
     function setSpecialName(
@@ -169,7 +177,9 @@ contract RenderMetadata is IRenderMetadata, Ownable {
             revert("InvalidId");
         }
 
-        string memory imageUri = imageRenderer.renderShip(ship);
+        string memory imageUri = ship.traits.variant == 2
+            ? imageRendererV2.renderShip(ship)
+            : imageRenderer.renderShip(ship);
 
         string memory baseJson = string(
             abi.encodePacked(

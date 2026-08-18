@@ -1,0 +1,56 @@
+{
+  "_comment": "Layer->trait manifest for the variant-2 (faction 2) renderer pipeline. Edit psdLayerName values to match the real variant-2 PSD's actual layer names once it exists -- everything else (contract names, enum wiring) stays fixed. Naming convention follows variant-1-pixel.psd exactly (kebab-case layer names nested in category groups, searched by name regardless of group nesting or hidden/visible state).",
+  "psdFile": "variant-2.psd",
+  "canvasSize": 256,
+  "outputDir": "contracts/RenderersV2",
+  "categories": {
+    "fore": {
+      "combinerContract": "RenderForeV2",
+      "leaves": [
+        { "psdLayerName": "fore-0", "contractName": "RenderFore0V2", "required": true },
+        { "psdLayerName": "fore-1", "contractName": "RenderFore1V2", "required": true },
+        { "psdLayerName": "fore-2", "contractName": "RenderFore2V2", "required": true },
+        { "psdLayerName": "fore-perfect", "contractName": "RenderForePerfectV2", "required": false }
+      ]
+    },
+    "aft": {
+      "combinerContract": "RenderAftV2",
+      "leaves": [
+        { "psdLayerName": "aft-0", "contractName": "RenderAft0V2", "required": true },
+        { "psdLayerName": "aft-1", "contractName": "RenderAft1V2", "required": true },
+        { "psdLayerName": "aft-2", "contractName": "RenderAft2V2", "required": true }
+      ]
+    },
+    "weapon": {
+      "combinerContract": "RenderWeaponV2",
+      "leaves": [
+        { "psdLayerName": "laser", "contractName": "RenderWeapon1V2", "enumValue": "MainWeapon.Laser", "required": true },
+        { "psdLayerName": "railgun", "contractName": "RenderWeapon2V2", "enumValue": "MainWeapon.Railgun", "required": true },
+        { "psdLayerName": "missile", "contractName": "RenderWeapon3V2", "enumValue": "MainWeapon.MissileLauncher", "required": true },
+        { "psdLayerName": "plasma", "contractName": "RenderWeapon4V2", "enumValue": "MainWeapon.PlasmaCannon", "required": true }
+      ]
+    },
+    "body": {
+      "combinerContract": "RenderBodyV2",
+      "base": { "psdLayerName": "shield-armor-0", "contractName": "RenderBaseBodyV2", "required": true },
+      "shields": [
+        { "psdLayerName": "shield-1", "contractName": "RenderShield1V2", "enumValue": "Shields.Light", "required": true },
+        { "psdLayerName": "shield-2", "contractName": "RenderShield2V2", "enumValue": "Shields.Medium", "required": true },
+        { "psdLayerName": "shield-3", "contractName": "RenderShield3V2", "enumValue": "Shields.Heavy", "required": true }
+      ],
+      "armor": [
+        { "psdLayerName": "armor-1", "contractName": "RenderArmor1V2", "enumValue": "Armor.Light", "required": true },
+        { "psdLayerName": "armor-2", "contractName": "RenderArmor2V2", "enumValue": "Armor.Medium", "required": true },
+        { "psdLayerName": "armor-3", "contractName": "RenderArmor3V2", "enumValue": "Armor.Heavy", "required": true }
+      ]
+    },
+    "special": {
+      "combinerContract": "RenderSpecialV2",
+      "leaves": [
+        { "psdLayerName": "electric-storm", "contractName": "RenderSpecial4V2", "enumValue": "Special.Slot4", "required": true },
+        { "psdLayerName": "drone-swarm", "contractName": "RenderSpecial5V2", "enumValue": "Special.Slot5", "required": true },
+        { "psdLayerName": "additional-thruster", "contractName": "RenderSpecial6V2", "enumValue": "Special.Slot6", "required": true }
+      ]
+    }
+  }
+}

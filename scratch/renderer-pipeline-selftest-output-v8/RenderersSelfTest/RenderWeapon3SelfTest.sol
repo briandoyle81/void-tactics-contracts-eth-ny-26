@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.28;
+
+import "../Types.sol";
+import "../Renderers/RenderUtils.sol";
+
+contract RenderWeapon3SelfTest {
+    string private constant PART_1 = '<path d="M161 83 L171 83 L171 89 L161 90 L161 92 L150 92 L151 93 L152 98 L147 99 L145 94 L141 95 L141 87 L154 87 L156 88 L156 86 L161 85 Z" style="fill:';
+    string private constant PART_2 = ';"/><path d="M135 76 L139 76 L140 83 L140 86 L127 86 L121 84 L121 82 L123 82 L123 80 L128 78 L135 78 Z" style="fill:';
+    string private constant PART_3 = ';"/><path d="M140 78 L155 78 L155 79 L141 79 L141 86 L149 86 L149 87 L141 87 L141 95 L143 93 L146 94 L146 99 L144 100 L151 100 L151 102 L134 102 L134 100 L139 99 L140 87 L130 87 L131 83 L131 86 L140 86 L139 83 Z" style="fill:';
+    string private constant PART_4 = ';"/><path d="M127 87 L140 87 L140 95 L139 97 L128 96 Z" style="fill:';
+    string private constant PART_5 = ';"/><path d="M163 77 L168 77 L169 82 L171 83 L161 83 L162 86 L156 86 L156 88 L141 86 L141 83 L147 82 L150 83 L150 85 L154 84 L154 82 L161 80 Z" style="fill:';
+    string private constant PART_6 = ';"/><path d="M149 90 L150 92 L161 92 L161 96 L153 96 L156 100 L156 103 L133 103 L134 101 L144 101 L151 102 L151 100 L144 100 L146 95 L147 99 L151 98 L151 95 L151 93 L149 93 Z" style="fill:';
+    string private constant PART_7 = ';"/><path d="M155 78 L161 78 L160 82 L154 82 L155 85 L150 85 L150 83 L147 84 L146 83 L141 83 L141 79 Z" style="fill:';
+    string private constant PART_8 = ';"/><path d="M120 81 L123 82 L121 82 L121 84 L125 84 L127 81 L127 86 L130 87 L127 87 L129 91 L128 95 L124 94 L117 91 L121 88 L123 87 L118 83 Z" style="fill:';
+    string private constant PART_9 = ';"/><path d="M171 83 L172 83 L172 91 L169 92 L168 96 L163 96 L161 91 L154 91 L154 90 L161 89 L171 89 Z" style="fill:';
+    string private constant PART_10 = ';"/>';
+    string private constant COLOR_1 = 'hsl(120, 1%, 29%)';
+    string private constant COLOR_2 = 'hsl(6, 7%, 26%)';
+    string private constant COLOR_3 = 'hsl(214, 13%, 11%)';
+    string private constant COLOR_4 = 'hsl(204, 5%, 21%)';
+    string private constant COLOR_5 = 'hsl(210, 7%, 17%)';
+    string private constant COLOR_6 = 'hsl(214, 14%, 10%)';
+    string private constant COLOR_7 = 'hsl(80, 2%, 31%)';
+    string private constant COLOR_8 = 'hsl(4, 32%, 18%)';
+    string private constant COLOR_9 = 'hsl(210, 13%, 13%)';
+
+    function render(Ship memory ship) external pure returns (string memory) {
+        string memory result = string.concat(
+            PART_1,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_1) : COLOR_1,
+            PART_2,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_2) : COLOR_2,
+            PART_3,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_3) : COLOR_3,
+            PART_4
+        );
+        result = string.concat(
+            result,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_4) : COLOR_4,
+            PART_5,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_5) : COLOR_5,
+            PART_6,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_6) : COLOR_6,
+            PART_7,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_7) : COLOR_7
+        );
+        result = string.concat(
+            result,
+            PART_8,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_8) : COLOR_8,
+            PART_9,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_9) : COLOR_9,
+            PART_10
+        );
+        return result;
+    }
+}

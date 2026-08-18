@@ -22,3 +22,7 @@ ignition/deployments/chain-31337
 
 # Large build info files
 ignition/deployments/chain-545/build-info/*
+
+# Photoshop
+.psd
+*.psd

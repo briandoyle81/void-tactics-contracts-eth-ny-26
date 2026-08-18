@@ -104,8 +104,17 @@ const DeployModule = buildModule("DeployModule", (m) => {
     renderFore,
   ]);
 
-  // Deploy MetadataRenderer with ImageRenderer
-  const metadataRenderer = m.contract("RenderMetadata", [imageRenderer]);
+  // Deploy MetadataRenderer with ImageRenderer. Variant 2 (faction 2) has no
+  // art of its own yet -- see the renderer-pipeline automation under
+  // scripts/renderer-pipeline/ for generating a real ImageRendererV2 from a
+  // Photoshop source file once that art exists. Until then, variant-2 ships
+  // reuse variant 1's ImageRenderer as a placeholder so tokenURI keeps
+  // working for them (identical to today's behavior, where there is only
+  // one image renderer total) rather than reverting.
+  const metadataRenderer = m.contract("RenderMetadata", [
+    imageRenderer,
+    imageRenderer,
+  ]);
 
   let shipNames: any;
   if (!PRODUCTION) {

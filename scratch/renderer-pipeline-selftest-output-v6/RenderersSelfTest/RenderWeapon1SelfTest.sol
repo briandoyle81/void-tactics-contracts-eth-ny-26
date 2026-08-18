@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.28;
+
+import "../Types.sol";
+import "../Renderers/RenderUtils.sol";
+
+contract RenderWeapon1SelfTest {
+    string private constant PART_1 = '<path d="M138 84 L140 84 L140 90 L139 90 Z M137 85 Z M111 93 L117 93 L117 94 L111 94 Z M163 93 L165 95 L162 94 Z M165 93 Z M139 100 L141 102 L139 102 Z M141 80 L144 81 Z M137 88 Z M153 80 L155 81 Z M151 79 Z M137 103 Z M154 97 Z M158 95 Z M134 94 Z M163 90 Z M135 90 Z M133 90 Z M163 88 Z M165 85 Z M146 84 Z M155 82 Z M146 81 Z" style="fill:';
+    string private constant PART_2 = ';"/><path d="M151 96 L153 96 L153 98 L151 98 Z M141 98 L151 98 L152 102 L141 102 L142 100 L149 100 L141 99 Z M114 92 L127 92 L127 93 L114 93 Z M127 82 L129 83 Z M126 83 Z M116 84 L126 84 L126 85 L116 85 Z M143 104 L152 104 L152 105 L143 105 Z M142 94 Z M135 95 L142 95 L140 97 L135 96 Z M147 79 L151 81 L144 81 Z M155 81 L162 81 L162 82 L155 82 Z M162 83 Z M164 83 Z M163 84 Z M165 84 L168 85 Z M168 90 Z M165 91 Z M166 92 L168 93 Z M139 90 L141 92 L138 91 Z M141 90 Z M160 93 L162 95 L159 94 Z M136 92 Z M133 93 L136 94 Z M121 87 L125 88 Z M137 104 L140 105 Z M156 95 L158 96 Z M155 96 Z M128 92 L131 93 Z M130 90 L133 91 Z M117 90 L120 91 Z M117 87 L120 88 Z M146 82 Z M148 82 Z M147 83 Z M130 82 L133 83 Z M138 81 Z M136 82 L138 83 Z M137 102 L139 103 Z M127 90 L129 91 Z M168 86 Z M137 86 Z M126 87 L128 88 Z M141 104 Z M139 99 Z M149 96 Z M145 96 Z M163 92 Z M110 92 Z M136 90 Z M134 90 Z M124 90 Z M163 89 Z M163 87 Z M143 87 Z M165 86 Z M159 85 Z M145 84 Z M139 83 Z M134 82 Z M152 80 Z M140 80 Z" style="fill:';
+    string private constant PART_3 = ';"/><path d="M149 85 Z M148 86 Z M149 87 L151 89 L149 90 L147 88 Z M147 90 Z M150 90 Z M148 92 L150 93 Z M151 92 L152 94 L150 93 Z M147 93 Z M148 94 Z M150 95 L152 96 L151 98 L149 97 Z M141 96 L145 97 L143 98 Z M146 96 L149 97 L146 97 Z M140 97 Z M145 97 Z M151 98 Z M128 87 L137 87 L137 88 L128 88 Z M114 88 L115 92 Z M111 92 L114 93 Z M111 84 L115 84 L114 86 Z M110 85 Z M111 86 Z M153 95 L155 95 L155 97 L153 97 Z M120 90 L124 91 Z M165 87 L166 91 Z M161 90 Z M144 81 L146 83 L144 83 Z M151 102 Z M165 92 Z M164 93 Z M131 92 L133 93 Z M137 90 Z M159 89 Z M125 90 L127 91 Z M168 88 Z M163 85 Z M126 86 Z M125 87 Z M155 83 Z M162 82 Z M163 83 Z M142 104 Z M140 104 Z M138 101 Z M144 99 Z M142 99 Z M156 94 Z M158 92 Z M127 92 Z M163 91 Z M129 90 Z M120 87 Z M159 86 Z M144 86 Z M168 85 Z M161 84 Z M152 82 Z M135 82 Z M133 82 Z M129 82 Z M137 81 Z M139 80 Z" style="fill:';
+    string private constant PART_4 = ';"/><path d="M118 88 L137 88 L137 90 L117 90 Z M110 86 Z M111 88 L112 91 L110 92 Z M160 91 Z M159 92 Z M158 93 Z M160 89 L162 90 Z M160 87 Z" style="fill:';
+    string private constant PART_5 = ';"/><path d="M152 93 L156 94 L155 96 L151 95 Z M156 96 Z M129 86 L137 86 L137 87 L129 87 Z M145 99 L150 100 L148 101 Z M146 92 Z M148 93 L150 93 L149 95 Z M147 94 Z M138 82 L144 82 L144 83 L138 83 Z M152 81 Z M149 82 L152 83 Z M153 82 L155 83 Z M115 91 L120 91 L120 92 L115 92 Z M114 86 Z M112 87 Z M113 88 Z M150 102 L151 104 L149 103 Z M160 92 Z M162 92 Z M161 93 Z M130 91 L133 92 Z M126 91 L129 92 Z M148 85 Z M149 86 Z M148 87 Z M156 83 L159 84 Z M141 97 L143 98 Z M111 91 L113 92 Z M161 87 Z M159 87 Z M160 84 Z M161 85 Z M140 103 Z M138 103 Z M141 99 Z M148 97 Z M146 97 Z M144 97 Z M142 95 Z M138 94 Z M168 92 Z M164 92 Z M139 92 Z M166 91 Z M123 91 Z M121 91 Z M148 89 Z M142 89 Z M157 88 Z M138 87 Z M140 86 Z M126 85 Z M115 84 Z M147 82 Z M148 79 Z" style="fill:';
+    string private constant PART_6 = ';"/><path d="M166 87 L168 87 L168 92 L166 91 Z M145 90 L147 92 L145 94 L144 91 Z M144 94 Z M146 94 Z M142 91 L142 94 Z M140 94 L142 95 Z M133 91 L137 92 L133 93 Z M152 90 L154 91 L152 93 Z M147 89 Z M148 90 L150 90 L150 92 L148 92 Z M133 83 L138 83 L138 84 L133 84 Z M127 83 L131 84 Z M126 84 Z M148 81 L152 82 Z M140 81 L144 82 Z M150 94 Z M148 95 L150 96 Z M157 93 Z M159 93 Z M158 94 Z M137 93 L139 94 L137 95 Z M143 103 L145 104 Z M164 90 Z M124 91 L126 92 Z M112 90 Z M113 91 Z M145 87 L147 88 Z M116 87 Z M117 88 Z M111 87 Z M112 88 Z M127 86 L129 87 Z M145 83 L147 84 Z M148 103 Z M141 103 Z M139 103 Z M143 99 Z M140 99 Z M162 93 Z M129 91 Z M122 91 Z M120 91 Z M140 90 Z M138 90 Z M162 89 Z M164 88 Z M161 86 Z M162 84 Z M159 84 Z M153 84 Z M141 83 Z M162 81 Z M145 81 Z M150 79 Z" style="fill:';
+    string private constant PART_7 = ';"/><path d="M147 87 Z M146 88 L146 91 Z M142 90 L145 91 L144 96 L143 96 Z M141 91 Z M140 92 L142 94 L139 95 Z M145 94 L148 96 L145 96 Z M117 85 L119 86 Z M116 86 Z M115 87 L117 88 L117 91 L115 91 Z M155 91 Z M158 91 L160 92 Z M154 92 Z M157 92 Z M153 93 Z M155 93 L157 94 Z M157 94 Z M159 83 L162 84 Z M156 84 L159 85 Z M149 83 L153 84 L151 85 Z M148 84 Z M140 83 Z M142 83 L145 84 L142 84 Z M141 84 Z M150 89 L153 90 L150 90 Z M148 78 L151 79 L148 79 Z M145 103 L148 104 Z M136 93 L137 95 L135 94 Z M112 86 L114 86 L113 88 Z M146 100 L148 101 Z M162 90 Z M138 88 Z M112 89 Z M113 90 Z M156 88 Z M157 89 Z M123 85 Z M131 83 L133 84 Z M153 81 L155 82 Z M142 103 Z M149 102 Z M144 100 Z M140 100 Z M150 92 Z M147 92 Z M134 91 Z M164 89 Z M140 89 Z M162 88 Z M164 87 Z M158 87 Z M150 87 Z M166 85 Z M135 85 Z M131 85 Z M125 85 Z M121 85 Z M164 84 Z M147 81 Z M139 81 Z" style="fill:';
+    string private constant PART_8 = ';"/><path d="M151 87 L158 87 L159 91 L155 93 L151 89 Z M156 88 L158 90 L158 88 Z M155 91 Z M153 92 Z M154 93 Z M142 84 L146 85 L144 87 L146 89 L141 90 L140 85 Z M138 83 Z M128 84 L138 84 L136 86 L127 86 Z M169 85 L170 85 L170 92 L169 92 Z M119 85 L121 86 Z M122 85 Z M117 86 L119 87 Z M121 86 Z M145 102 L149 103 Z M152 83 L155 83 L154 85 Z M149 84 L151 84 L150 86 Z M142 102 L144 103 Z M137 92 L139 93 Z M160 82 L162 83 Z M140 102 Z M145 100 Z M142 100 Z M155 97 Z M153 97 Z M144 95 Z M113 89 Z M162 87 Z M115 86 Z M167 85 Z M164 85 Z M160 85 Z M147 85 Z M124 85 Z" style="fill:';
+    string private constant PART_9 = ';"/><path d="M151 85 L159 85 L159 86 L151 86 Z M156 82 L160 83 Z M138 85 Z M119 86 L121 87 Z M115 85 L117 86 Z M144 102 Z M141 102 Z M139 102 Z M153 91 Z M166 86 Z M164 86 Z M125 86 Z M162 85 Z M146 85 Z M111 85 Z M127 84 Z" style="fill:';
+    string private constant PART_10 = ';"/><path d="M150 86 L159 86 L159 87 L150 87 Z M145 86 L148 87 Z M144 87 Z M110 88 Z M112 85 L114 86 Z M148 83 Z M147 84 Z M160 90 Z M160 88 Z M167 86 Z M162 86 Z M160 86 Z M124 86 Z M122 86 Z M140 84 Z" style="fill:';
+    string private constant PART_11 = ';"/>';
+    string private constant COLOR_1 = 'hsl(214, 41%, 3%)';
+    string private constant COLOR_2 = 'hsl(213, 35%, 6%)';
+    string private constant COLOR_3 = 'hsl(210, 23%, 9%)';
+    string private constant COLOR_4 = 'hsl(7, 65%, 30%)';
+    string private constant COLOR_5 = 'hsl(214, 11%, 13%)';
+    string private constant COLOR_6 = 'hsl(204, 5%, 18%)';
+    string private constant COLOR_7 = 'hsl(195, 3%, 23%)';
+    string private constant COLOR_8 = 'hsl(100, 2%, 30%)';
+    string private constant COLOR_9 = 'hsl(67, 4%, 41%)';
+    string private constant COLOR_10 = 'hsl(25, 23%, 58%)';
+
+    function render(Ship memory ship) external pure returns (string memory) {
+        string memory result = string.concat(
+            PART_1,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_1) : COLOR_1,
+            PART_2,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_2) : COLOR_2,
+            PART_3,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_3) : COLOR_3,
+            PART_4
+        );
+        result = string.concat(
+            result,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_4) : COLOR_4,
+            PART_5,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_5) : COLOR_5,
+            PART_6,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_6) : COLOR_6,
+            PART_7,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_7) : COLOR_7
+        );
+        result = string.concat(
+            result,
+            PART_8,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_8) : COLOR_8,
+            PART_9,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_9) : COLOR_9,
+            PART_10,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_10) : COLOR_10,
+            PART_11
+        );
+        return result;
+    }
+}

@@ -1,0 +1,56 @@
+{
+  "_comment": "Ground-truth self-test manifest. Runs the pipeline against the real variant-1-pixel.psd (variant 1's actual source art) so its output can be diffed against the currently-deployed contracts/Renderers/*.sol contracts. Not used for real variant-2 art -- see manifest.variant2.json for that. Output goes to contracts/RenderersSelfTest (needs to be under contracts/ for `npx hardhat compile` to pick it up and produce real bytecode-size numbers) -- this is a throwaway validation directory, not part of the shipped variant-2 pipeline; delete it once you're done comparing.",
+  "psdFile": "variant-1-pixel.psd",
+  "canvasSize": 256,
+  "outputDir": "contracts/RenderersSelfTest",
+  "categories": {
+    "fore": {
+      "combinerContract": "RenderForeSelfTest",
+      "leaves": [
+        { "psdLayerName": "fore-0", "contractName": "RenderFore0SelfTest", "required": true },
+        { "psdLayerName": "fore-1", "contractName": "RenderFore1SelfTest", "required": true },
+        { "psdLayerName": "fore-2", "contractName": "RenderFore2SelfTest", "required": true },
+        { "psdLayerName": "fore-perfect", "contractName": "RenderForePerfectSelfTest", "required": false }
+      ]
+    },
+    "aft": {
+      "combinerContract": "RenderAftSelfTest",
+      "leaves": [
+        { "psdLayerName": "aft-0", "contractName": "RenderAft0SelfTest", "required": true },
+        { "psdLayerName": "aft-1", "contractName": "RenderAft1SelfTest", "required": true },
+        { "psdLayerName": "aft-2", "contractName": "RenderAft2SelfTest", "required": true }
+      ]
+    },
+    "weapon": {
+      "combinerContract": "RenderWeaponSelfTest",
+      "leaves": [
+        { "psdLayerName": "laser", "contractName": "RenderWeapon1SelfTest", "enumValue": "MainWeapon.Laser", "required": true },
+        { "psdLayerName": "railgun", "contractName": "RenderWeapon2SelfTest", "enumValue": "MainWeapon.Railgun", "required": true },
+        { "psdLayerName": "missile", "contractName": "RenderWeapon3SelfTest", "enumValue": "MainWeapon.MissileLauncher", "required": true },
+        { "psdLayerName": "plasma", "contractName": "RenderWeapon4SelfTest", "enumValue": "MainWeapon.PlasmaCannon", "required": true }
+      ]
+    },
+    "body": {
+      "combinerContract": "RenderBodySelfTest",
+      "base": { "psdLayerName": "shield-armor-0", "contractName": "RenderBaseBodySelfTest", "required": true },
+      "shields": [
+        { "psdLayerName": "shield-1", "contractName": "RenderShield1SelfTest", "enumValue": "Shields.Light", "required": true },
+        { "psdLayerName": "shield-2", "contractName": "RenderShield2SelfTest", "enumValue": "Shields.Medium", "required": true },
+        { "psdLayerName": "shield-3", "contractName": "RenderShield3SelfTest", "enumValue": "Shields.Heavy", "required": true }
+      ],
+      "armor": [
+        { "psdLayerName": "armor-1", "contractName": "RenderArmor1SelfTest", "enumValue": "Armor.Light", "required": true },
+        { "psdLayerName": "armor-2", "contractName": "RenderArmor2SelfTest", "enumValue": "Armor.Medium", "required": true },
+        { "psdLayerName": "armor-3", "contractName": "RenderArmor3SelfTest", "enumValue": "Armor.Heavy", "required": true }
+      ]
+    },
+    "special": {
+      "combinerContract": "RenderSpecialSelfTest",
+      "leaves": [
+        { "psdLayerName": "emp", "contractName": "RenderSpecial1SelfTest", "enumValue": "Special.Slot1", "required": true },
+        { "psdLayerName": "repair-drones", "contractName": "RenderSpecial2SelfTest", "enumValue": "Special.Slot2", "required": true },
+        { "psdLayerName": "flak-array", "contractName": "RenderSpecial3SelfTest", "enumValue": "Special.Slot3", "required": true }
+      ]
+    }
+  }
+}
