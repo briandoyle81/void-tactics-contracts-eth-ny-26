@@ -31,8 +31,20 @@ contract Game is Ownable {
     // innate ability, dispatched via ActionType.FactionAbility — independent
     // of equipment.special/ActionType.Special entirely. See
     // IEffectResolver — the resolver owns all pre-dispatch checks
-    // for its ability and Game.sol just applies whatever it returns.
+    // for its ability and Game.sol just applies whatever it returns. One
+    // ability per faction (not per-slot like specialResolvers below) — each
+    // new faction gets its own resolver contract and its own entry here,
+    // with no upper bound other than uint16's range.
     mapping(uint16 => address) public factionAbilityResolvers;
+
+    // Whether a given faction's innate ability heals a friendly ship (true
+    // for RepairResolver-shaped abilities, false for e.g. RamResolver) —
+    // lets AIBehavior.decideSupport (single-player AI) recognize "does my
+    // faction have a heal I should use on a hurt ally" generically, purely
+    // from this per-faction data, instead of hardcoding a growing chain of
+    // `if (variant == 2) ... else if (variant == 3) ...` as more factions
+    // ship their own faction ability.
+    mapping(uint16 => bool) public factionAbilityIsHeal;
 
     // Owner-authorized resolver contract for each equipped Special item,
     // dispatched via ActionType.Special — keyed by BOTH traits.variant and
@@ -110,9 +122,11 @@ contract Game is Ownable {
 
     function setFactionAbilityResolver(
         uint16 _variant,
-        address _resolver
+        address _resolver,
+        bool _isHeal
     ) public onlyOwner {
         factionAbilityResolvers[_variant] = _resolver;
+        factionAbilityIsHeal[_variant] = _isHeal;
     }
 
     function setSpecialResolver(

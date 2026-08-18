@@ -4059,8 +4059,15 @@ describe("Game", function () {
         ]);
       }
 
-      // Faction 2 (variant 2) — no resolver is registered for it, unlike
-      // faction 1's RamResolver
+      // Faction 2 (variant 2) has its own real resolver now (RepairResolver),
+      // so it's no longer naturally "unconfigured" the way this test needs —
+      // explicitly unset it for just this test instead of switching to a
+      // different variant number, which would need its own full
+      // ShipAttributes setup (cost/traits config) that this fixture doesn't
+      // provide for anything beyond variants 1/2.
+      await game.write.setFactionAbilityResolver([2, zeroAddress, false], {
+        account: owner.account,
+      });
       await setShipFaction(ships, owner, 1n, 2);
 
       await ships.write.constructAllMyShips({ account: creator.account });

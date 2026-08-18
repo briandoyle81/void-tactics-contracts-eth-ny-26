@@ -361,6 +361,11 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // automatic-side-effect-of-movement ramming mechanic.
   const ramResolver = m.contract("RamResolver", [game]);
 
+  // Deploy RepairResolver: the faction 2 innate ability (traits.variant ==
+  // 2), same shape as RamResolver above -- every variant-2 ship can heal a
+  // nearby friendly ship regardless of loadout (range 1, heals 50 hull).
+  const repairResolver = m.contract("RepairResolver", [game]);
+
   // Deploy the equipped-Special resolvers: EMP/RepairDrones/FlakArray are
   // dispatched via Game.specialResolvers[variant][slot] (IEffectResolver),
   // the same resolver-backed pattern as RamResolver above, migrated off
@@ -470,11 +475,21 @@ const DeployModule = buildModule("DeployModule", (m) => {
     { id: "AllowSinglePlayerMatchToStartGames" },
   );
 
-  // Wire RamResolver in as the faction ability resolver for faction 1
+  // Wire RamResolver/RepairResolver in as the faction ability resolvers for
+  // factions 1/2. The third arg (isHeal) is what lets AIBehavior.
+  // decideSupport recognize "this faction's innate ability heals a friendly
+  // ship" generically (Game.factionAbilityIsHeal), instead of hardcoding a
+  // per-variant branch for every faction that ships a heal ability.
   const setFactionAbilityResolverCall = m.call(
     game,
     "setFactionAbilityResolver",
-    [1, ramResolver],
+    [1, ramResolver, false],
+  );
+  const setFaction2AbilityResolverCall = m.call(
+    game,
+    "setFactionAbilityResolver",
+    [2, repairResolver, true],
+    { id: "SetFaction2AbilityResolver" },
   );
 
   // Wire the equipped-Special resolvers in — keyed by (variant, slot), since
@@ -1340,6 +1355,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
         allowPvPMatchToStartGamesCall,
         allowSinglePlayerMatchToStartGamesCall,
         setFactionAbilityResolverCall,
+        setFaction2AbilityResolverCall,
         setEMPResolverCall,
         setRepairDronesResolverCall,
         setFlakArrayResolverCall,
@@ -1511,6 +1527,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
     specialEffectsLib,
     destroyRewardLib,
     ramResolver,
+    repairResolver,
     empResolver,
     repairDronesResolver,
     flakArrayResolver,

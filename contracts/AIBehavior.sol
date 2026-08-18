@@ -620,7 +620,9 @@ library AIBehavior {
         Ctx memory ctx,
         IShipAttributes shipAttributes,
         Special mySpecial,
-        uint16 myVariant
+        uint16 myVariant,
+        bool hasHealFactionAbility,
+        uint8 healFactionAbilityRange
     ) internal view returns (Decision memory d) {
         d.destRow = ctx.pos.row;
         d.destCol = ctx.pos.col;
@@ -647,6 +649,28 @@ library AIBehavior {
             );
             if (allyFound) {
                 d.action = ActionType.Special;
+                d.actionTarget = allyTarget;
+                return d;
+            }
+        }
+
+        // Some factions' innate ability (dispatched via
+        // ActionType.FactionAbility, not tied to equipment.special) is a
+        // heal -- e.g. variant 2's RepairResolver. hasHealFactionAbility/
+        // healFactionAbilityRange are resolved generically by the caller
+        // from Game.factionAbilityIsHeal/factionAbilityResolvers (see
+        // SinglePlayerMatch._decideMove), so this works for any faction
+        // flagged that way with no per-variant branch needed here -- unlike
+        // the mySpecial == Special.Slot2 check above, this scales to
+        // however many factions eventually exist without editing this
+        // function again.
+        if (hasHealFactionAbility) {
+            (uint allyTarget, bool allyFound) = _bestAllyToHeal(
+                ctx,
+                healFactionAbilityRange
+            );
+            if (allyFound) {
+                d.action = ActionType.FactionAbility;
                 d.actionTarget = allyTarget;
                 return d;
             }

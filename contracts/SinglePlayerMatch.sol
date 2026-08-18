@@ -14,6 +14,7 @@ import "./AIBehavior.sol";
 import "./IUniversalCredits.sol";
 import "./NodeMap.sol";
 import "./IFleets.sol";
+import "./IHealFactionAbility.sol";
 
 // Plays single-player matches as an on-chain opponent. Players enter via a
 // node-graph campaign (NodeMap) rather than the Lobbies UI: startNodeMatch
@@ -409,12 +410,23 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator {
         if (info.archetype == Archetype.Sniper) {
             return AIBehavior.decideSniper(ctx);
         } else if (info.archetype == Archetype.Support) {
+            bool hasHealFactionAbility = game.factionAbilityIsHeal(
+                info.variant
+            );
+            uint8 healFactionAbilityRange;
+            if (hasHealFactionAbility) {
+                healFactionAbilityRange = IHealFactionAbility(
+                    game.factionAbilityResolvers(info.variant)
+                ).range();
+            }
             return
                 AIBehavior.decideSupport(
                     ctx,
                     shipAttributes,
                     info.special,
-                    info.variant
+                    info.variant,
+                    hasHealFactionAbility,
+                    healFactionAbilityRange
                 );
         } else if (info.archetype == Archetype.Turtle) {
             return AIBehavior.decideTurtle(ctx);
