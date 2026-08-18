@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-function processFile(filePath, utilsImport) {
+function processFile(filePath, utilsImport, blendFn) {
   console.log(`Processing ${filePath}...`);
 
   const content = fs.readFileSync(filePath, "utf8");
@@ -73,7 +73,7 @@ function processFile(filePath, utilsImport) {
     if (i < colors.length) {
       // Add color with shiny check
       allParts.push(
-        `ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_${
+        `ship.shipData.shiny ? ${blendFn}(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_${
           i + 1
         }) : COLOR_${i + 1}`
       );
@@ -114,13 +114,16 @@ function main() {
     ? utilsImportArg.slice("--utilsImport=".length)
     : "./RenderUtils.sol";
 
+  const blendFnArg = process.argv.find((a) => a.startsWith("--blendFn="));
+  const blendFn = blendFnArg ? blendFnArg.slice("--blendFn=".length) : "blendHSL";
+
   const fileArg = process.argv.find((a) => a.startsWith("--file="));
   if (fileArg) {
     const filePath = path.resolve(fileArg.slice("--file=".length));
     const backupPath = `${filePath}.original`;
     fs.copyFileSync(filePath, backupPath);
     console.log(`Created backup at ${backupPath}`);
-    processFile(filePath, utilsImport);
+    processFile(filePath, utilsImport, blendFn);
     console.log("SVG string splitting complete!");
     return;
   }
@@ -155,7 +158,7 @@ function main() {
     console.log(`Created backup at ${backupPath}`);
 
     // Process the file
-    processFile(filePath, utilsImport);
+    processFile(filePath, utilsImport, blendFn);
   });
 
   console.log("SVG string splitting complete!");

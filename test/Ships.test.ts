@@ -800,10 +800,10 @@ describe("Ships", function () {
         name: "Variant 2 Ship",
         id: 1n,
         equipment: {
-          mainWeapon: 0, // Laser -> "Mining Laser" for variant 2
+          mainWeapon: 0, // Laser -> "Medium Mining Laser" for variant 2
           armor: 0,
           shields: 0,
-          special: 4, // ElectricStorm
+          special: 4, // LighteningField
         },
         traits: {
           serialNumber: 999n,
@@ -857,8 +857,8 @@ describe("Ships", function () {
         ),
       );
 
-      expect(attributeMap.get("Main Weapon")).to.equal("Mining Laser");
-      expect(attributeMap.get("Special")).to.equal("Electric Storm");
+      expect(attributeMap.get("Main Weapon")).to.equal("Medium Mining Laser");
+      expect(attributeMap.get("Special")).to.equal("Lightening Field");
     });
 
     it("Should show 'Unknown' for a special name never set for that (variant, slot) pair", async function () {

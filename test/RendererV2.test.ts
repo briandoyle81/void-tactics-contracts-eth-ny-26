@@ -4,15 +4,13 @@ import { parseEther, zeroAddress } from "viem";
 import { deployShipsFixture } from "./fixtures/deployShipsFixture";
 import { ShipTuple, tupleToShip } from "./types";
 
-// Variant 2 (faction 2) has no art of its own yet -- see
-// scripts/renderer-pipeline/ for the automation that will eventually
-// generate a real ImageRendererV2 from a Photoshop source file. Until then,
-// DeployAndConfig.ts wires variant 1's ImageRenderer in as a placeholder for
-// both slots so tokenURI keeps working for variant-2 ships. These tests
-// cover the wiring itself (RenderMetadata actually dispatches on
-// ship.traits.variant, both slots are populated), not the art -- once real
-// variant-2 art ships, the "placeholder" assertion below is expected to
-// need updating.
+// Variant 2 (faction 2) has its own real art, generated from
+// variant-2-pixel.psd by scripts/renderer-pipeline/ (manifest.variant2.json
+// -> check-sizes.js -> gen-combiners.js) and wired into DeployAndConfig.ts
+// as ImageRendererV2, distinct from variant 1's ImageRenderer. These tests
+// cover the wiring (RenderMetadata dispatches on ship.traits.variant, both
+// slots are populated with their own real renderer), not pixel-level art
+// content.
 describe("RenderMetadata variant dispatch", function () {
   async function mintVariantShip(fixture: any, variant: number) {
     const { ships, shatteredHiveMedal, randomManager, owner, user1 } = fixture;
@@ -44,8 +42,8 @@ describe("RenderMetadata variant dispatch", function () {
     return firstNewId;
   }
 
-  it("wires both a variant-1 and a variant-2 image renderer into RenderMetadata", async function () {
-    const { metadataRenderer, imageRenderer } = await loadFixture(deployShipsFixture);
+  it("wires distinct variant-1 and variant-2 image renderers into RenderMetadata", async function () {
+    const { metadataRenderer, imageRenderer, imageRendererV2 } = await loadFixture(deployShipsFixture);
 
     const v1 = await metadataRenderer.read.imageRenderer();
     const v2 = await metadataRenderer.read.imageRendererV2();
@@ -53,10 +51,10 @@ describe("RenderMetadata variant dispatch", function () {
     expect(v1.toLowerCase()).to.not.equal(zeroAddress);
     expect(v2.toLowerCase()).to.not.equal(zeroAddress);
     expect(v1.toLowerCase()).to.equal(imageRenderer.address.toLowerCase());
+    expect(v2.toLowerCase()).to.equal(imageRendererV2.address.toLowerCase());
 
-    // Documents today's placeholder: variant 2 has no art yet, so it reuses
-    // variant 1's ImageRenderer rather than reverting on tokenURI.
-    expect(v2.toLowerCase()).to.equal(imageRenderer.address.toLowerCase());
+    // Each faction now has its own real renderer, not a shared placeholder.
+    expect(v2.toLowerCase()).to.not.equal(v1.toLowerCase());
   });
 
   it("renders a valid SVG data URI for a variant-1 ship", async function () {

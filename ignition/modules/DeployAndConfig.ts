@@ -104,16 +104,78 @@ const DeployModule = buildModule("DeployModule", (m) => {
     renderFore,
   ]);
 
-  // Deploy MetadataRenderer with ImageRenderer. Variant 2 (faction 2) has no
-  // art of its own yet -- see the renderer-pipeline automation under
-  // scripts/renderer-pipeline/ for generating a real ImageRendererV2 from a
-  // Photoshop source file once that art exists. Until then, variant-2 ships
-  // reuse variant 1's ImageRenderer as a placeholder so tokenURI keeps
-  // working for them (identical to today's behavior, where there is only
-  // one image renderer total) rather than reverting.
+  // Deploy variant 2 (faction 2)'s own renderer set, generated from the real
+  // variant-2-pixel.psd by scripts/renderer-pipeline/ (manifest.variant2.json
+  // -> check-sizes.js -> gen-combiners.js). Same shape as variant 1's
+  // sub-renderer/combiner/ImageRenderer deploy above, just against
+  // contracts/RenderersV2 and ImageRendererV2.sol.
+  const renderSpecial4V2 = m.contract("RenderSpecial4V2");
+  const renderSpecial5V2 = m.contract("RenderSpecial5V2");
+  const renderSpecial6V2 = m.contract("RenderSpecial6V2");
+
+  const renderAft0V2 = m.contract("RenderAft0V2");
+  const renderAft1V2 = m.contract("RenderAft1V2");
+  const renderAft2V2 = m.contract("RenderAft2V2");
+
+  const renderWeapon1V2 = m.contract("RenderWeapon1V2");
+  const renderWeapon2V2 = m.contract("RenderWeapon2V2");
+  const renderWeapon3V2 = m.contract("RenderWeapon3V2");
+  const renderWeapon4V2 = m.contract("RenderWeapon4V2");
+
+  const renderFore0V2 = m.contract("RenderFore0V2");
+  const renderFore1V2 = m.contract("RenderFore1V2");
+  const renderFore2V2 = m.contract("RenderFore2V2");
+  const renderForePerfectV2 = m.contract("RenderForePerfectV2");
+  const renderShield1V2 = m.contract("RenderShield1V2");
+  const renderShield2V2 = m.contract("RenderShield2V2");
+  const renderShield3V2 = m.contract("RenderShield3V2");
+
+  const renderArmor1V2 = m.contract("RenderArmor1V2");
+  const renderArmor2V2 = m.contract("RenderArmor2V2");
+  const renderArmor3V2 = m.contract("RenderArmor3V2");
+
+  const renderBaseBodyV2 = m.contract("RenderBaseBodyV2");
+
+  const renderSpecialV2 = m.contract("RenderSpecialV2", [
+    [renderSpecial4V2, renderSpecial5V2, renderSpecial6V2],
+  ]);
+
+  const renderAftV2 = m.contract("RenderAftV2", [
+    [renderAft0V2, renderAft1V2, renderAft2V2],
+  ]);
+
+  const renderWeaponV2 = m.contract("RenderWeaponV2", [
+    [renderWeapon1V2, renderWeapon2V2, renderWeapon3V2, renderWeapon4V2],
+  ]);
+
+  const renderBodyV2 = m.contract("RenderBodyV2", [
+    [
+      renderBaseBodyV2,
+      renderShield1V2,
+      renderShield2V2,
+      renderShield3V2,
+      renderArmor1V2,
+      renderArmor2V2,
+      renderArmor3V2,
+    ],
+  ]);
+
+  const renderForeV2 = m.contract("RenderForeV2", [
+    [renderFore0V2, renderFore1V2, renderFore2V2, renderForePerfectV2],
+  ]);
+
+  const imageRendererV2 = m.contract("ImageRendererV2", [
+    renderSpecialV2,
+    renderAftV2,
+    renderWeaponV2,
+    renderBodyV2,
+    renderForeV2,
+  ]);
+
+  // Deploy MetadataRenderer with both factions' image renderers.
   const metadataRenderer = m.contract("RenderMetadata", [
     imageRenderer,
-    imageRenderer,
+    imageRendererV2,
   ]);
 
   let shipNames: any;
@@ -134,8 +196,17 @@ const DeployModule = buildModule("DeployModule", (m) => {
     shipNames = "0x2b6C2e73D7D8B9dd49aF848B7A19FF003ED0d779";
   }
 
+  // DroneNames (variant-2's own deterministic name generator, distinct from
+  // variant 1's real-world-style shipNames) is fully self-contained --
+  // pure, no owner-configurable state -- so unlike shipNames it's always
+  // deployed directly rather than pointed at an external address.
+  const droneNames = m.contract("DroneNames");
+
   // Deploy GenerateNewShip with ship names
-  const generateNewShip = m.contract("GenerateNewShip", [shipNames]);
+  const generateNewShip = m.contract("GenerateNewShip", [
+    shipNames,
+    droneNames,
+  ]);
 
   // Deploy UniversalCredits token
   const universalCredits = m.contract("UniversalCredits");
@@ -461,17 +532,17 @@ const DeployModule = buildModule("DeployModule", (m) => {
   const setElectricStormNameCall = m.call(metadataRenderer, "setSpecialName", [
     2,
     4,
-    "Electric Storm",
+    "Lightening Field",
   ], { id: "SetElectricStormName" });
   const setDroneSwarmNameCall = m.call(metadataRenderer, "setSpecialName", [
     2,
     5,
-    "Drone Swarm",
+    "Attack Drones",
   ], { id: "SetDroneSwarmName" });
   const setAdditionalThrusterNameCall = m.call(
     metadataRenderer,
     "setSpecialName",
-    [2, 6, "Additional Thruster"],
+    [2, 6, "Aux Engine"],
     { id: "SetAdditionalThrusterName" },
   );
 
@@ -1382,8 +1453,36 @@ const DeployModule = buildModule("DeployModule", (m) => {
     renderBody,
     renderFore,
     imageRenderer,
+    renderSpecial4V2,
+    renderSpecial5V2,
+    renderSpecial6V2,
+    renderAft0V2,
+    renderAft1V2,
+    renderAft2V2,
+    renderWeapon1V2,
+    renderWeapon2V2,
+    renderWeapon3V2,
+    renderWeapon4V2,
+    renderFore0V2,
+    renderFore1V2,
+    renderFore2V2,
+    renderForePerfectV2,
+    renderShield1V2,
+    renderShield2V2,
+    renderShield3V2,
+    renderArmor1V2,
+    renderArmor2V2,
+    renderArmor3V2,
+    renderBaseBodyV2,
+    renderSpecialV2,
+    renderAftV2,
+    renderWeaponV2,
+    renderBodyV2,
+    renderForeV2,
+    imageRendererV2,
     metadataRenderer,
     shipNames,
+    droneNames,
     generateNewShip,
     ships,
     aiShips,

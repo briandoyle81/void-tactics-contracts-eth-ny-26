@@ -1,12 +1,15 @@
-# Renderer pipeline (written 2026-08-15)
+# Renderer pipeline (written 2026-08-15, updated 2026-08-18)
 
 Automates turning a Photoshop file into a fully on-chain SVG rendering
 pipeline, matching the shape of the existing hand-built variant-1 pipeline
 (`contracts/Renderers/`, `contracts/ImageRenderer.sol`). Built for variant 2
-(faction 2), which currently has no art of its own -- see
-`docs/faction-2.md` and `contracts/RenderMetadata.sol`'s `imageRendererV2`
-field, which today points at a placeholder (variant 1's `ImageRenderer`)
-until this pipeline produces something real.
+(faction 2). As of the 2026-08-18 update, variant 2 has real art: the actual
+`variant-2-pixel.psd` was run through this pipeline, and
+`contracts/RenderMetadata.sol`'s `imageRendererV2` field now points at a real
+`ImageRendererV2` (`contracts/ImageRendererV2.sol` + `contracts/RenderersV2/`)
+generated from it, not the variant-1 placeholder described further down in
+this doc's earlier (2026-08-15) sections. See "Round 7 onward" below for what
+changed since then.
 
 Describes pipeline mechanics as of this date. Re-verify against the current
 `contracts/Renderers/` and `scripts/renderer-pipeline/*.js` before relying on
@@ -25,28 +28,34 @@ file -- every layer's pixels are read regardless of its visibility flag.
 
 ## Usage
 
+`manifest.variant2.json` is already wired to the real `variant-2-pixel.psd`
+(on disk as `variant-2-pixel copy.psd`) and deployed -- these are the steps
+for re-running the pipeline after the art changes, or for standing up
+another variant from scratch:
+
 1. Edit `manifest.variant2.json`: set `psdFile` to the real PSD's path
    (relative to repo root), and adjust each `psdLayerName` to match the
    artist's actual layer names if they differ from the convention above.
 2. Run the full pipeline (extraction, tracing, hex->hsl conversion,
    PART/COLOR chunking, compile, size-fit escalation):
    ```
-   node scripts/renderer-pipeline/check-sizes.js scripts/renderer-pipeline/manifest.variant2.json
+   node scripts/renderer-pipeline/check-sizes.js scripts/renderer-pipeline/manifest.variant2.json [--brightness=15]
    ```
    This writes leaf contracts into `contracts/RenderersV2/`. Any leaf still
    over budget after all simplification tiers is reported, not silently
    left broken or bypassed (per CLAUDE.md, the 24KB cap is never disabled) --
    simplify that specific PSD layer (flatten shading, reduce detail) and
-   re-run.
+   re-run. `--brightness=N` applies a linear +N% gain to output fill colors
+   only (see Round 7 onward below); omit it for no change.
 3. Generate the combiner contracts and `ImageRendererV2.sol`:
    ```
    node scripts/renderer-pipeline/gen-combiners.js scripts/renderer-pipeline/manifest.variant2.json ImageRendererV2
    ```
 4. Wire the new `ImageRendererV2` into the deploy module
    (`ignition/modules/DeployAndConfig.ts`): deploy the leaves, combiners,
-   and `ImageRendererV2` the same way variant 1's are deployed, then pass
-   its address as `RenderMetadata`'s second constructor argument (currently
-   a placeholder duplicate of `imageRenderer` -- see the comment there).
+   and `ImageRendererV2` the same way variant 1's are deployed (see the
+   variant-2 deploy block there for the pattern already in place), then
+   pass its address as `RenderMetadata`'s second constructor argument.
 5. Run `npx hardhat test`, including `test/RendererV2.test.ts` and
    `test/RendererSizes.test.ts`.
 
@@ -246,37 +255,114 @@ file -- every layer's pixels are read regardless of its visibility flag.
   `contracts/Renderers/RenderWeapon.sol` etc. for the pattern being
   mirrored).
 
+## Round 7 onward (2026-08-18): potrace replaces vtracer
+
+Everything above (Rounds 1-6) is preserved as an accurate record of what was
+tried against vtracer and why each step happened, but **the tracer itself
+has since been replaced** -- `lib/vtrace.js` no longer uses
+`@neplex/vectorizer` at all. The trigger: the user shared their own actual
+Inkscape "Trace Bitmap" settings (Multiple Scans: Colors, Stack checked,
+Scans 8-14, Speckles 2-20, Optimize 5.0) that reliably produce good-fidelity
+SVGs under 80KB. Research confirmed Inkscape's Colors+Stack mode is: reduce
+to N colors, decompose into one mask per color, trace **each with potrace**
+(the actual `potrace` npm package, not vtracer), and stack the results. That
+explained the remaining fidelity gap: potrace does real point-count
+reduction (its `bestPolygon` step) that vtracer's Polygon mode empirically
+never did (Round 2 above already proved vtracer's own corner/length/splice
+thresholds are no-ops in Polygon mode).
+
+- **Tracer**: each palette color is traced separately via `potrace`
+  (`alphaMax: 0`, which -- verified by reading potrace's source -- forces
+  every vertex to `CORNER` classification, guaranteeing pure straight-line
+  output with no Bezier curves, matching every deployed leaf). Critically,
+  this does *not* use potrace's own `getPathTag()` output: for a
+  `CORNER`-tagged vertex, potrace's curve representation stores the vertex
+  itself *and* the geometrically-redundant midpoint to the next vertex, and
+  emits an `L` for both -- pure waste, since a midpoint of an already-straight
+  segment changes nothing about the shape. `lib/vtrace.js` instead reads
+  `path.curve.vertex[]` directly (one point per real corner) and runs those
+  through real **Ramer-Douglas-Peucker** polyline simplification
+  (`simplifyClosedPolygon`, tunable `epsilon` = max deviation in pixels) --
+  a graceful, controllable size lever, unlike potrace's own `turdSize`
+  (speckle-area threshold), which was tried first as the per-band search
+  dimension and rejected: it can only delete an entire small region
+  outright, never simplify a large one's outline, so once a palette is large
+  enough that most colors are inherently small patches, a `turdSize` big
+  enough to hit budget deleted nearly all of them -- confirmed by a visibly
+  near-blank render on a real self-test leaf.
+- **Cumulative "stack" masks, not a jigsaw partition**: the first potrace
+  version traced each color's *exact, mutually-exclusive* pixel set as its
+  own mask (matching the old vtracer/Cutout mental model). That produced
+  visible background gaps: two colors sharing a real interior seam get
+  simplified independently, and their simplified edges drift apart in
+  different directions. Fixed by tracing **cumulative** masks instead,
+  matching Inkscape's actual Stack semantics: layer `pos`'s mask is that
+  color *plus every color stacked on top of it* (`buildStackedMask`), so
+  each layer is a large, mostly-solid blob, and a simplification gap in an
+  upper layer just reveals the correct color underneath rather than bare
+  canvas -- only the bottom (largest-area) layer's own outer silhouette ever
+  has to be precise against true transparent background, which is the
+  simplest, least-textured contour there is. This also shrank output
+  substantially on its own: most of the previous complexity was tracing fine
+  seams between similar adjacent colors, which cumulative masking merges
+  away entirely.
+- **Palette cluster merging, not a fixed `k` ceiling**: a large `k` (tried up
+  to 40) still hurt visual quality even after the above fixes -- farthest-
+  point k-means seeding runs out of *real* distinct materials to find once
+  `k` is large, and starts claiming clusters for antialiasing/blend-edge
+  outlier pixels instead, reading as mottled noise (worst on a small ~900px
+  weapon-icon layer, which fragmented a real 2-tone highlight into 8
+  near-identical reds where the real deployed art uses 2). Capping `k` at 18
+  helped but still couldn't adapt to how much real color variation a given
+  layer actually has. `lib/palette.js`'s `buildPalette` now keeps k-means
+  generous (`K_VALUES` back up to 80) but greedily merges any two resulting
+  clusters closer than `MERGE_THRESHOLD` (Euclidean RGB distance),
+  weighted by pixel count -- so the *final* color count self-limits to
+  however many colors are actually distinct, independent of `k` or layer
+  size (confirmed empirically: `k=18` vs. `k=80` on the same layer converge
+  to within 1-2 of the same post-merge count).
+- **`brightness` parameter**: `vectorizeLayerFragment`'s config accepts a
+  `brightness` percent (default 0/off, linear gain on final RGB fill values
+  only -- clustering/ordering/geometry are still computed from true pixel
+  values first, so it can't change detail or byte size). Exposed via
+  `check-sizes.js --brightness=15`.
+- `lib/tiers.js`'s `BANDS` sweep dimension changed from potrace's `turdSize`
+  to the RDP `epsilon` described above, for the reason given there.
+
 ## Validation
 
-The pipeline was run end-to-end against `variant-1-pixel.psd` (variant 1's
-real source art) via `manifest.variant1-test.json`, with output compared
-against the actually-deployed `contracts/Renderers/*.sol` contracts both by
-eye (rasterized with `@resvg/resvg-js` during development -- essential for
-judging fidelity changes quickly without round-tripping through a person
-each time) and by size. As of the Cutout + plain-quantization rewrite
-(Round 6 above), **all 20 of 20 leaves fit the size budget**, including
-`flak-array` (a special-effects layer with 5 separate explosion bursts) --
-the one leaf every prior revision of this pipeline had to leave flagged.
-`K_VALUES` (the palette-size bands to try, most colors first) was widened
-twice, first from the survey-derived `[10..3]` to `[20..3]`, then again to
-`[40, 32, 26, 20..3]` once 20 *also* turned out not to be a ceiling: **19
-of 20 leaves land in the very first band (`k: 40`) and need no
-`filterSpeckle` at all**, well under the 24300-byte budget rather than
-pushed right up against it -- e.g. `RenderAft2SelfTest` at 18009/24300
-bytes, next to the real deployed `RenderAft2.sol` at 23349/24576. That
-headroom is a meaningfully different result from every earlier revision,
-not just a smaller number: those all had to spend the *entire* size budget
-buying back detail one way or another. `flak-array` is the one exception,
-needing `k: 3` to fit -- its per-color Solidity overhead (each surviving
-color costs a `PART_n`/`COLOR_n` pair and its own `shiny ? blendHSL(...) :
-COLOR_n` ternary, real bytecode) turned out to dominate over its actual
-traced-geometry size at this piece's particular structure (five separate,
-fairly simple radial-gradient bursts spread across a mostly-empty canvas),
-a real but not-yet-fully-understood scaling effect worth investigating
-further if this piece's fidelity matters enough to revisit -- flagged
-here rather than silently accepted. That validation output was moved to
-`scratch/renderer-pipeline-selftest-output-v8/` (kept out of `contracts/`
-so it doesn't trip the project's strict contract-size check); the `-v1`
-through `-v7` siblings in the same `scratch/` directory are earlier,
-lower-fidelity attempts kept only as a before/after record and can all be
-deleted once no longer useful as a reference.
+The pipeline was run end-to-end against `variant-1-pixel.psd` via
+`manifest.variant1-test.json` (ground truth, compared against the real
+deployed `contracts/Renderers/*.sol`) and, as of 2026-08-18, for real
+against `variant-2-pixel.psd` (the actual file added to the repo root --
+on disk as `variant-2-pixel copy.psd`; consider renaming to drop the
+` copy` suffix) via `manifest.variant2.json`. **All 20 of 20 variant-1
+leaves and all 21 of 21 variant-2 leaves fit the 24300-byte working
+budget** with the current potrace + cumulative-stack + palette-merge
+pipeline, most with real headroom to spare rather than pushed against the
+cap. Variant 2's leaf -> `MainWeapon`/`Special` enum mapping and
+`RenderMetadata.sol` display-string renames were confirmed with the user
+directly (2026-08-17 conversation): weapon art maps to its enum value by
+theme (`medium-mining-laser`->Laser/"Medium Mining Laser",
+`linear-accelerator`->Railgun/"Linear Accelerator",
+`torpedo-launcher`->MissileLauncher/"Torpedo Launcher",
+`mining-drill`->PlasmaCannon/"Mining Drill"); special art maps by matching
+each slot's real resolver identity (`lightening-field`->Slot4/"Lightening
+Field", `attack-drones`->Slot5/"Attack Drones",
+`aux-engine`->Slot6/"Aux Engine"); `fore-3`/`fore-special` fill the same
+structural slots variant 1's `fore-2`/`fore-perfect` do. The generated
+`contracts/RenderersV2/` leaves, `contracts/ImageRendererV2.sol`, and
+`gen-combiners.js`-produced combiners are deployed for real in
+`ignition/modules/DeployAndConfig.ts` (mirroring the variant-1 deploy block
+exactly) and wired into `RenderMetadata`'s `imageRendererV2` slot --
+variant 2 no longer reuses variant 1's `ImageRenderer` as a placeholder.
+Full test suite (515 tests) passes with this wired in.
+
+Per-run self-test/exploratory output belongs in `scratch/`, never left
+sitting in `contracts/` (the project's `hardhat-contract-sizer` runs in
+strict mode and will fail the whole project on anything oversized there,
+even a leftover throwaway). Earlier scratch snapshots
+(`renderer-pipeline-selftest-output-v1` through the current one, and
+similarly-named `-explore`/experiment directories) are kept only as a
+before/after record and can be deleted once no longer useful as a
+reference.

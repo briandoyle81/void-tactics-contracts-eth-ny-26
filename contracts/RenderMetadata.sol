@@ -129,10 +129,10 @@ contract RenderMetadata is IRenderMetadata, Ownable {
         uint16 variant
     ) internal pure returns (string memory) {
         if (variant == 2) {
-            if (weapon == MainWeapon.Laser) return "Mining Laser";
-            if (weapon == MainWeapon.Railgun) return "Mass Driver";
-            if (weapon == MainWeapon.MissileLauncher) return "Attack Drones";
-            if (weapon == MainWeapon.PlasmaCannon) return "Plasma Beam";
+            if (weapon == MainWeapon.Laser) return "Medium Mining Laser";
+            if (weapon == MainWeapon.Railgun) return "Linear Accelerator";
+            if (weapon == MainWeapon.MissileLauncher) return "Torpedo Launcher";
+            if (weapon == MainWeapon.PlasmaCannon) return "Mining Drill";
             return "Unknown";
         }
         if (weapon == MainWeapon.Laser) return "Laser";

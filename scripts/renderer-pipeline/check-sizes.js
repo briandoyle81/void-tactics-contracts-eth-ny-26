@@ -41,19 +41,36 @@ function readDeployedSize(manifest, contractName) {
 // compilation itself (and artifact writing) still succeeds either way, so
 // that exit code is not a real failure here; never work around the size
 // check itself, only react to what it reports.
-function compile(repoRoot) {
+// cleanFirst forces `hardhat clean` before compiling -- found necessary the
+// hard way: mid-search incremental compiles occasionally returned a STALE
+// artifact for a leaf whose only change was to a shared imported file
+// (RenderUtils.sol), reporting a smaller size than the config actually
+// compiles to, letting an over-budget config slip through the search
+// undetected until a later from-scratch compile caught it. Cheap enough to
+// always do on the one compile whose result actually gets reported/relied
+// on (the post-finalize verification); the many per-round probe compiles
+// during the search itself stay incremental for speed, since a probe that
+// slips through gets caught by this final check anyway.
+function compile(repoRoot, { cleanFirst = false } = {}) {
   try {
+    if (cleanFirst) {
+      execFileSync("npx", ["hardhat", "clean"], { cwd: repoRoot, stdio: "inherit" });
+    }
     execFileSync("npx", ["hardhat", "compile"], { cwd: repoRoot, stdio: "inherit" });
   } catch (err) {
     // expected while any leaf is still over budget; artifacts are still written
   }
 }
 
-async function regenerateAndSplit(manifest, psd, leaf, config, utilsImport) {
+async function regenerateAndSplit(manifest, psd, leaf, config, utilsImport, blendFn) {
   await revectorizeOne(psd, manifest, leaf, config);
   const filePath = path.join(manifest._outputDir, `${leaf.contractName}.sol`);
   runScript("convertColors.js", [`--file=${filePath}`]);
-  runScript("splitSvgStrings.js", [`--file=${filePath}`, `--utilsImport=${utilsImport}`]);
+  runScript("splitSvgStrings.js", [
+    `--file=${filePath}`,
+    `--utilsImport=${utilsImport}`,
+    `--blendFn=${blendFn}`,
+  ]);
 }
 
 // Per-leaf state machine: within the current band, "check-max" tests the
@@ -132,7 +149,10 @@ function applyResult(s, fits) {
   }
 }
 
-async function checkAndFitSizes(manifestPath, { budgetBytes = DEFAULT_BUDGET_BYTES, brightness = 0 } = {}) {
+async function checkAndFitSizes(
+  manifestPath,
+  { budgetBytes = DEFAULT_BUDGET_BYTES, brightness = 0, blendFn = "blendHSL" } = {}
+) {
   const manifest = loadManifest(manifestPath);
   const utilsImport = "../Renderers/RenderUtils.sol";
   const psd = loadPsd(manifest._psdPath);
@@ -172,7 +192,7 @@ async function checkAndFitSizes(manifestPath, { budgetBytes = DEFAULT_BUDGET_BYT
     for (const leaf of active) {
       const s = state[leaf.contractName];
       const config = nextProbe(s);
-      await regenerateAndSplit(manifest, psd, leaf, config, utilsImport);
+      await regenerateAndSplit(manifest, psd, leaf, config, utilsImport, blendFn);
     }
     compile(manifest._repoRoot);
 
@@ -194,9 +214,16 @@ async function checkAndFitSizes(manifestPath, { budgetBytes = DEFAULT_BUDGET_BYT
   for (const leaf of leaves) {
     const s = state[leaf.contractName];
     const finalConfig = BANDS[s.bandIdx][s.finalLevel ?? s.bestInBand ?? BANDS[s.bandIdx].length - 1];
-    await regenerateAndSplit(manifest, psd, leaf, { ...finalConfig, brightness }, utilsImport);
+    await regenerateAndSplit(
+      manifest,
+      psd,
+      leaf,
+      { ...finalConfig, brightness },
+      utilsImport,
+      blendFn
+    );
   }
-  compile(manifest._repoRoot);
+  compile(manifest._repoRoot, { cleanFirst: true });
 
   const report = [];
   for (const leaf of leaves) {
@@ -228,12 +255,16 @@ async function checkAndFitSizes(manifestPath, { budgetBytes = DEFAULT_BUDGET_BYT
 function main() {
   const manifestPath = process.argv[2];
   if (!manifestPath) {
-    console.error("Usage: node check-sizes.js <manifest.json> [--brightness=15]");
+    console.error(
+      "Usage: node check-sizes.js <manifest.json> [--brightness=15] [--blendFn=blendHSLV2]"
+    );
     process.exit(1);
   }
   const brightnessArg = process.argv.find((a) => a.startsWith("--brightness="));
   const brightness = brightnessArg ? Number(brightnessArg.slice("--brightness=".length)) : 0;
-  checkAndFitSizes(manifestPath, { brightness }).then(({ failing }) => {
+  const blendFnArg = process.argv.find((a) => a.startsWith("--blendFn="));
+  const blendFn = blendFnArg ? blendFnArg.slice("--blendFn=".length) : "blendHSL";
+  checkAndFitSizes(manifestPath, { brightness, blendFn }).then(({ failing }) => {
     if (failing.length) {
       console.error(
         `\n[check-sizes] ${failing.length} leaf(es) still exceed budget even at the most aggressive detail level -- needs manual art simplification (per CLAUDE.md, never bypass the size check).`
