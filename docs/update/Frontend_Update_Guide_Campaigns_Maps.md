@@ -104,7 +104,7 @@ function setCampaignRequiredVariant(uint _campaignId, uint16 _variant) external;
 function campaignRequiredVariant(uint _campaignId) external view returns (uint16); // 0 = unrestricted
 ```
 
-`SinglePlayerMatch.startNodeMatch` reverts `WrongCampaignVariant()` if the human fleet's variant doesn't match a nonzero `campaignRequiredVariant` for that node's campaign. **The Shattered Hive campaign (`campaignId = 1`) is now configured to require variant 1** — the AI side is untouched and still fields variant-2 fleets (section 8 of `docs/faction-2.md`), so this campaign is now a fixed "variant-1 human vs. variant-2 AI" story, not a player choice.
+`SinglePlayerMatch.startNodeMatch` reverts `WrongCampaignVariant()` if the human fleet's variant doesn't match a nonzero `campaignRequiredVariant` for that node's campaign. **The Shattered Hive campaign (`campaignId = 1`) is now configured to require variant 1** — the AI side is untouched and still fields variant-2 fleets (section 8 of `docs/update/faction-2.md`), so this campaign is now a fixed "variant-1 human vs. variant-2 AI" story, not a player choice.
 
 **Action for you:** if your campaign fleet-select screen lets the player bring any owned ship, check `campaignRequiredVariant(campaignId)` before letting them enter fleet selection for a node — if nonzero, filter to that variant only (or show a clear "this campaign requires [faction]" message) rather than letting them build a fleet that will fail at `startNodeMatch`.
 

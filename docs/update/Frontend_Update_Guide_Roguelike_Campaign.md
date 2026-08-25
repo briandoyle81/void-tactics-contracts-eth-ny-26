@@ -4,7 +4,7 @@
 
 ## TL;DR
 
-A second, structurally different single-player campaign mode now exists, entirely alongside the existing one (`NodeMap.sol`/`SinglePlayerMatch.sol`, covered in `docs/singleplayer-frontend-integration.md` and `docs/Frontend_Update_Guide_Campaigns_Maps.md`). **Nothing about the existing campaign changed** — this is new infrastructure in new contracts, for a new "run"-based game mode:
+A second, structurally different single-player campaign mode now exists, entirely alongside the existing one (`NodeMap.sol`/`SinglePlayerMatch.sol`, covered in `docs/singleplayer-frontend-integration.md` and `docs/update/Frontend_Update_Guide_Campaigns_Maps.md`). **Nothing about the existing campaign changed** — this is new infrastructure in new contracts, for a new "run"-based game mode:
 
 - The player commits a fleet **once**, at the start of a run (`RoguelikeMatch.startRun`), not per-mission.
 - That roster persists — **with accumulated hull damage carried between missions** — until the run ends (a loss/draw/retreat) or is won outright.
@@ -49,7 +49,7 @@ Other useful reads:
 function startRun(uint campaignId, uint[] calldata shipIds) external returns (uint rootNodeId);
 ```
 
-- `shipIds` is the player's chosen roster — must be non-empty, all one variant (see "Variant restriction" below and `Fleets.MixedVariantFleet`, already documented in `Frontend_Update_Guide_Campaigns_Maps.md` §7 — it applies here too), and not already `inFleet` elsewhere.
+- `shipIds` is the player's chosen roster — must be non-empty, all one variant (see "Variant restriction" below and `Fleets.MixedVariantFleet`, already documented in `docs/update/Frontend_Update_Guide_Campaigns_Maps.md` §7 — it applies here too), and not already `inFleet` elsewhere.
 - Reverts `RunAlreadyActive` if the player already has one in progress — check `hasActiveRun` first and show them their in-progress run instead of a "start" button.
 - Reverts `CampaignNotFound` / `CampaignHasNoRoot` if the campaign isn't set up yet (admin-side issue, not a player error to handle gracefully beyond a generic message).
 - Reverts `WrongCampaignVariant` if the campaign requires a specific ship variant and the roster's first ship doesn't match (mirrors the existing campaign's `NodeMap.campaignRequiredVariant`/`WrongCampaignVariant` pattern).
@@ -127,7 +127,7 @@ There is no partial retreat / "go back to the last resupply node with survivors"
 
 ## 7. Building an admin/mission editor for this campaign type
 
-Same idea as `docs/Frontend_Update_Guide_Campaigns_Maps.md` §8 (the existing campaign's editor reference), different shape. `RoguelikeNodeMap` functions (all `onlyNodeEditor` — owner, or an address granted via `setNodeEditor`, unless noted):
+Same idea as `docs/update/Frontend_Update_Guide_Campaigns_Maps.md` §8 (the existing campaign's editor reference), different shape. `RoguelikeNodeMap` functions (all `onlyNodeEditor` — owner, or an address granted via `setNodeEditor`, unless noted):
 
 ```solidity
 function setNodeEditor(address editor, bool allowed) external; // onlyOwner
@@ -178,4 +178,4 @@ Read surface for the editor UI: `getNode(nodeId)`, `getChildren(nodeId)`, `getEd
 
 ## 9. What did NOT change
 
-`NodeMap.sol`, `SinglePlayerMatch.sol`, the existing Shattered Hive campaign, and everything in `docs/singleplayer-frontend-integration.md` / `docs/Frontend_Update_Guide_Campaigns_Maps.md` — all unchanged, both campaign types are expected to coexist and both may be used going forward.
+`NodeMap.sol`, `SinglePlayerMatch.sol`, the existing Shattered Hive campaign, and everything in `docs/singleplayer-frontend-integration.md` / `docs/update/Frontend_Update_Guide_Campaigns_Maps.md` — all unchanged, both campaign types are expected to coexist and both may be used going forward.

@@ -1,6 +1,6 @@
 # Frontend Update Guide — 30-Mission Campaign, AI Hold Behavior
 
-**Written: 2026-08-03.** Delta doc — covers everything since `Frontend_Update_Guide_AI_Levels_And_Threat_Matching.md` (2026-07-31). Read that one (and `docs/Frontend_Update_Guide_Campaigns_Maps.md` before it) for earlier context; this one only covers what's new.
+**Written: 2026-08-03.** Delta doc — covers everything since `docs/update/Frontend_Update_Guide_AI_Levels_And_Threat_Matching.md` (2026-07-31). Read that one (and `docs/update/Frontend_Update_Guide_Campaigns_Maps.md` before it) for earlier context; this one only covers what's new.
 
 ## 1. The campaign is now 30 missions, not 10 — this is a breaking content change
 
