@@ -16,7 +16,14 @@ This applies to any config that would ignore or suppress contract size warnings/
 - To validate contract or deploy-script changes, use the test suite (`npx hardhat test`) and the ephemeral in-memory deploys it performs via `loadFixture`/`hre.ignition.deploy(...)`.
 - **Never run `npx hardhat ignition deploy` (or equivalent) against any network other than the local ephemeral `hardhat` network.** Do not deploy to `base-sepolia` or any other real/live network unless the user explicitly directs you to do that specific deploy.
 
-## Hardhat Ignition Execution Order
+## Git Write Commands Require Explicit Permission
+
+Do **not** run `git commit`, `git push`, `git merge`, `git rebase`, `git reset`, `git checkout -- <file>`, `git mv`, `git add` for the purpose of committing, or any other git command that changes repo state (local or remote), without the user explicitly asking for that specific action first. Read-only commands (`git status`, `git diff`, `git log`, `git show`, `git fetch`, `git ls-tree`, etc.) are fine at any time.
+
+- "Fix the push" or "resolve this conflict" is not blanket permission for every write command that might be involved — narrate the plan and get a go-ahead for the consequential steps (commit, push, rebase/reset), especially anything that rewrites history.
+- This applies even when a write operation seems obviously safe or fully reversible (e.g. commits that only touch local, unpushed history) — ask first rather than judging reversibility yourself.
+
+## Deployment Safety
 
 Hardhat Ignition does **not** guarantee `m.call(...)` invocations execute on-chain in the order they're registered in a deploy module — only `after:`-declared dependencies are honored. Independent calls (or independent branches of a dependency graph) can be interleaved/reordered by Ignition's own scheduler.
 

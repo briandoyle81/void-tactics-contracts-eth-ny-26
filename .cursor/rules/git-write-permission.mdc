@@ -1,0 +1,11 @@
+---
+description: Never run git commit/push/merge/rebase/reset or any other git write command without explicit user permission first
+alwaysApply: true
+---
+
+# Git write commands require explicit permission
+
+Do **not** run `git commit`, `git push`, `git merge`, `git rebase`, `git reset`, `git checkout -- <file>`, `git mv`, `git add` for the purpose of committing, or any other git command that changes repo state (local or remote), without the user explicitly asking for that specific action first. Read-only commands (`git status`, `git diff`, `git log`, `git show`, `git fetch`, `git ls-tree`, etc.) are fine at any time.
+
+- "Fix the push" or "resolve this conflict" is not blanket permission for every write command that might be involved — narrate the plan and get a go-ahead for the consequential steps (commit, push, rebase/reset), especially anything that rewrites history.
+- This applies even when a write operation seems obviously safe or fully reversible (e.g. commits that only touch local, unpushed history) — ask first rather than judging reversibility yourself.

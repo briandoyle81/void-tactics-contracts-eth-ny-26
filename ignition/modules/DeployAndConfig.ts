@@ -1413,8 +1413,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
   const droneCoreTierCosts = [10, 20, 30, 55, 95, 170, 300, 525, 925, 1625];
   const addTierCalls: ReturnType<typeof m.call>[] = [];
   droneCoreTierCosts.forEach((cost, index) => {
-    const previousAddTierCall =
-      index > 0 ? addTierCalls[index - 1] : undefined;
+    const previousAddTierCall = index > 0 ? addTierCalls[index - 1] : undefined;
     const call = m.call(droneStorefront, "addTier", [cost], {
       id: `AddDroneCoreTier${index + 1}`,
       ...(previousAddTierCall ? { after: [previousAddTierCall] } : {}),
