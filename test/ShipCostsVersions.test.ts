@@ -58,6 +58,7 @@ async function deployLobbyFleetFixture() {
     publicClient,
     ships,
     shipAttributes,
+    randomManager,
     creatorLobbies,
     joinerLobbies,
     creatorShipIds,
@@ -319,7 +320,7 @@ describe("Ship costs, versions, and fleets", function () {
             hull: [0, 10, 20],
             engineSpeeds: [0, 1, 2],
             guns: [
-              { range: 10, damage: 150, movement: 0 }, // Laser, boosted
+              { range: 10, damage: 150, movement: 0 }, // Generic, boosted
               v1Guns[1],
               v1Guns[2],
               v1Guns[3],
@@ -342,7 +343,7 @@ describe("Ship costs, versions, and fleets", function () {
         { account: owner.account },
       );
 
-      const gunVariant1 = await shipAttributes.read.getGunData([0, 1]); // Laser
+      const gunVariant1 = await shipAttributes.read.getGunData([0, 1]); // Generic
       const gunVariant2 = await shipAttributes.read.getGunData([0, 2]);
       expect(gunVariant2.range).to.be.greaterThan(gunVariant1.range);
       expect(gunVariant2.damage).to.be.greaterThan(gunVariant1.damage);
@@ -759,6 +760,109 @@ describe("Ship costs, versions, and fleets", function () {
         [shipId],
         [{ row: 0, col: 0 }],
       ]);
+    });
+  });
+
+  describe("Fleets variant guard", function () {
+    it("reverts createFleet when ship variants are mixed", async function () {
+      const {
+        owner,
+        creator,
+        ships,
+        shipAttributes,
+        creatorLobbies,
+        joinerLobbies,
+        creatorShipIds,
+      } = await loadFixture(deployLobbyFleetFixture);
+
+      // Mint a second, plain variant-1 ship (ungated, unlike variant 2
+      // which requires holding ShatteredHiveMedal — irrelevant to this
+      // test), then overwrite it in place to variant 2 via customizeShip.
+      // customizeShip fully replaces the stored struct and doesn't call
+      // VariantPurchaseGate.checkGate (that only runs on the _mintShip
+      // path), so it's the simplest way to get a fleet-eligible variant-2
+      // ship for this test without needing to actually hold the medal.
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+      await ships.write.createShips(
+        [creator.account.address, 1, 1, 0, false],
+        { account: owner.account },
+      );
+
+      const ownedAfter = await ships.read.getShipIdsOwned([
+        creator.account.address,
+      ]);
+      const variant2ShipId = ownedAfter[ownedAfter.length - 1];
+
+      const variant2CostsVersion =
+        await shipAttributes.read.getCurrentCostsVersion([2]);
+
+      await ships.write.customizeShip(
+        [
+          variant2ShipId,
+          {
+            name: "Variant 2 Test Ship",
+            id: variant2ShipId,
+            equipment: { mainWeapon: 0, armor: 0, shields: 0, special: 0 },
+            traits: {
+              serialNumber: 999999n,
+              colors: {
+                h1: 0,
+                s1: 0,
+                l1: 0,
+                h2: 0,
+                s2: 0,
+                l2: 0,
+                h3: 0,
+                s3: 0,
+                l3: 0,
+              },
+              variant: 2,
+              accuracy: 0,
+              hull: 0,
+              speed: 0,
+            },
+            shipData: {
+              constructed: true,
+              inFleet: false,
+              isFreeShip: false,
+              modified: 0,
+              timestampDestroyed: 0n,
+              shiny: false,
+              shipsDestroyed: 0,
+              costsVersion: variant2CostsVersion,
+              cost: 0,
+            },
+            owner: creator.account.address,
+          },
+        ],
+        { account: owner.account },
+      );
+
+      const costLimit = 1000n;
+      const turnTime = 300n;
+      await creatorLobbies.write.createLobby([
+        costLimit,
+        turnTime,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+
+      await expect(
+        creatorLobbies.write.createFleet([
+          1n,
+          [creatorShipIds[0], variant2ShipId],
+          [
+            { row: 0, col: 0 },
+            { row: 0, col: 1 },
+          ],
+        ]),
+      ).to.be.rejectedWith("MixedVariantFleet");
     });
   });
 });

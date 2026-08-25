@@ -15,6 +15,7 @@ import "./IUniversalCredits.sol";
 import "./NodeMap.sol";
 import "./IFleets.sol";
 import "./IHealFactionAbility.sol";
+import "./IShips.sol";
 
 // Plays single-player matches as an on-chain opponent. Players enter via a
 // node-graph campaign (NodeMap) rather than the Lobbies UI: startNodeMatch
@@ -33,6 +34,10 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator {
     IUniversalCredits public universalCredits;
     NodeMap public nodeMap;
     IFleets public fleets;
+    // The HUMAN ships contract — distinct from `ships` above (AIShips, the
+    // AI's own ship pool) — needed only to read a human fleet's variant
+    // against NodeMap.campaignRequiredVariant before starting a node match.
+    IShips public humanShips;
 
     // Node-match game ids live in a disjoint range above Lobbies.lobbyCount
     // (PvP's id source), so Game.sol's gameId == lobbyId scheme can never
@@ -71,6 +76,7 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator {
     error NotAITurn();
     error NoAIPlacementsConfigured();
     error NodeNotUnlocked();
+    error WrongCampaignVariant();
 
     event AIFleetCreated(uint indexed gameId, uint fleetId);
     event NodeMatchStarted(
@@ -148,6 +154,10 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator {
         fleets = IFleets(_fleets);
     }
 
+    function setHumanShipsAddress(address _humanShips) external onlyOwner {
+        humanShips = IShips(_humanShips);
+    }
+
     // The AI's own ships are owned by address(this), so whenever the AI
     // destroys a human ship, ShipsRouter.setTimestampDestroyed's kill reward
     // mints UTC here (unlike a human destroying an AI ship, which now pays
@@ -177,6 +187,20 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator {
             revert NodeNotUnlocked();
 
         NodeMap.CampaignNode memory node = nodeMap.getNode(_nodeId);
+
+        // Fleets.createFleet already rejects a fleet mixing variants, so
+        // checking the first ship's variant against the campaign's
+        // requirement (if any) is sufficient to cover the whole fleet.
+        // Checked before creating the fleet purely to fail fast/cheap on a
+        // wrong-faction fleet rather than paying for fleet creation first.
+        uint16 requiredVariant = nodeMap.campaignRequiredVariant(
+            node.campaignId
+        );
+        if (
+            requiredVariant != 0 &&
+            _shipIds.length > 0 &&
+            humanShips.getShip(_shipIds[0]).traits.variant != requiredVariant
+        ) revert WrongCampaignVariant();
 
         nodeMatchCount++;
         gameId = NODE_MATCH_ID_OFFSET + nodeMatchCount;

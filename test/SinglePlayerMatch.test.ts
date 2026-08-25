@@ -105,7 +105,7 @@ describe("SinglePlayerMatch", function () {
   };
 
   const defaultEquipment = {
-    mainWeapon: 0, // Laser
+    mainWeapon: 0, // Generic
     armor: 0, // None
     shields: 0, // None
     special: 0, // None
@@ -139,9 +139,10 @@ describe("SinglePlayerMatch", function () {
     nodeMap: any,
     mapId: bigint,
     prerequisites: bigint[] = [],
+    campaignId: bigint = 1n, // deploy-seeded "mainCampaign" by default
   ) {
     await nodeMap.write.createNode([
-      1n, // campaignId — reuses the deploy-seeded "mainCampaign" (id 1)
+      campaignId,
       mapId,
       prerequisites,
       2000n, // costLimit
@@ -366,6 +367,75 @@ describe("SinglePlayerMatch", function () {
     ).to.be.rejectedWith("NoAIPlacementsConfigured");
   });
 
+  it("reverts startNodeMatch when the human fleet's variant doesn't match the campaign's required variant", async function () {
+    const {
+      ships,
+      maps,
+      nodeMap,
+      aiEncounters,
+      humanShips,
+      humanSinglePlayerMatch,
+      human,
+      owner,
+    } = await loadFixture(deploySinglePlayerFixture);
+
+    const mapId = await setupBasicAIEncounter(maps, aiEncounters);
+    const nodeId = await createCampaignNode(nodeMap, mapId);
+
+    // Deploy-seeded: campaign 1 ("mainCampaign", reused by createCampaignNode
+    // above) requires variant 1 — see DeployAndConfig.ts's
+    // SetMainCampaignRequiredVariant call.
+    expect(await nodeMap.read.campaignRequiredVariant([1n])).to.equal(1);
+
+    // Mint a plain (ungated) variant-1 ship, then overwrite it to variant 2
+    // via customizeShip — same pattern Game.test.ts's variant-2 special
+    // tests use, avoids needing to actually hold ShatteredHiveMedal just to
+    // exercise this gate.
+    await ships.write.setIsAllowedToCreateShips(
+      [owner.account.address, true],
+      { account: owner.account },
+    );
+    await ships.write.createShips(
+      [human.account.address, 1, 1, 0, false],
+      { account: owner.account },
+    );
+    const ownedShipIds = await ships.read.getShipIdsOwned([
+      human.account.address,
+    ]);
+    const shipId = ownedShipIds[ownedShipIds.length - 1];
+
+    const shipTuple = (await ships.read.ships([shipId])) as ShipTuple;
+    const ship = tupleToShip(shipTuple);
+    await ships.write.customizeShip(
+      [shipId, { ...ship, traits: { ...ship.traits, variant: 2 } }],
+      { account: owner.account },
+    );
+    await ships.write.setCostOfShip([shipId], { account: owner.account });
+
+    await expect(
+      humanSinglePlayerMatch.write.startNodeMatch([
+        nodeId,
+        [shipId],
+        [{ row: 0, col: 0 }],
+      ]),
+    ).to.be.rejectedWith("WrongCampaignVariant");
+
+    // Unrestricted (0) campaigns are unaffected — same fleet, different
+    // (fresh, unrestricted) campaign.
+    await nodeMap.write.createCampaign();
+    const unrestrictedNodeId = await createCampaignNode(
+      nodeMap,
+      mapId,
+      [],
+      2n,
+    );
+    await humanSinglePlayerMatch.write.startNodeMatch([
+      unrestrictedNodeId,
+      [shipId],
+      [{ row: 0, col: 0 }],
+    ]);
+  });
+
   it("builds the AI fleet exactly from the configured map placements", async function () {
     const {
       ships,
@@ -385,21 +455,21 @@ describe("SinglePlayerMatch", function () {
 
     await aiEncounters.write.createAIShipConfig([
       "Scout",
-      { mainWeapon: 0, armor: 0, shields: 0, special: 1 }, // Laser/None/None/EMP
+      { mainWeapon: 0, armor: 0, shields: 0, special: 1 }, // Generic/None/None/EMP
       { ...defaultTraits, variant: 1, accuracy: 1 },
       1, // Aggressor
     ]);
     const scoutConfigId = await aiEncounters.read.aiShipConfigCount();
     await aiEncounters.write.createAIShipConfig([
       "Bruiser",
-      { mainWeapon: 1, armor: 1, shields: 0, special: 2 }, // Railgun/Light/None/RepairDrones
+      { mainWeapon: 1, armor: 1, shields: 0, special: 2 }, // Sniper/Light/None/RepairDrones
       { ...defaultTraits, variant: 1, hull: 2 },
       3, // Support
     ]);
     const bruiserConfigId = await aiEncounters.read.aiShipConfigCount();
     await aiEncounters.write.createAIShipConfig([
       "Support",
-      { mainWeapon: 2, armor: 0, shields: 1, special: 3 }, // MissileLauncher/None/Light/FlakArray
+      { mainWeapon: 2, armor: 0, shields: 1, special: 3 }, // Missile/None/Light/FlakArray
       { ...defaultTraits, variant: 1, speed: 2 },
       0, // Grunt
     ]);
@@ -660,7 +730,7 @@ describe("SinglePlayerMatch", function () {
       const mapId = await maps.read.mapCount();
       await aiEncounters.write.createAIShipConfig([
         "Aggressor Ship",
-        defaultEquipment, // Laser, range 3
+        defaultEquipment, // Generic, range 3
         defaultTraits,
         1, // Aggressor
       ]);
@@ -860,7 +930,7 @@ describe("SinglePlayerMatch", function () {
       // get stuck retrying an illegal turn of its own.
       await aiEncounters.write.createAIShipConfig([
         "Healer",
-        { mainWeapon: 0, armor: 0, shields: 0, special: 2 }, // Laser/.../RepairDrones
+        { mainWeapon: 0, armor: 0, shields: 0, special: 2 }, // Generic/.../RepairDrones
         defaultTraits,
         3, // Support
       ]);
@@ -1010,7 +1080,7 @@ describe("SinglePlayerMatch", function () {
 
       await maps.write.createPresetMap([[], MapMode.Both]);
       const mapId = await maps.read.mapCount();
-      // PlasmaCannon: range 2, well under this ship's movement (3) — an
+      // Close: range 2, well under this ship's movement (3) — an
       // enemy placed exactly at movement distance but outside gun range
       // makes the shared "step toward" primitive walk straight onto the
       // enemy's own tile (it doesn't check occupancy), which Game.sol

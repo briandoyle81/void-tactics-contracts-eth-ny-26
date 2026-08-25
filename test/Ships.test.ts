@@ -800,7 +800,7 @@ describe("Ships", function () {
         name: "Variant 2 Ship",
         id: 1n,
         equipment: {
-          mainWeapon: 0, // Laser -> "Medium Mining Laser" for variant 2
+          mainWeapon: 0, // Generic -> "Medium Mining Laser" for variant 2
           armor: 0,
           shields: 0,
           special: 4, // LighteningField

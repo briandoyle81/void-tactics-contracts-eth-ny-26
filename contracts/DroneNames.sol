@@ -102,10 +102,10 @@ contract DroneNames is IDroneNames {
     }
 
     // Variant 2's real weapon lineup (see RenderMetadata.getMainWeaponString):
-    // Laser="Medium Mining Laser", Railgun="Linear Accelerator",
-    // MissileLauncher="Torpedo Launcher", PlasmaCannon="Mining Drill".
-    // Laser and PlasmaCannon are both mining tools, so they share a pool;
-    // Railgun (an accelerator) draws from a space/physics pool; MissileLauncher
+    // Generic="Medium Mining Laser", Sniper="Linear Accelerator",
+    // Missile="Torpedo Launcher", Close="Mining Drill".
+    // Generic and Close are both mining tools, so they share a pool;
+    // Sniper (an accelerator) draws from a space/physics pool; Missile
     // (a combat weapon) draws from a predator/animal pool. Any MainWeapon
     // value not explicitly themed (including the `future1`-`future4`
     // reserved enum members) falls back to the mining pool rather than
@@ -113,7 +113,7 @@ contract DroneNames is IDroneNames {
     function _poolFor(
         MainWeapon _weapon
     ) internal pure returns (string[10] memory) {
-        if (_weapon == MainWeapon.Railgun) {
+        if (_weapon == MainWeapon.Sniper) {
             return [
                 "Comet",
                 "Nova",
@@ -126,7 +126,7 @@ contract DroneNames is IDroneNames {
                 "Nadir",
                 "Orbit"
             ];
-        } else if (_weapon == MainWeapon.MissileLauncher) {
+        } else if (_weapon == MainWeapon.Missile) {
             return [
                 "Wasp",
                 "Viper",

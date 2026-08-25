@@ -529,6 +529,69 @@ describe("NodeMap", function () {
     });
   });
 
+  describe("setCampaignRequiredVariant", function () {
+    it("defaults to 0 (unrestricted) for any campaign", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+
+      expect(
+        await nodeMap.read.campaignRequiredVariant([1n]),
+      ).to.equal(0);
+    });
+
+    it("lets the owner set and read back a campaign's required variant", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+
+      await nodeMap.write.setCampaignRequiredVariant([1n, 1]);
+
+      expect(
+        await nodeMap.read.campaignRequiredVariant([1n]),
+      ).to.equal(1);
+    });
+
+    it("lets a granted node editor set a campaign's required variant", async function () {
+      const { nodeMap, editorNodeMap, editor } = await loadFixture(
+        deployFixture,
+      );
+      await nodeMap.write.setNodeEditor([editor.account.address, true]);
+
+      await editorNodeMap.write.setCampaignRequiredVariant([1n, 2]);
+
+      expect(
+        await nodeMap.read.campaignRequiredVariant([1n]),
+      ).to.equal(2);
+    });
+
+    it("reverts from a non-owner, non-editor address", async function () {
+      const { otherNodeMap } = await loadFixture(deployFixture);
+
+      await expect(
+        otherNodeMap.write.setCampaignRequiredVariant([1n, 1]),
+      ).to.be.rejectedWith("NotNodeEditor");
+    });
+
+    it("reverts for a campaign that doesn't exist", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+
+      await expect(
+        nodeMap.write.setCampaignRequiredVariant([999n, 1]),
+      ).to.be.rejectedWith("CampaignNotFound");
+    });
+
+    it("can be reset back to 0 (unrestricted)", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+
+      await nodeMap.write.setCampaignRequiredVariant([1n, 1]);
+      expect(
+        await nodeMap.read.campaignRequiredVariant([1n]),
+      ).to.equal(1);
+
+      await nodeMap.write.setCampaignRequiredVariant([1n, 0]);
+      expect(
+        await nodeMap.read.campaignRequiredVariant([1n]),
+      ).to.equal(0);
+    });
+  });
+
   describe("View helpers", function () {
     it("getAllNodes returns every created node in order", async function () {
       const { nodeMap } = await loadFixture(deployFixture);

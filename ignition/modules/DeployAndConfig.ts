@@ -347,6 +347,106 @@ const DeployModule = buildModule("DeployModule", (m) => {
     fleets,
   ]);
 
+  // ---- Roguelike campaign mode ------------------------------------------
+  // Sits alongside NodeMap/SinglePlayerMatch (the existing, replayable
+  // campaign) — a completely independent graph/run/orchestration stack, not
+  // a replacement. A player commits a fleet once (RoguelikeMatch.startRun);
+  // it persists — with accumulated damage — across RoguelikeNodeMap's
+  // parent-lists-children mission graph until the run is won or ends.
+  // Reuses AIShips/Fleets/Game/AIEncounters/ShipAttributes exactly as-is,
+  // via the additive permission grants below.
+  const roguelikeNodeMap = m.contract("RoguelikeNodeMap", [maps]);
+  const roguelikeRun = m.contract("RoguelikeRun");
+  const roguelikeAIController = m.contract("RoguelikeAIController");
+  const roguelikeMatch = m.contract("RoguelikeMatch", [
+    aiShips,
+    ships,
+    game,
+    fleets,
+    aiEncounters,
+    maps,
+    shipAttributes,
+    roguelikeNodeMap,
+    roguelikeRun,
+    roguelikeAIController,
+  ]);
+  // Resupply-node actions (repair, roster changes) split into their own
+  // contract purely for size — see RoguelikeResupply.sol's header comment.
+  const roguelikeResupply = m.contract("RoguelikeResupply", [
+    ships,
+    fleets,
+    shipAttributes,
+    universalCredits,
+    roguelikeNodeMap,
+    roguelikeRun,
+  ]);
+
+  // ShipsRouter.lobbyAddress used to point straight at SinglePlayerMatch,
+  // whose isSinglePlayerOrchestrator is a hardcoded `== address(this)`
+  // check — a second AI-owning orchestrator (RoguelikeMatch) wouldn't be
+  // recognized, so its kills would silently pay UTC instead of DEC. This
+  // registry replaces that single-address check with an owner-settable
+  // one; see setShipsRouterLobbyAddressCall below for where ShipsRouter
+  // gets repointed at it.
+  const singlePlayerOrchestratorRegistry = m.contract(
+    "SinglePlayerOrchestratorRegistry",
+  );
+  const registerSinglePlayerMatchOrchestratorCall = m.call(
+    singlePlayerOrchestratorRegistry,
+    "setOrchestrator",
+    [singlePlayerMatch, true],
+    { id: "RegisterSinglePlayerMatchOrchestrator" },
+  );
+  const registerRoguelikeMatchOrchestratorCall = m.call(
+    singlePlayerOrchestratorRegistry,
+    "setOrchestrator",
+    [roguelikeMatch, true],
+    { id: "RegisterRoguelikeMatchOrchestrator" },
+  );
+
+  const allowRoguelikeMatchToStartGamesCall = m.call(
+    game,
+    "setIsAllowedToStartGames",
+    [roguelikeMatch, true],
+    { id: "AllowRoguelikeMatchToStartGames" },
+  );
+  const allowRoguelikeMatchToManageFleetsCall = m.call(
+    fleets,
+    "setIsAllowedToManageFleets",
+    [roguelikeMatch, true],
+    { id: "AllowRoguelikeMatchToManageFleets" },
+  );
+  const allowRoguelikeResupplyToManageFleetsCall = m.call(
+    fleets,
+    "setIsAllowedToManageFleets",
+    [roguelikeResupply, true],
+    { id: "AllowRoguelikeResupplyToManageFleets" },
+  );
+  const allowRoguelikeMatchToCreateAIShipsCall = m.call(
+    aiShips,
+    "setIsAllowedToCreateShips",
+    [roguelikeMatch, true],
+    { id: "AllowRoguelikeMatchToCreateAIShips" },
+  );
+  const allowRoguelikeMatchToModifyRunsCall = m.call(
+    roguelikeRun,
+    "setIsAllowedToModifyRuns",
+    [roguelikeMatch, true],
+    { id: "AllowRoguelikeMatchToModifyRuns" },
+  );
+  const allowRoguelikeResupplyToModifyRunsCall = m.call(
+    roguelikeRun,
+    "setIsAllowedToModifyRuns",
+    [roguelikeResupply, true],
+    { id: "AllowRoguelikeResupplyToModifyRuns" },
+  );
+  const allowRoguelikeNodeEditorCall = m.call(
+    roguelikeNodeMap,
+    "setNodeEditor",
+    [MAP_EDITOR, true],
+    { id: "AllowRoguelikeNodeEditor" },
+  );
+
   const tutorialClaim = m.contract("TutorialClaim", [ships, gameResults]);
 
   // Deploy FreeShipClaim: the recurring (28-day) free-ship claim, split out
@@ -443,7 +543,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
   const setShipsRouterLobbyAddressCall = m.call(
     shipsRouter,
     "setLobbyAddress",
-    [singlePlayerMatch],
+    [singlePlayerOrchestratorRegistry],
   );
 
   // Set all addresses in Game contract (Fleets/Maps/ShipAttributes stay core
@@ -497,31 +597,36 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // Faction 1: Slot1=EMP, Slot2=RepairDrones, Slot3=FlakArray. Faction 2:
   // Slot4=ElectricStorm, Slot5=DroneSwarm, Slot6=AdditionalThruster (no
   // resolver — passive-only), Slot7=unused.
-  const setEMPResolverCall = m.call(game, "setSpecialResolver", [
-    1,
-    1,
-    empResolver,
-  ], { id: "SetEMPResolver" });
-  const setRepairDronesResolverCall = m.call(game, "setSpecialResolver", [
-    1,
-    2,
-    repairDronesResolver,
-  ], { id: "SetRepairDronesResolver" });
-  const setFlakArrayResolverCall = m.call(game, "setSpecialResolver", [
-    1,
-    3,
-    flakArrayResolver,
-  ], { id: "SetFlakArrayResolver" });
-  const setElectricStormResolverCall = m.call(game, "setSpecialResolver", [
-    2,
-    4,
-    electricStormResolver,
-  ], { id: "SetElectricStormResolver" });
-  const setDroneSwarmResolverCall = m.call(game, "setSpecialResolver", [
-    2,
-    5,
-    droneSwarmResolver,
-  ], { id: "SetDroneSwarmResolver" });
+  const setEMPResolverCall = m.call(
+    game,
+    "setSpecialResolver",
+    [1, 1, empResolver],
+    { id: "SetEMPResolver" },
+  );
+  const setRepairDronesResolverCall = m.call(
+    game,
+    "setSpecialResolver",
+    [1, 2, repairDronesResolver],
+    { id: "SetRepairDronesResolver" },
+  );
+  const setFlakArrayResolverCall = m.call(
+    game,
+    "setSpecialResolver",
+    [1, 3, flakArrayResolver],
+    { id: "SetFlakArrayResolver" },
+  );
+  const setElectricStormResolverCall = m.call(
+    game,
+    "setSpecialResolver",
+    [2, 4, electricStormResolver],
+    { id: "SetElectricStormResolver" },
+  );
+  const setDroneSwarmResolverCall = m.call(
+    game,
+    "setSpecialResolver",
+    [2, 5, droneSwarmResolver],
+    { id: "SetDroneSwarmResolver" },
+  );
 
   // Display names for each faction's real specials — RenderMetadata.
   // specialNames, keyed by (variant, slot) since a slot's meaning (and so
@@ -529,36 +634,172 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // hardcodes "No Special" for it universally. Unset (variant, slot) pairs
   // (e.g. faction 1's slots 4-7, faction 2's slots 1-3/6/7) fall back to
   // "Unknown" — those slots are either inert or unused for that faction.
-  const setEMPNameCall = m.call(metadataRenderer, "setSpecialName", [
-    1,
-    1,
-    "EMP",
-  ], { id: "SetEMPName" });
-  const setRepairDronesNameCall = m.call(metadataRenderer, "setSpecialName", [
-    1,
-    2,
-    "Repair Drones",
-  ], { id: "SetRepairDronesName" });
-  const setFlakArrayNameCall = m.call(metadataRenderer, "setSpecialName", [
-    1,
-    3,
-    "Flak Array",
-  ], { id: "SetFlakArrayName" });
-  const setElectricStormNameCall = m.call(metadataRenderer, "setSpecialName", [
-    2,
-    4,
-    "Lightening Field",
-  ], { id: "SetElectricStormName" });
-  const setDroneSwarmNameCall = m.call(metadataRenderer, "setSpecialName", [
-    2,
-    5,
-    "Attack Drones",
-  ], { id: "SetDroneSwarmName" });
+  const setEMPNameCall = m.call(
+    metadataRenderer,
+    "setSpecialName",
+    [1, 1, "EMP"],
+    { id: "SetEMPName" },
+  );
+  const setRepairDronesNameCall = m.call(
+    metadataRenderer,
+    "setSpecialName",
+    [1, 2, "Repair Drones"],
+    { id: "SetRepairDronesName" },
+  );
+  const setFlakArrayNameCall = m.call(
+    metadataRenderer,
+    "setSpecialName",
+    [1, 3, "Flak Array"],
+    { id: "SetFlakArrayName" },
+  );
+  const setElectricStormNameCall = m.call(
+    metadataRenderer,
+    "setSpecialName",
+    [2, 4, "Lightening Field"],
+    { id: "SetElectricStormName" },
+  );
+  const setDroneSwarmNameCall = m.call(
+    metadataRenderer,
+    "setSpecialName",
+    [2, 5, "Attack Drones"],
+    { id: "SetDroneSwarmName" },
+  );
   const setAdditionalThrusterNameCall = m.call(
     metadataRenderer,
     "setSpecialName",
     [2, 6, "Aux Engine"],
     { id: "SetAdditionalThrusterName" },
+  );
+
+  // Display names for MainWeapon/Armor/Shields — RenderMetadata.
+  // mainWeaponNames/armorNames/shieldsNames, keyed by (variant, enum value)
+  // for the same reason as the special names above: each faction reskins
+  // the same mechanical enum with its own flavor text. Variant 1 is the
+  // "real" faction names; variant 2 reskins the same mechanical weapons as
+  // mining/industrial equipment (see Ships.test.ts's variant-2 tokenURI
+  // test). Armor.None/Shields.None need no entry — RenderMetadata hardcodes
+  // "No Armor"/"No Shields" for them universally.
+  const setLaserNameV1Call = m.call(
+    metadataRenderer,
+    "setMainWeaponName",
+    [1, 0, "Laser"],
+    { id: "SetLaserNameV1" },
+  );
+  const setRailgunNameV1Call = m.call(
+    metadataRenderer,
+    "setMainWeaponName",
+    [1, 1, "Railgun"],
+    { id: "SetRailgunNameV1" },
+  );
+  const setMissileLauncherNameV1Call = m.call(
+    metadataRenderer,
+    "setMainWeaponName",
+    [1, 2, "Missile Launcher"],
+    { id: "SetMissileLauncherNameV1" },
+  );
+  const setPlasmaCannonNameV1Call = m.call(
+    metadataRenderer,
+    "setMainWeaponName",
+    [1, 3, "Plasma Cannon"],
+    { id: "SetPlasmaCannonNameV1" },
+  );
+  const setLaserNameV2Call = m.call(
+    metadataRenderer,
+    "setMainWeaponName",
+    [2, 0, "Medium Mining Laser"],
+    { id: "SetLaserNameV2" },
+  );
+  const setRailgunNameV2Call = m.call(
+    metadataRenderer,
+    "setMainWeaponName",
+    [2, 1, "Linear Accelerator"],
+    { id: "SetRailgunNameV2" },
+  );
+  const setMissileLauncherNameV2Call = m.call(
+    metadataRenderer,
+    "setMainWeaponName",
+    [2, 2, "Torpedo Launcher"],
+    { id: "SetMissileLauncherNameV2" },
+  );
+  const setPlasmaCannonNameV2Call = m.call(
+    metadataRenderer,
+    "setMainWeaponName",
+    [2, 3, "Mining Drill"],
+    { id: "SetPlasmaCannonNameV2" },
+  );
+
+  const setLightArmorNameV1Call = m.call(
+    metadataRenderer,
+    "setArmorName",
+    [1, 1, "Light Armor"],
+    { id: "SetLightArmorNameV1" },
+  );
+  const setMediumArmorNameV1Call = m.call(
+    metadataRenderer,
+    "setArmorName",
+    [1, 2, "Medium Armor"],
+    { id: "SetMediumArmorNameV1" },
+  );
+  const setHeavyArmorNameV1Call = m.call(
+    metadataRenderer,
+    "setArmorName",
+    [1, 3, "Heavy Armor"],
+    { id: "SetHeavyArmorNameV1" },
+  );
+  const setLightArmorNameV2Call = m.call(
+    metadataRenderer,
+    "setArmorName",
+    [2, 1, "Light Armor"],
+    { id: "SetLightArmorNameV2" },
+  );
+  const setMediumArmorNameV2Call = m.call(
+    metadataRenderer,
+    "setArmorName",
+    [2, 2, "Medium Armor"],
+    { id: "SetMediumArmorNameV2" },
+  );
+  const setHeavyArmorNameV2Call = m.call(
+    metadataRenderer,
+    "setArmorName",
+    [2, 3, "Heavy Armor"],
+    { id: "SetHeavyArmorNameV2" },
+  );
+
+  const setLightShieldsNameV1Call = m.call(
+    metadataRenderer,
+    "setShieldsName",
+    [1, 1, "Light Shields"],
+    { id: "SetLightShieldsNameV1" },
+  );
+  const setMediumShieldsNameV1Call = m.call(
+    metadataRenderer,
+    "setShieldsName",
+    [1, 2, "Medium Shields"],
+    { id: "SetMediumShieldsNameV1" },
+  );
+  const setHeavyShieldsNameV1Call = m.call(
+    metadataRenderer,
+    "setShieldsName",
+    [1, 3, "Heavy Shields"],
+    { id: "SetHeavyShieldsNameV1" },
+  );
+  const setLightShieldsNameV2Call = m.call(
+    metadataRenderer,
+    "setShieldsName",
+    [2, 1, "Light Shields"],
+    { id: "SetLightShieldsNameV2" },
+  );
+  const setMediumShieldsNameV2Call = m.call(
+    metadataRenderer,
+    "setShieldsName",
+    [2, 2, "Medium Shields"],
+    { id: "SetMediumShieldsNameV2" },
+  );
+  const setHeavyShieldsNameV2Call = m.call(
+    metadataRenderer,
+    "setShieldsName",
+    [2, 3, "Heavy Shields"],
+    { id: "SetHeavyShieldsNameV2" },
   );
 
   // Costs and attributes are both per-variant (ShipAttributes.
@@ -908,6 +1149,21 @@ const DeployModule = buildModule("DeployModule", (m) => {
     campaignIds[campaign.key] = BigInt(i + 1);
   });
 
+  // The Shattered Hive campaign (mainCampaign) fields variant-2 AI fleets
+  // (see docs/faction-2.md section 8) but is a variant-1 human story — a
+  // human fleet must be all variant-1 ships to enter any of its nodes.
+  // Enforced in SinglePlayerMatch.startNodeMatch, not here (see NodeMap.
+  // setCampaignRequiredVariant's comment); this call just configures it.
+  const setMainCampaignRequiredVariantCall = m.call(
+    nodeMap,
+    "setCampaignRequiredVariant",
+    [campaignIds["mainCampaign"], 1],
+    {
+      id: "SetMainCampaignRequiredVariant",
+      after: [campaignCalls["mainCampaign"]],
+    },
+  );
+
   // Seeds the campaign graph so the frontend has a real unlock graph out of
   // the box: nodes are created in the JSON's order, each node's id is its
   // 1-indexed position (same "no event to read" reasoning as the maps
@@ -1175,6 +1431,15 @@ const DeployModule = buildModule("DeployModule", (m) => {
     [universalCredits],
   );
 
+  // Lets startNodeMatch read a human fleet's variant (against
+  // NodeMap.campaignRequiredVariant) before starting a match — distinct
+  // from `ships` on SinglePlayerMatch, which is AIShips (the AI's own pool).
+  const setSinglePlayerMatchHumanShipsAddressCall = m.call(
+    singlePlayerMatch,
+    "setHumanShipsAddress",
+    [ships],
+  );
+
   // WARNING: This works for deploying but breaks the tests for some reason.
   // Purchase tier 4 for the deployer
   // m.call(
@@ -1283,6 +1548,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
         setAiShipsShipAttributesCall,
         setAiShipsRouterCall,
         allowSinglePlayerMatchToCreateAIShipsCall,
+        allowRoguelikeMatchToCreateAIShipsCall,
       ],
     });
 
@@ -1315,6 +1581,26 @@ const DeployModule = buildModule("DeployModule", (m) => {
         setElectricStormNameCall,
         setDroneSwarmNameCall,
         setAdditionalThrusterNameCall,
+        setLaserNameV1Call,
+        setRailgunNameV1Call,
+        setMissileLauncherNameV1Call,
+        setPlasmaCannonNameV1Call,
+        setLaserNameV2Call,
+        setRailgunNameV2Call,
+        setMissileLauncherNameV2Call,
+        setPlasmaCannonNameV2Call,
+        setLightArmorNameV1Call,
+        setMediumArmorNameV1Call,
+        setHeavyArmorNameV1Call,
+        setLightArmorNameV2Call,
+        setMediumArmorNameV2Call,
+        setHeavyArmorNameV2Call,
+        setLightShieldsNameV1Call,
+        setMediumShieldsNameV1Call,
+        setHeavyShieldsNameV1Call,
+        setLightShieldsNameV2Call,
+        setMediumShieldsNameV2Call,
+        setHeavyShieldsNameV2Call,
       ],
     });
 
@@ -1354,6 +1640,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
         setGameAddressesCall,
         allowPvPMatchToStartGamesCall,
         allowSinglePlayerMatchToStartGamesCall,
+        allowRoguelikeMatchToStartGamesCall,
         setFactionAbilityResolverCall,
         setFaction2AbilityResolverCall,
         setEMPResolverCall,
@@ -1369,6 +1656,8 @@ const DeployModule = buildModule("DeployModule", (m) => {
       after: [
         allowLobbiesToManageFleetsCall,
         allowSinglePlayerMatchToManageFleetsCall,
+        allowRoguelikeMatchToManageFleetsCall,
+        allowRoguelikeResupplyToManageFleetsCall,
         setFleetsGameAddressCall,
         setFleetsShipAttributesCall,
       ],
@@ -1391,7 +1680,10 @@ const DeployModule = buildModule("DeployModule", (m) => {
 
     m.call(singlePlayerMatch, "transferOwnership", [MAP_EDITOR], {
       id: "TransferSinglePlayerMatchOwnership",
-      after: [setSinglePlayerMatchUniversalCreditsAddressCall],
+      after: [
+        setSinglePlayerMatchUniversalCreditsAddressCall,
+        setSinglePlayerMatchHumanShipsAddressCall,
+      ],
     });
 
     m.call(nodeMap, "transferOwnership", [MAP_EDITOR], {
@@ -1399,9 +1691,44 @@ const DeployModule = buildModule("DeployModule", (m) => {
       after: [
         allowNodeEditorCall,
         allowSinglePlayerMatchToCompleteNodesCall,
+        setMainCampaignRequiredVariantCall,
         ...Object.values(nodeCalls),
       ],
     });
+
+    m.call(roguelikeNodeMap, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferRoguelikeNodeMapOwnership",
+      after: [allowRoguelikeNodeEditorCall],
+    });
+
+    m.call(roguelikeRun, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferRoguelikeRunOwnership",
+      after: [
+        allowRoguelikeMatchToModifyRunsCall,
+        allowRoguelikeResupplyToModifyRunsCall,
+      ],
+    });
+
+    m.call(roguelikeMatch, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferRoguelikeMatchOwnership",
+    });
+
+    m.call(roguelikeResupply, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferRoguelikeResupplyOwnership",
+    });
+
+    m.call(
+      singlePlayerOrchestratorRegistry,
+      "transferOwnership",
+      [MAP_EDITOR],
+      {
+        id: "TransferSinglePlayerOrchestratorRegistryOwnership",
+        after: [
+          registerSinglePlayerMatchOrchestratorCall,
+          registerRoguelikeMatchOrchestratorCall,
+        ],
+      },
+    );
 
     m.call(variantPurchaseGate, "transferOwnership", [MAP_EDITOR], {
       id: "TransferVariantPurchaseGateOwnership",
@@ -1517,6 +1844,12 @@ const DeployModule = buildModule("DeployModule", (m) => {
     fleets,
     lobbies,
     nodeMap,
+    roguelikeNodeMap,
+    roguelikeRun,
+    roguelikeAIController,
+    roguelikeMatch,
+    roguelikeResupply,
+    singlePlayerOrchestratorRegistry,
     variantPurchaseGate,
     shatteredHiveMedal,
     tutorialClaim,

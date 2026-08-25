@@ -4,10 +4,10 @@ pragma solidity ^0.8.28;
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 enum MainWeapon {
-    Laser,
-    Railgun,
-    MissileLauncher,
-    PlasmaCannon,
+    Generic,
+    Sniper,
+    Missile,
+    Close,
     future1,
     future2,
     future3,

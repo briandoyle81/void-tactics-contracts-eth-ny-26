@@ -24,10 +24,10 @@
     "weapon": {
       "combinerContract": "RenderWeaponSelfTest",
       "leaves": [
-        { "psdLayerName": "laser", "contractName": "RenderWeapon1SelfTest", "enumValue": "MainWeapon.Laser", "required": true },
-        { "psdLayerName": "railgun", "contractName": "RenderWeapon2SelfTest", "enumValue": "MainWeapon.Railgun", "required": true },
-        { "psdLayerName": "missile", "contractName": "RenderWeapon3SelfTest", "enumValue": "MainWeapon.MissileLauncher", "required": true },
-        { "psdLayerName": "plasma", "contractName": "RenderWeapon4SelfTest", "enumValue": "MainWeapon.PlasmaCannon", "required": true }
+        { "psdLayerName": "laser", "contractName": "RenderWeapon1SelfTest", "enumValue": "MainWeapon.Generic", "required": true },
+        { "psdLayerName": "railgun", "contractName": "RenderWeapon2SelfTest", "enumValue": "MainWeapon.Sniper", "required": true },
+        { "psdLayerName": "missile", "contractName": "RenderWeapon3SelfTest", "enumValue": "MainWeapon.Missile", "required": true },
+        { "psdLayerName": "plasma", "contractName": "RenderWeapon4SelfTest", "enumValue": "MainWeapon.Close", "required": true }
       ]
     },
     "body": {

@@ -84,7 +84,7 @@ const config: HardhatUserConfig = {
   networks: {
     // for testnet
     "base-sepolia": {
-      url: "https://sepolia.base.org",
+      url: process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org",
       accounts: [process.env.METAMASK_WALLET_1 as string],
     },
     "flow-testnet": {

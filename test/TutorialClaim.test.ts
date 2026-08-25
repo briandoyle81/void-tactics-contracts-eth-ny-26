@@ -111,12 +111,12 @@ describe("TutorialClaim", function () {
 
     const vigilant = byName["Vigilant"];
     const sentinel = byName["Sentinel"];
-    expect(vigilant.equipment.mainWeapon).to.equal(1); // Railgun
+    expect(vigilant.equipment.mainWeapon).to.equal(1); // Sniper
     expect(vigilant.equipment.armor).to.equal(0); // None
     expect(vigilant.equipment.shields).to.equal(1); // Light
     expect(vigilant.equipment.special).to.equal(2); // Repair
 
-    expect(sentinel.equipment.mainWeapon).to.equal(0); // Laser
+    expect(sentinel.equipment.mainWeapon).to.equal(0); // Generic
     expect(sentinel.equipment.armor).to.equal(2); // Medium
     expect(sentinel.equipment.shields).to.equal(0); // None
     expect(sentinel.equipment.special).to.equal(0); // None

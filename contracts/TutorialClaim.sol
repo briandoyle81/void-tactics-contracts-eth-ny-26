@@ -69,7 +69,7 @@ contract TutorialClaim is ReentrancyGuard {
         s.name = "Resolute";
         s.owner = owner;
         s.equipment = Equipment({
-            mainWeapon: MainWeapon.PlasmaCannon,
+            mainWeapon: MainWeapon.Close,
             armor: Armor.None,
             shields: Shields.Medium,
             special: Special.Slot1
@@ -105,7 +105,7 @@ contract TutorialClaim is ReentrancyGuard {
         s.name = "Vigilant";
         s.owner = owner;
         s.equipment = Equipment({
-            mainWeapon: MainWeapon.Railgun,
+            mainWeapon: MainWeapon.Sniper,
             armor: Armor.None,
             shields: Shields.Light,
             special: Special.Slot2
@@ -137,7 +137,7 @@ contract TutorialClaim is ReentrancyGuard {
         s.name = "Sentinel";
         s.owner = owner;
         s.equipment = Equipment({
-            mainWeapon: MainWeapon.Laser,
+            mainWeapon: MainWeapon.Generic,
             armor: Armor.Medium,
             shields: Shields.None,
             special: Special.None

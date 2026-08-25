@@ -52,6 +52,10 @@ contract NodeMap is Ownable {
     // full scan of every node ever created.
     mapping(uint => uint[]) private campaignNodeIds;
 
+    // campaignId => required ship variant for a human fleet entering any
+    // node in this campaign (0 = unrestricted). See setCampaignRequiredVariant.
+    mapping(uint => uint16) public campaignRequiredVariant;
+
     mapping(uint => CampaignNode) private nodes;
     uint public nodeCount;
 
@@ -151,6 +155,22 @@ contract NodeMap is Ownable {
         campaignId = campaignCount;
         campaignExists[campaignId] = true;
         emit CampaignCreated(campaignId);
+    }
+
+    // Restricts which ship variant a HUMAN fleet must be to start a node
+    // match in this campaign (0 = unrestricted, the default). The AI side
+    // is entirely independent of this — AI fleet variant comes from
+    // AIEncounters' map placements, not from here (see docs/faction-2.md
+    // section 8: the campaign's AI fleets are variant 2 even where the
+    // human side is restricted to variant 1). Enforced in
+    // SinglePlayerMatch.startNodeMatch, not here, since NodeMap has no
+    // dependency on ship data.
+    function setCampaignRequiredVariant(
+        uint _campaignId,
+        uint16 _variant
+    ) external onlyNodeEditor {
+        if (!campaignExists[_campaignId]) revert CampaignNotFound();
+        campaignRequiredVariant[_campaignId] = _variant;
     }
 
     function createNode(

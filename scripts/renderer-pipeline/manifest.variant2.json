@@ -1,5 +1,5 @@
 {
-  "_comment": "Real variant-2 (faction 2) renderer pipeline manifest, wired against the actual variant-2-pixel.psd (file on disk: 'variant-2-pixel copy.psd' -- consider renaming to drop ' copy' for clarity). Layer->slot mapping confirmed with the user 2026-08-17: weapon art maps to MainWeapon by theme (medium-mining-laser=Laser/'Medium Mining Laser', linear-accelerator=Railgun/'Linear Accelerator', torpedo-launcher=MissileLauncher/'Torpedo Launcher', mining-drill=PlasmaCannon/'Mining Drill', matching the renamed strings in RenderMetadata.sol); special art maps by matching resolver identity (lightening-field=Slot4/'Lightening Field', attack-drones=Slot5/'Attack Drones', aux-engine=Slot6/'Aux Engine', matching the renamed strings in DeployAndConfig.ts). fore-3 fills the third required fore tier (same structural slot as variant 1's fore-2); fore-special fills the optional 'perfect ship' slot (same structural slot as variant 1's fore-perfect).",
+  "_comment": "Real variant-2 (faction 2) renderer pipeline manifest, wired against the actual variant-2-pixel.psd (file on disk: 'variant-2-pixel copy.psd' -- consider renaming to drop ' copy' for clarity). Layer->slot mapping confirmed with the user 2026-08-17: weapon art maps to MainWeapon by theme (medium-mining-laser=Generic/'Medium Mining Laser', linear-accelerator=Sniper/'Linear Accelerator', torpedo-launcher=Missile/'Torpedo Launcher', mining-drill=Close/'Mining Drill', matching the renamed strings in RenderMetadata.sol). MainWeapon enum members themselves were renamed 2026-08-21 from item names (Laser/Railgun/MissileLauncher/PlasmaCannon) to generic role slots (Generic/Sniper/Missile/Close) since variant 2's lineup reskins them as mining equipment, not weapons -- the old item names baked into the enum no longer matched variant 2's fiction. special art maps by matching resolver identity (lightening-field=Slot4/'Lightening Field', attack-drones=Slot5/'Attack Drones', aux-engine=Slot6/'Aux Engine', matching the renamed strings in DeployAndConfig.ts). fore-3 fills the third required fore tier (same structural slot as variant 1's fore-2); fore-special fills the optional 'perfect ship' slot (same structural slot as variant 1's fore-perfect).",
   "psdFile": "variant-2-pixel copy.psd",
   "canvasSize": 256,
   "outputDir": "contracts/RenderersV2",
@@ -24,10 +24,10 @@
     "weapon": {
       "combinerContract": "RenderWeaponV2",
       "leaves": [
-        { "psdLayerName": "medium-mining-laser", "contractName": "RenderWeapon1V2", "enumValue": "MainWeapon.Laser", "required": true },
-        { "psdLayerName": "linear-accelerator", "contractName": "RenderWeapon2V2", "enumValue": "MainWeapon.Railgun", "required": true },
-        { "psdLayerName": "torpedo-launcher", "contractName": "RenderWeapon3V2", "enumValue": "MainWeapon.MissileLauncher", "required": true },
-        { "psdLayerName": "mining-drill", "contractName": "RenderWeapon4V2", "enumValue": "MainWeapon.PlasmaCannon", "required": true }
+        { "psdLayerName": "medium-mining-laser", "contractName": "RenderWeapon1V2", "enumValue": "MainWeapon.Generic", "required": true },
+        { "psdLayerName": "linear-accelerator", "contractName": "RenderWeapon2V2", "enumValue": "MainWeapon.Sniper", "required": true },
+        { "psdLayerName": "torpedo-launcher", "contractName": "RenderWeapon3V2", "enumValue": "MainWeapon.Missile", "required": true },
+        { "psdLayerName": "mining-drill", "contractName": "RenderWeapon4V2", "enumValue": "MainWeapon.Close", "required": true }
       ]
     },
     "body": {

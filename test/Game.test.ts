@@ -380,7 +380,7 @@ describe("Game", function () {
       const mainWeapon = constructedShip.equipment.mainWeapon;
 
       // Expected values based on ShipAttributes contract's gun data
-      const expectedRanges = [3, 6, 4, 2]; // Laser, Railgun, MissileLauncher, PlasmaCannon
+      const expectedRanges = [3, 6, 4, 2]; // Generic, Sniper, Missile, Close
       const expectedDamages = [50, 40, 60, 80];
 
       // Get the ship's accuracy level to calculate expected range with fore accuracy bonus
@@ -3396,7 +3396,7 @@ describe("Game", function () {
         name: "EMP Ship",
         id: 1n,
         equipment: {
-          mainWeapon: 0, // Laser
+          mainWeapon: 0, // Generic
           armor: 0, // None
           shields: 0, // None
           special: 1, // EMP
@@ -4967,7 +4967,7 @@ describe("Game", function () {
         name: "Repair Ship",
         id: 1n,
         equipment: {
-          mainWeapon: 0, // Laser
+          mainWeapon: 0, // Generic
           armor: 0, // None
           shields: 0, // None
           special: 2, // RepairDrones
@@ -5250,7 +5250,7 @@ describe("Game", function () {
         name: "EMP Ship",
         id: 1n,
         equipment: {
-          mainWeapon: 0, // Laser
+          mainWeapon: 0, // Generic
           armor: 0, // None
           shields: 0, // None
           special: 1, // EMP
@@ -5400,7 +5400,7 @@ describe("Game", function () {
         name: "FlakArray Ship",
         id: 1n,
         equipment: {
-          mainWeapon: 0, // Laser
+          mainWeapon: 0, // Generic
           armor: 0, // None
           shields: 0, // None
           special: 3, // FlakArray
@@ -5591,7 +5591,7 @@ describe("Game", function () {
         name: overrides.name,
         id: overrides.id,
         equipment: {
-          mainWeapon: 0, // Laser
+          mainWeapon: 0, // Generic
           armor: 0, // None
           shields: 0, // None
           special: overrides.special,
@@ -5808,7 +5808,19 @@ describe("Game", function () {
       await ships.write.customizeShip([1n, droneSwarmShip], {
         account: owner.account,
       });
-      await ships.write.constructShip([2n], { account: creator.account });
+      // Fleets.createFleet now rejects mixing variants within one fleet, so
+      // the friendly target ship also needs to be variant 2 to sit in the
+      // same fleet as the Drone Swarm caster.
+      const friendlyShip = buildCustomShip({
+        name: "Friendly Ship",
+        id: 2n,
+        owner: creator.account.address,
+        special: 0, // None
+        variant: 2,
+      });
+      await ships.write.customizeShip([2n, friendlyShip], {
+        account: owner.account,
+      });
       await ships.write.constructShip([6n], { account: joiner.account });
 
       await creatorLobbies.write.createLobby([
@@ -5879,7 +5891,19 @@ describe("Game", function () {
       await ships.write.customizeShip([1n, stormShip], {
         account: owner.account,
       });
-      await ships.write.constructShip([2n], { account: creator.account }); // ally
+      // Fleets.createFleet now rejects mixing variants within one fleet, so
+      // the ally also needs to be variant 2 to sit in the same fleet as the
+      // Electric Storm caster.
+      const allyShip = buildCustomShip({
+        name: "Ally Ship",
+        id: 2n,
+        owner: creator.account.address,
+        special: 0, // None
+        variant: 2,
+      });
+      await ships.write.customizeShip([2n, allyShip], {
+        account: owner.account,
+      }); // ally
       await ships.write.constructShip([6n], { account: joiner.account }); // enemy
       await ships.write.constructShip([7n], { account: joiner.account }); // enemy, out of range
 

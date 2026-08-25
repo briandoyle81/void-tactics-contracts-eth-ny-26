@@ -339,6 +339,25 @@ contract Game is Ownable {
         attributes.statusEffects = calculatedAttributes.statusEffects;
     }
 
+    // Lets a game's orchestrator seed a ship's hull points below the fresh
+    // 100% calculateShipAttributes just set, for orchestrators that carry
+    // persistent damage across matches (e.g. a roguelike run's fleet).
+    // Same orchestrator-identity check forceEndSession already uses — every
+    // existing orchestrator (Lobbies/PvPMatch/SinglePlayerMatch/Tournament)
+    // simply never calls this, so it changes nothing for them.
+    function setInitialHullPointsOverride(
+        uint _gameId,
+        uint _shipId,
+        uint8 _hullPoints
+    ) external {
+        GameData storage game = games[_gameId];
+        if (msg.sender != game.metadata.orchestrator) revert NotOrchestrator();
+        Attributes storage attributes = game.shipAttributes[_shipId];
+        if (attributes.version == 0) revert ShipNotFound();
+        if (_hullPoints > attributes.maxHullPoints) revert InvalidMove();
+        attributes.hullPoints = _hullPoints;
+    }
+
     // Calculate attributes for all ships in a fleet
     function calculateFleetAttributes(
         uint _gameId,

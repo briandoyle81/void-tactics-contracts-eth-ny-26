@@ -1,0 +1,630 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.28;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "./Types.sol";
+import "./AIShips.sol";
+import "./IShips.sol";
+import "./Game.sol";
+import "./IGameOrchestrator.sol";
+import "./AIEncounters.sol";
+import "./IMaps.sol";
+import "./IShipAttributes.sol";
+import "./AIBehavior.sol";
+import "./IFleets.sol";
+import "./IHealFactionAbility.sol";
+import "./RoguelikeNodeMap.sol";
+import "./RoguelikeRun.sol";
+import "./RoguelikeAIController.sol";
+
+// Orchestrates the roguelike campaign mode: a player commits a fleet once
+// (startRun), that roster persists — with accumulated damage — across a
+// sequence of RoguelikeNodeMap nodes until the run is won or ends (a loss,
+// draw, or explicit retreat). This sits entirely alongside the existing
+// NodeMap/SinglePlayerMatch campaign, which is untouched.
+//
+// The roster is never a *permanent* Fleets.Fleet with a matching Game — see
+// _reserveRoster. It's torn down and recreated around every combat node
+// specifically to reuse Fleets' own MixedVariantFleet/cost-cap/ownership
+// checks for free at every roster change, rather than reimplementing them.
+contract RoguelikeMatch is Ownable, IGameOrchestrator {
+    AIShips public aiShips;
+    IShips public humanShips;
+    Game public game;
+    IFleets public fleets;
+    AIEncounters public aiEncounters;
+    IMaps public maps;
+    IShipAttributes public shipAttributes;
+    RoguelikeNodeMap public nodeMap;
+    RoguelikeRun public runLedger;
+    RoguelikeAIController public aiController;
+
+    // Disjoint from Lobbies' gameId space (small ints) and from
+    // SinglePlayerMatch.NODE_MATCH_ID_OFFSET (2**40) — see that constant's
+    // own comment for the JS-safe-integer reasoning this mirrors.
+    uint public constant ROGUELIKE_GAME_ID_OFFSET = 2 ** 41;
+    uint public matchCount;
+
+    mapping(uint gameId => address player) public gameIdToPlayer;
+    mapping(uint gameId => uint[] aiShipIds) public gameIdToAiShipIds;
+
+    struct AIShipInfo {
+        Archetype archetype;
+        uint16 variant;
+        Special special;
+        MainWeapon mainWeapon;
+    }
+    mapping(uint shipId => AIShipInfo) public aiShipInfo;
+
+    error NoActiveRun();
+    error CampaignNotFound();
+    error CampaignHasNoRoot();
+    error EmptyRoster();
+    error WrongCampaignVariant();
+    error CannotAdvance();
+    error WrongNodeKind();
+    error NotYourGame();
+    error NotGame();
+    error GameEnded();
+    error NotAITurn();
+    error NoAIPlacementsConfigured();
+
+    event RunStarted(address indexed player, uint indexed campaignId, uint rootNodeId);
+    event CombatNodeEntered(uint indexed gameId, uint indexed nodeId, address indexed player);
+    event ResupplyNodeEntered(uint indexed nodeId, address indexed player);
+    event AIFleetCreated(uint indexed gameId, uint fleetId);
+    event AITurnTaken(uint indexed gameId, uint shipId, ActionType actionType, uint targetShipId);
+
+    constructor(
+        address _aiShips,
+        address _humanShips,
+        address _game,
+        address _fleets,
+        address _aiEncounters,
+        address _maps,
+        address _shipAttributes,
+        address _nodeMap,
+        address _runLedger,
+        address _aiController
+    ) Ownable(msg.sender) {
+        aiShips = AIShips(_aiShips);
+        humanShips = IShips(_humanShips);
+        game = Game(_game);
+        fleets = IFleets(_fleets);
+        aiEncounters = AIEncounters(_aiEncounters);
+        maps = IMaps(_maps);
+        shipAttributes = IShipAttributes(_shipAttributes);
+        nodeMap = RoguelikeNodeMap(_nodeMap);
+        runLedger = RoguelikeRun(_runLedger);
+        aiController = RoguelikeAIController(_aiController);
+    }
+
+    function setAIShipsAddress(address _aiShips) external onlyOwner {
+        aiShips = AIShips(_aiShips);
+    }
+
+    function setHumanShipsAddress(address _humanShips) external onlyOwner {
+        humanShips = IShips(_humanShips);
+    }
+
+    function setGameAddress(address _game) external onlyOwner {
+        game = Game(_game);
+    }
+
+    function setFleetsAddress(address _fleets) external onlyOwner {
+        fleets = IFleets(_fleets);
+    }
+
+    function setAIEncountersAddress(address _aiEncounters) external onlyOwner {
+        aiEncounters = AIEncounters(_aiEncounters);
+    }
+
+    function setMapsAddress(address _maps) external onlyOwner {
+        maps = IMaps(_maps);
+    }
+
+    function setShipAttributesAddress(address _shipAttributes) external onlyOwner {
+        shipAttributes = IShipAttributes(_shipAttributes);
+    }
+
+    function setNodeMapAddress(address _nodeMap) external onlyOwner {
+        nodeMap = RoguelikeNodeMap(_nodeMap);
+    }
+
+    function setRunLedgerAddress(address _runLedger) external onlyOwner {
+        runLedger = RoguelikeRun(_runLedger);
+    }
+
+    function setAIControllerAddress(address _aiController) external onlyOwner {
+        aiController = RoguelikeAIController(_aiController);
+    }
+
+    // ---- Run lifecycle ----
+
+    function startRun(
+        uint _campaignId,
+        uint[] calldata _shipIds
+    ) external returns (uint rootNodeId) {
+        if (_shipIds.length == 0) revert EmptyRoster();
+        if (!nodeMap.campaignExists(_campaignId)) revert CampaignNotFound();
+        rootNodeId = nodeMap.campaignRootNode(_campaignId);
+        if (rootNodeId == 0) revert CampaignHasNoRoot();
+
+        uint16 requiredVariant = nodeMap.campaignRequiredVariant(_campaignId);
+        if (
+            requiredVariant != 0 &&
+            humanShips.getShip(_shipIds[0]).traits.variant != requiredVariant
+        ) revert WrongCampaignVariant();
+
+        uint initialCostCap = nodeMap.campaignInitialCostCap(_campaignId);
+        uint fleetId = _reserveRoster(msg.sender, _shipIds, initialCostCap);
+
+        runLedger.startRun(
+            msg.sender,
+            _campaignId,
+            rootNodeId,
+            initialCostCap,
+            _shipIds,
+            fleetId
+        );
+
+        emit RunStarted(msg.sender, _campaignId, rootNodeId);
+    }
+
+    // Fields the run's ENTIRE current roster — there is no per-node squad
+    // sub-selection; if that's wanted later, this is the extension point.
+    // _positions must be in the same order as the run's roster.
+    function enterCombatNode(
+        uint _targetNodeId,
+        Position[] calldata _positions
+    ) external returns (uint gameId) {
+        Run memory run = runLedger.getRun(msg.sender);
+        if (run.status != RunStatus.Active) revert NoActiveRun();
+        RoguelikeNode memory node = _commitToNode(msg.sender, run, _targetNodeId);
+        if (node.kind != RoguelikeNodeKind.Combat) revert WrongNodeKind();
+
+        uint[] memory shipIds = run.rosterShipIds;
+
+        fleets.clearFleet(run.reservationFleetId);
+
+        matchCount++;
+        gameId = ROGUELIKE_GAME_ID_OFFSET + matchCount;
+
+        uint humanFleetId = fleets.createFleet(
+            gameId,
+            msg.sender,
+            shipIds,
+            _positions,
+            run.currentCostCap,
+            true
+        );
+        uint aiFleetId = _mintAIFleet(node.mapId, gameId);
+
+        gameIdToPlayer[gameId] = msg.sender;
+
+        game.startGame(
+            gameId,
+            msg.sender,
+            address(this),
+            humanFleetId,
+            aiFleetId,
+            node.creatorGoesFirst,
+            node.turnTime,
+            node.mapId,
+            node.maxScore
+        );
+
+        // Seed persisted damage from a previous node, if any (0 = never
+        // damaged this run — the fresh 100% calculateShipAttributes just
+        // set inside startGame is already correct, skip the call).
+        for (uint i = 0; i < shipIds.length; i++) {
+            uint8 hp = runLedger.getShipHP(msg.sender, shipIds[i]);
+            if (hp != 0) {
+                game.setInitialHullPointsOverride(gameId, shipIds[i], hp);
+            }
+        }
+
+        emit CombatNodeEntered(gameId, _targetNodeId, msg.sender);
+    }
+
+    function enterResupplyNode(uint _targetNodeId) external {
+        Run memory run = runLedger.getRun(msg.sender);
+        if (run.status != RunStatus.Active) revert NoActiveRun();
+        RoguelikeNode memory node = _commitToNode(msg.sender, run, _targetNodeId);
+        if (node.kind != RoguelikeNodeKind.Resupply) revert WrongNodeKind();
+
+        if (node.costCapOverride != 0) {
+            runLedger.setCostCap(msg.sender, node.costCapOverride);
+        }
+
+        emit ResupplyNodeEntered(_targetNodeId, msg.sender);
+    }
+
+    // _gameId == 0: abandon the run between nodes (no active match).
+    // _gameId != 0: forfeit the in-progress combat node as a loss, which
+    // ends the run via the normal onGameEnded(non-win) path.
+    function retreatRun(uint _gameId) external {
+        Run memory run = runLedger.getRun(msg.sender);
+        if (run.status != RunStatus.Active) revert NoActiveRun();
+
+        if (_gameId != 0) {
+            if (gameIdToPlayer[_gameId] != msg.sender) revert NotYourGame();
+            game.forceEndSession(_gameId, address(this), msg.sender);
+            return;
+        }
+
+        fleets.clearFleet(run.reservationFleetId);
+        runLedger.endRun(msg.sender, false);
+    }
+
+    // Resupply *actions* (repair, roster composition changes) live on the
+    // separate RoguelikeResupply contract, not here — see that contract's
+    // header comment for why (RoguelikeMatch was over the 24 KiB limit with
+    // them inlined). This contract only handles arriving at a resupply
+    // node (above) and the cost-cap-override side effect of doing so.
+
+    // ---- Internal: graph traversal / lockout ----
+
+    // twoWay only ever affects whether the PARENT stays reachable (walking
+    // backward across that specific edge) — every other sibling is always
+    // locked the moment a different child is committed to, regardless of
+    // that sibling's own edge type or the type of edge just traversed.
+    function _commitToNode(
+        address _player,
+        Run memory _run,
+        uint _targetNodeId
+    ) internal returns (RoguelikeNode memory node) {
+        node = nodeMap.getNode(_targetNodeId);
+
+        // Already standing here — either the very first node right after
+        // startRun (a root has no parent, so it can never be "a child of
+        // itself" below), or re-entering the current node (e.g. a
+        // resupply node visited more than once). No traversal, so no
+        // lockout side effects.
+        if (_targetNodeId == _run.currentNodeId) {
+            return node;
+        }
+
+        (bool isForwardChild, bool forwardEdgeTwoWay) = _isChildOf(
+            _run.currentNodeId,
+            _targetNodeId
+        );
+        bool allowed;
+        bool isForwardMove;
+        if (isForwardChild && !runLedger.isNodeLocked(_player, _targetNodeId)) {
+            allowed = true;
+            isForwardMove = true;
+        } else {
+            (bool isBackwardChild, bool backEdgeTwoWay) = _isChildOf(
+                _targetNodeId,
+                _run.currentNodeId
+            );
+            if (isBackwardChild && backEdgeTwoWay) {
+                allowed = true;
+            }
+        }
+        if (!allowed) revert CannotAdvance();
+
+        if (isForwardMove) {
+            RoguelikeEdge[] memory siblings = nodeMap.getChildren(
+                _run.currentNodeId
+            );
+            for (uint i = 0; i < siblings.length; i++) {
+                if (siblings[i].childId != _targetNodeId) {
+                    runLedger.lockNode(_player, siblings[i].childId);
+                }
+            }
+            // Only a one-way edge locks the parent — a two-way edge stays
+            // reachable so the player can walk back across it later.
+            if (!forwardEdgeTwoWay) {
+                runLedger.lockNode(_player, _run.currentNodeId);
+            }
+        }
+
+        runLedger.setCurrentNode(_player, _targetNodeId);
+
+        // A node with no children is the campaign's end — a combat win
+        // here ends the run as Won (see onGameEnded); nothing special
+        // happens on simply *entering* it.
+    }
+
+    function _isChildOf(
+        uint _parentId,
+        uint _childId
+    ) internal view returns (bool found, bool twoWay) {
+        RoguelikeEdge[] memory children = nodeMap.getChildren(_parentId);
+        for (uint i = 0; i < children.length; i++) {
+            if (children[i].childId == _childId) {
+                return (true, children[i].twoWay);
+            }
+        }
+        return (false, false);
+    }
+
+    // Synthetic grid positions — this fleet never has a matching Game, so
+    // these are never rendered/read by anything except Fleets' own
+    // structural validation (bounds, no duplicates, creator-side columns).
+    function _reserveRoster(
+        address _player,
+        uint[] memory _shipIds,
+        uint _costCap
+    ) internal returns (uint fleetId) {
+        Position[] memory positions = new Position[](_shipIds.length);
+        for (uint i = 0; i < _shipIds.length; i++) {
+            positions[i] = Position({
+                row: int16(int(i / 4)),
+                col: int16(int(i % 4))
+            });
+        }
+        fleetId = fleets.createFleet(0, _player, _shipIds, positions, _costCap, true);
+    }
+
+    // ---- IGameOrchestrator ----
+
+    function onGameEnded(uint _gameId, address _winner, address) external {
+        if (msg.sender != address(game)) revert NotGame();
+
+        aiShips.releaseShips(gameIdToAiShipIds[_gameId]);
+        delete gameIdToAiShipIds[_gameId];
+
+        address player = gameIdToPlayer[_gameId];
+        if (player == address(0)) return; // defensive: not one of ours
+
+        delete gameIdToPlayer[_gameId];
+
+        Run memory run = runLedger.getRun(player);
+
+        if (_winner != player) {
+            // Loss or draw ends the run. Nothing to release here ourselves
+            // — run.reservationFleetId was already torn down back in
+            // enterCombatNode (never a real fleet during combat), and the
+            // actual combat fleet's survivors are released to normal
+            // ownership automatically by Game._endGame's own unconditional
+            // post-callback fleet cleanup, which runs right after this
+            // function returns.
+            runLedger.endRun(player, false);
+            return;
+        }
+
+        // Won this node. The combat fleet's survivors are still inFleet
+        // (Game._endGame only clears fleets *after* this callback returns
+        // — see the comment above), so they must be released here, before
+        // re-reserving them, or _reserveRoster below would revert
+        // MixedVariantFleet/ShipAlreadyInFleet trying to re-fleet a ship
+        // that's still (nominally) in the just-finished combat fleet.
+        fleets.clearFleet(game.getGame(_gameId).metadata.creatorFleetId);
+
+        // Capture survivors' HP (auto-heal floor applied), drop anything
+        // not found (destroyed, or individually retreated — either way
+        // Game._removeShipFromGame already deleted its Attributes, so it
+        // simply isn't found here).
+        uint8 healPercent = nodeMap.campaignAutoHealPercent(run.campaignId);
+        uint[] memory oldRoster = run.rosterShipIds;
+        uint[] memory survivors = new uint[](oldRoster.length);
+        uint survivorCount;
+        for (uint i = 0; i < oldRoster.length; i++) {
+            uint shipId = oldRoster[i];
+            try game.getShipAttributes(_gameId, shipId) returns (
+                Attributes memory attrs
+            ) {
+                uint16 floor = (uint16(attrs.maxHullPoints) * healPercent) / 100;
+                uint16 healed = attrs.hullPoints > floor
+                    ? attrs.hullPoints
+                    : floor;
+                if (healed > attrs.maxHullPoints) healed = attrs.maxHullPoints;
+                runLedger.setShipHP(player, shipId, uint8(healed));
+                survivors[survivorCount] = shipId;
+                survivorCount++;
+            } catch {}
+        }
+        uint[] memory newRoster = new uint[](survivorCount);
+        for (uint i = 0; i < survivorCount; i++) newRoster[i] = survivors[i];
+
+        bool isFinalNode = nodeMap.getChildren(run.currentNodeId).length == 0;
+        runLedger.setRoster(player, newRoster);
+        if (isFinalNode) {
+            runLedger.endRun(player, true);
+        } else {
+            uint newFleetId = _reserveRoster(player, newRoster, run.currentCostCap);
+            runLedger.setReservationFleetId(player, newFleetId);
+        }
+    }
+
+    // ---- AI turn dispatch (mirrors SinglePlayerMatch.takeAITurn) ----
+
+    function _mintAIFleet(
+        uint _mapId,
+        uint _gameId
+    ) internal returns (uint fleetId) {
+        (Position[] memory positions, uint[] memory configIds) = aiEncounters
+            .getMapPlacements(_mapId);
+        if (positions.length == 0) revert NoAIPlacementsConfigured();
+
+        uint[] memory shipIds = new uint[](positions.length);
+        for (uint i = 0; i < positions.length; i++) {
+            AIEncounters.AIShipConfig memory config = aiEncounters
+                .getAIShipConfig(configIds[i]);
+            shipIds[i] = aiShips.allocateShip(
+                address(this),
+                _buildAIShipFromConfig(config)
+            );
+            aiShipInfo[shipIds[i]] = AIShipInfo({
+                archetype: config.archetype,
+                variant: config.traits.variant,
+                special: config.equipment.special,
+                mainWeapon: config.equipment.mainWeapon
+            });
+        }
+        gameIdToAiShipIds[_gameId] = shipIds;
+
+        fleetId = fleets.createFleet(
+            _gameId,
+            address(this),
+            shipIds,
+            positions,
+            type(uint).max,
+            false
+        );
+        emit AIFleetCreated(_gameId, fleetId);
+    }
+
+    function _buildAIShipFromConfig(
+        AIEncounters.AIShipConfig memory _config
+    ) internal view returns (Ship memory s) {
+        s.name = _config.name;
+        s.owner = address(this); // allocateShip overwrites this with _to anyway
+        s.equipment = _config.equipment;
+        s.traits = _config.traits;
+    }
+
+    function takeAITurn(uint _gameId) external {
+        GameDataView memory g = game.getGame(_gameId);
+        if (g.metadata.ended) revert GameEnded();
+        if (g.turnState.currentTurn != address(this)) revert NotAITurn();
+
+        if (!_hasAnyLiveShip(g)) {
+            game.forceEndSession(_gameId, g.metadata.creator, address(this));
+            return;
+        }
+
+        uint shipId = _findUnmovedShip(g);
+        if (shipId == 0) return;
+
+        _takeShipTurn(_gameId, g, shipId);
+    }
+
+    function _hasAnyLiveShip(
+        GameDataView memory g
+    ) internal pure returns (bool) {
+        for (uint i = 0; i < g.joinerActiveShipIds.length; i++) {
+            (Attributes memory attrs, bool found) = AIBehavior.findAttributes(
+                g,
+                g.joinerActiveShipIds[i]
+            );
+            if (found && attrs.hullPoints > 0) return true;
+        }
+        return false;
+    }
+
+    function _takeShipTurn(
+        uint _gameId,
+        GameDataView memory g,
+        uint _shipId
+    ) internal {
+        AIBehavior.Decision memory d = _decideMove(_gameId, g, _shipId);
+
+        try
+            game.moveShip(
+                _gameId,
+                _shipId,
+                d.destRow,
+                d.destCol,
+                d.action,
+                d.actionTarget
+            )
+        {
+            emit AITurnTaken(_gameId, _shipId, d.action, d.actionTarget);
+        } catch {
+            (Position memory myPos, bool found) = AIBehavior.findPosition(
+                g,
+                _shipId
+            );
+            if (found) {
+                try
+                    game.moveShip(
+                        _gameId,
+                        _shipId,
+                        myPos.row,
+                        myPos.col,
+                        ActionType.Pass,
+                        0
+                    )
+                {
+                    emit AITurnTaken(_gameId, _shipId, ActionType.Pass, 0);
+                } catch {}
+            }
+        }
+    }
+
+    function _decideMove(
+        uint _gameId,
+        GameDataView memory g,
+        uint _shipId
+    ) internal view returns (AIBehavior.Decision memory d) {
+        (Position memory myPos, bool posFound) = AIBehavior.findPosition(
+            g,
+            _shipId
+        );
+        (Attributes memory myAttrs, bool attrsFound) = AIBehavior
+            .findAttributes(g, _shipId);
+        if (!posFound || !attrsFound) {
+            d.destRow = myPos.row;
+            d.destCol = myPos.col;
+            d.action = ActionType.Pass;
+            return d;
+        }
+
+        AIShipInfo memory info = aiShipInfo[_shipId];
+        AIBehavior.Ctx memory ctx = AIBehavior.Ctx({
+            g: g,
+            maps: maps,
+            gameId: _gameId,
+            shipId: _shipId,
+            pos: myPos,
+            attrs: myAttrs,
+            mainWeapon: info.mainWeapon,
+            scoringPositions: maps.getGameScoringPositions(_gameId),
+            gridWidth: game.GRID_WIDTH(),
+            gridHeight: game.GRID_HEIGHT()
+        });
+
+        bool hasHealFactionAbility;
+        uint8 healFactionAbilityRange;
+        if (info.archetype == Archetype.Support) {
+            hasHealFactionAbility = game.factionAbilityIsHeal(info.variant);
+            if (hasHealFactionAbility) {
+                healFactionAbilityRange = IHealFactionAbility(
+                    game.factionAbilityResolvers(info.variant)
+                ).range();
+            }
+        }
+
+        return
+            aiController.decide(
+                ctx,
+                shipAttributes,
+                info.archetype,
+                info.special,
+                info.variant,
+                hasHealFactionAbility,
+                healFactionAbilityRange
+            );
+    }
+
+    function _findUnmovedShip(
+        GameDataView memory g
+    ) internal pure returns (uint) {
+        uint[] memory active = g.joinerActiveShipIds;
+        uint[] memory moved = g.joinerMovedShipIds;
+
+        for (uint i = 0; i < active.length; i++) {
+            bool hasMoved = false;
+            for (uint j = 0; j < moved.length; j++) {
+                if (moved[j] == active[i]) {
+                    hasMoved = true;
+                    break;
+                }
+            }
+            if (hasMoved) continue;
+
+            (Attributes memory attrs, bool found) = AIBehavior.findAttributes(
+                g,
+                active[i]
+            );
+            if (found && attrs.hullPoints == 0) continue;
+
+            return active[i];
+        }
+        return 0;
+    }
+}

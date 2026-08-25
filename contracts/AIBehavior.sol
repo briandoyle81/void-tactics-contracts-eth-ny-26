@@ -270,9 +270,9 @@ library AIBehavior {
 
     // Picks a scoring-tile movement target. Preference order:
     //   1. Unclaimed (unoccupied) tile on this ship's weapon-range-
-    //      appropriate side of the grid — long-range weapons (Railgun,
-    //      MissileLauncher) stick close to the AI's own spawn side (high
-    //      columns), short-range weapons (Laser, PlasmaCannon) push toward
+    //      appropriate side of the grid — long-range weapons (Sniper,
+    //      Missile) stick close to the AI's own spawn side (high
+    //      columns), short-range weapons (Generic, Close) push toward
     //      the midline/opponent's side (low columns) — nearest first.
     //   2. Unclaimed tile on either side, nearest first (no matching-side
     //      tile exists on this map).
@@ -283,8 +283,8 @@ library AIBehavior {
         Ctx memory ctx
     ) private pure returns (Position memory pos, bool found) {
         int16 midCol = ctx.gridWidth / 2;
-        bool longRange = ctx.mainWeapon == MainWeapon.Railgun ||
-            ctx.mainWeapon == MainWeapon.MissileLauncher;
+        bool longRange = ctx.mainWeapon == MainWeapon.Sniper ||
+            ctx.mainWeapon == MainWeapon.Missile;
 
         for (uint pass = 0; pass < 3; pass++) {
             uint16 bestDist = type(uint16).max;
@@ -564,8 +564,10 @@ library AIBehavior {
     // from the nearest enemy) rather than staying adjacent to engage. When
     // out of range entirely, closes the gap only if that would bring an
     // enemy into range this turn, else redirects toward a scoring tile (see
-    // _approachOrSeekTile) — Sniper's weapon is always long-range (Railgun),
-    // so this naturally biases it toward tiles on its own side.
+    // _approachOrSeekTile) — the Sniper archetype is always equipped with
+    // the long-range MainWeapon.Sniper, so this naturally biases it toward
+    // tiles on its own side. (Two different "Sniper"s: Archetype.Sniper is
+    // this AI behavior tag; MainWeapon.Sniper is the weapon it wields.)
     function decideSniper(
         Ctx memory ctx
     ) internal view returns (Decision memory d) {

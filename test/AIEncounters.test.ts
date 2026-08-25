@@ -27,7 +27,7 @@ describe("AIEncounters", function () {
   };
 
   const defaultEquipment = {
-    mainWeapon: 0, // Laser
+    mainWeapon: 0, // Generic
     armor: 0, // None
     shields: 0, // None
     special: 0, // None

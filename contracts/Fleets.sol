@@ -38,6 +38,7 @@ contract Fleets is Ownable, IFleets {
     error DuplicatePosition();
     error ArrayLengthMismatch();
     error InvalidPosition();
+    error MixedVariantFleet();
 
     constructor(address _ships) Ownable(msg.sender) {
         ships = IShips(_ships);
@@ -129,6 +130,7 @@ contract Fleets is Ownable, IFleets {
         }
 
         // Validate ships and calculate total cost
+        uint16 fleetVariant;
         for (uint i = 0; i < _shipIds.length; i++) {
             uint shipId = _shipIds[i];
             Ship memory ship = ships.getShip(shipId);
@@ -144,6 +146,16 @@ contract Fleets is Ownable, IFleets {
                 ship.shipData.costsVersion !=
                 shipAttributes.getCurrentCostsVersion(ship.traits.variant)
             ) revert ShipCostVersionMismatch();
+
+            // A fleet is one faction's ships only — factions have distinct
+            // art, weapon flavor, and (variant 2) a different faction
+            // ability, so mixing them mid-fleet has no coherent rendering
+            // or gameplay meaning.
+            if (i == 0) {
+                fleetVariant = ship.traits.variant;
+            } else if (ship.traits.variant != fleetVariant) {
+                revert MixedVariantFleet();
+            }
 
             totalCost += ship.shipData.cost;
         }

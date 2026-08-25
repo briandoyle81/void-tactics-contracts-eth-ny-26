@@ -19,6 +19,20 @@ Options:
 Environment variables:
   LOG_FILE            Log file to write (default: ignition_deploy_retry.log)
   SLEEP_SECONDS      Sleep seconds between retries (default: 5)
+
+RPC-provider-outage retries ("no backend is currently healthy to serve
+traffic", seen against base-sepolia's public RPC endpoint under load) use
+their own exponential backoff instead of --sleep-seconds: 5s, 10s, 20s,
+40s... doubling each retry, stopping (rather than actually waiting) once
+the next wait would exceed 3 minutes. Every other known-transient error
+(nonce mismatch, IGN411, underpriced gas) keeps retrying at the fixed
+--sleep-seconds interval with no limit, unchanged.
+
+Safety check: for any --network other than "hardhat"/"localhost", this
+script refuses to run at all unless ignition/modules/DeployAndConfig.ts has
+`const PRODUCTION = true;` -- that flag gates real-deploy-only setup (e.g.
+transferring contract ownership away from the deployer), defaults to false
+so test fixtures work, and is easy to forget to flip before a real deploy.
 EOF
 }
 
@@ -76,6 +90,24 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Safety check: DeployAndConfig.ts's `PRODUCTION` flag gates real-deploy-only
+# setup (e.g. transferring contract ownership away from the deployer) --
+# see its own comment there. It defaults to false so every test fixture can
+# deploy the same module via hre.ignition.deploy(DeployModule) without that
+# gated setup breaking owner-gated test calls. That also means it's easy to
+# forget to flip before a real deploy, silently shipping a "live" contract
+# still owned by the deployer instead of the intended production owner.
+# Refuse to proceed against anything other than the local ephemeral network
+# unless PRODUCTION is explicitly true.
+DEPLOY_MODULE_FILE="ignition/modules/DeployAndConfig.ts"
+if [[ "$NETWORK" != "hardhat" && "$NETWORK" != "localhost" ]]; then
+  if ! grep -qE '^const PRODUCTION = true;' "$DEPLOY_MODULE_FILE"; then
+    echo "Refusing to deploy to network '$NETWORK': $DEPLOY_MODULE_FILE has PRODUCTION = false (or unrecognized)." >&2
+    echo "Set 'const PRODUCTION = true;' in $DEPLOY_MODULE_FILE before deploying to a real network, then re-run." >&2
+    exit 3
+  fi
+fi
+
 # Deploy a single module with an automatic retry loop on transient errors.
 # Returns 0 on success, or the deploy command's exit code on a non-retryable error.
 deploy_with_retry() {
@@ -84,6 +116,18 @@ deploy_with_retry() {
   if [[ "$VERIFY" -eq 1 ]]; then
     CMD+=(--verify)
   fi
+
+  # Exponential backoff, but only for the RPC-provider-outage case ("no
+  # backend is currently healthy to serve traffic" -- seen against
+  # base-sepolia's public RPC endpoint, which is periodically overloaded).
+  # Separate from SLEEP_SECONDS below, which stays a fixed interval for the
+  # other known-transient errors (nonce mismatch, IGN411, underpriced gas)
+  # -- those aren't RPC-outage symptoms, so there's no reason to make them
+  # wait longer on each retry. Starts at 5s, doubles each retry (5, 10, 20,
+  # 40, 80, 160...), and gives up once the *next* wait would exceed the cap
+  # rather than actually waiting that long.
+  local backend_wait=5
+  local BACKEND_WAIT_CAP_SECONDS=180
 
   while true; do
     : > "$LOG_FILE"
@@ -104,6 +148,20 @@ deploy_with_retry() {
     if [[ "$ec" -eq 0 ]]; then
       echo "SUCCESS: $script"
       return 0
+    fi
+
+    # RPC-provider-outage case: back off exponentially instead of the fixed
+    # SLEEP_SECONDS interval used below, and stop retrying (rather than
+    # blindly waiting) once the next wait would exceed the cap.
+    if grep -qF "no backend is currently healthy to serve traffic" "$LOG_FILE"; then
+      if [[ "$backend_wait" -gt "$BACKEND_WAIT_CAP_SECONDS" ]]; then
+        echo "Stopping: RPC backend still unhealthy after backing off past ${BACKEND_WAIT_CAP_SECONDS}s in $script"
+        return "$ec"
+      fi
+      echo "RPC backend unhealthy; retrying $script in ${backend_wait}s..."
+      sleep "$backend_wait"
+      backend_wait=$((backend_wait * 2))
+      continue
     fi
 
     # Retry on transient errors: nonce mismatch, Ignition rerun hint, underpriced gas, or IGN411
@@ -129,6 +187,7 @@ sys.exit(0 if retry else 1)
     if [[ "$retryable" -eq 0 ]]; then
       echo "Retrying $script due to transient deploy error..."
       sleep "$SLEEP_SECONDS"
+      backend_wait=5 # reset the outage backoff; this retry wasn't one
       continue
     fi
 

@@ -24,6 +24,17 @@ contract RenderMetadata is IRenderMetadata, Ownable {
     // (slot 0) is the one truly universal case and stays hardcoded below.
     mapping(uint16 => mapping(Special => string)) public specialNames;
 
+    // MainWeapon/Armor/Shields names are keyed by (variant, enum value) for
+    // the same reason as specialNames above: each faction reskins the same
+    // mechanical enum with its own flavor text (e.g. variant 2's Generic is a
+    // "Medium Mining Laser"), and a hardcoded if-chain per variant doesn't
+    // scale. Armor.None/Shields.None are the truly universal cases and stay
+    // hardcoded below; MainWeapon has no None value, so it has no hardcoded
+    // fallback.
+    mapping(uint16 => mapping(MainWeapon => string)) public mainWeaponNames;
+    mapping(uint16 => mapping(Armor => string)) public armorNames;
+    mapping(uint16 => mapping(Shields => string)) public shieldsNames;
+
     constructor(
         address _imageRenderer,
         address _imageRendererV2
@@ -38,6 +49,30 @@ contract RenderMetadata is IRenderMetadata, Ownable {
         string memory _name
     ) external onlyOwner {
         specialNames[_variant][_slot] = _name;
+    }
+
+    function setMainWeaponName(
+        uint16 _variant,
+        MainWeapon _weapon,
+        string memory _name
+    ) external onlyOwner {
+        mainWeaponNames[_variant][_weapon] = _name;
+    }
+
+    function setArmorName(
+        uint16 _variant,
+        Armor _armor,
+        string memory _name
+    ) external onlyOwner {
+        armorNames[_variant][_armor] = _name;
+    }
+
+    function setShieldsName(
+        uint16 _variant,
+        Shields _shields,
+        string memory _name
+    ) external onlyOwner {
+        shieldsNames[_variant][_shields] = _name;
     }
 
     function getBasicTraitsString(
@@ -97,10 +132,10 @@ contract RenderMetadata is IRenderMetadata, Ownable {
                     getMainWeaponString(ship.equipment.mainWeapon, ship.traits.variant),
                     '"},',
                     '{"trait_type": "Armor", "value": "',
-                    getArmorString(ship.equipment.armor),
+                    getArmorString(ship.equipment.armor, ship.traits.variant),
                     '"},',
                     '{"trait_type": "Shields", "value": "',
-                    getShieldsString(ship.equipment.shields),
+                    getShieldsString(ship.equipment.shields, ship.traits.variant),
                     '"},',
                     '{"trait_type": "Special", "value": "',
                     getSpecialString(ship.equipment.special, ship.traits.variant),
@@ -127,37 +162,30 @@ contract RenderMetadata is IRenderMetadata, Ownable {
     function getMainWeaponString(
         MainWeapon weapon,
         uint16 variant
-    ) internal pure returns (string memory) {
-        if (variant == 2) {
-            if (weapon == MainWeapon.Laser) return "Medium Mining Laser";
-            if (weapon == MainWeapon.Railgun) return "Linear Accelerator";
-            if (weapon == MainWeapon.MissileLauncher) return "Torpedo Launcher";
-            if (weapon == MainWeapon.PlasmaCannon) return "Mining Drill";
-            return "Unknown";
-        }
-        if (weapon == MainWeapon.Laser) return "Laser";
-        if (weapon == MainWeapon.Railgun) return "Railgun";
-        if (weapon == MainWeapon.MissileLauncher) return "Missile Launcher";
-        if (weapon == MainWeapon.PlasmaCannon) return "Plasma Cannon";
-        return "Unknown";
+    ) internal view returns (string memory) {
+        string memory name = mainWeaponNames[variant][weapon];
+        if (bytes(name).length == 0) return "Unknown";
+        return name;
     }
 
-    function getArmorString(Armor armor) internal pure returns (string memory) {
+    function getArmorString(
+        Armor armor,
+        uint16 variant
+    ) internal view returns (string memory) {
         if (armor == Armor.None) return "No Armor";
-        if (armor == Armor.Light) return "Light Armor";
-        if (armor == Armor.Medium) return "Medium Armor";
-        if (armor == Armor.Heavy) return "Heavy Armor";
-        return "Unknown";
+        string memory name = armorNames[variant][armor];
+        if (bytes(name).length == 0) return "Unknown";
+        return name;
     }
 
     function getShieldsString(
-        Shields shields
-    ) internal pure returns (string memory) {
+        Shields shields,
+        uint16 variant
+    ) internal view returns (string memory) {
         if (shields == Shields.None) return "No Shields";
-        if (shields == Shields.Light) return "Light Shields";
-        if (shields == Shields.Medium) return "Medium Shields";
-        if (shields == Shields.Heavy) return "Heavy Shields";
-        return "Unknown";
+        string memory name = shieldsNames[variant][shields];
+        if (bytes(name).length == 0) return "Unknown";
+        return name;
     }
 
     function getSpecialString(
