@@ -254,8 +254,10 @@ contract SinglePlayerMatch is Ownable, IGameOrchestrator {
     // limit exists to constrain the human's own fleet-building choices, not
     // to second-guess what an admin curated for an encounter. An admin
     // should be free to place a fleet that's arbitrarily expensive relative
-    // to the node's costLimit; node.enemyThreat is purely descriptive
-    // reference for that curation, never enforced here.
+    // to the node's costLimit; "enemy threat" for curation purposes is
+    // derived off-chain (frontend sums ShipAttributes.calculateShipCost
+    // over the node's AIEncounters placements), not tracked or enforced
+    // here.
     function _mintAIFleet(
         uint _mapId,
         uint _gameId

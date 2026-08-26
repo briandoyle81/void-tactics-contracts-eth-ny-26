@@ -30,7 +30,6 @@ struct RoguelikeNode {
     uint turnTime;
     uint maxScore;
     bool creatorGoesFirst;
-    uint enemyThreat; // descriptive only, never enforced — same as NodeMap
     // Resupply-only (ignored for Combat nodes):
     uint costCapOverride; // 0 = no change to the run's current cost cap
     RoguelikeEdge[] children;
@@ -163,9 +162,13 @@ contract RoguelikeNodeMap is Ownable {
             revert InvalidMapMode();
     }
 
-    // _mapId/_turnTime/_maxScore/_creatorGoesFirst/_enemyThreat are
-    // Combat-only (pass 0/false for a Resupply node); _costCapOverride is
-    // Resupply-only (pass 0 for a Combat node, meaning "no override").
+    // _mapId/_turnTime/_maxScore/_creatorGoesFirst are Combat-only (pass
+    // 0/false for a Resupply node); _costCapOverride is Resupply-only (pass
+    // 0 for a Combat node, meaning "no override"). Enemy threat is not
+    // tracked on-chain — the frontend derives it by summing
+    // ShipAttributes.calculateShipCost over AIEncounters.getMapPlacements
+    // for the node's mapId, so it's always exact and never goes stale if
+    // the encounter's placements are edited after this node is created.
     function createNode(
         uint _campaignId,
         RoguelikeNodeKind _kind,
@@ -173,7 +176,6 @@ contract RoguelikeNodeMap is Ownable {
         uint _turnTime,
         uint _maxScore,
         bool _creatorGoesFirst,
-        uint _enemyThreat,
         uint _costCapOverride
     ) external onlyNodeEditor returns (uint nodeId) {
         if (!campaignExists[_campaignId]) revert CampaignNotFound();
@@ -192,7 +194,6 @@ contract RoguelikeNodeMap is Ownable {
         node.turnTime = _turnTime;
         node.maxScore = _maxScore;
         node.creatorGoesFirst = _creatorGoesFirst;
-        node.enemyThreat = _enemyThreat;
         node.costCapOverride = _costCapOverride;
         node.exists = true;
 
@@ -207,7 +208,6 @@ contract RoguelikeNodeMap is Ownable {
         uint _turnTime,
         uint _maxScore,
         bool _creatorGoesFirst,
-        uint _enemyThreat,
         uint _costCapOverride
     ) external onlyNodeEditor {
         RoguelikeNode storage node = nodes[_nodeId];
@@ -223,7 +223,6 @@ contract RoguelikeNodeMap is Ownable {
         node.turnTime = _turnTime;
         node.maxScore = _maxScore;
         node.creatorGoesFirst = _creatorGoesFirst;
-        node.enemyThreat = _enemyThreat;
         node.costCapOverride = _costCapOverride;
 
         emit NodeUpdated(_nodeId);

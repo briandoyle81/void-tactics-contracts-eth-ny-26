@@ -149,7 +149,6 @@ describe("SinglePlayerMatch", function () {
       86400n, // turnTime
       20n, // maxScore
       true, // creatorGoesFirst
-      2000n, // enemyThreat (descriptive only, not enforced)
     ]);
     return await nodeMap.read.nodeCount();
   }
@@ -171,7 +170,7 @@ describe("SinglePlayerMatch", function () {
     for (let i = 1; i <= 5; i++) {
       const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
       const ship = tupleToShip(shipTuple);
-      await randomManager.write.fulfillRandomRequest([
+      await randomManager.write.revealRandomness([
         ship.traits.serialNumber,
       ]);
     }
@@ -580,7 +579,7 @@ describe("SinglePlayerMatch", function () {
     // InvalidFleetCost; an admin-curated encounter should never be
     // second-guessed by the human's own fleet-cost ceiling.
     const mapId = await setupBasicAIEncounter(maps, aiEncounters);
-    await nodeMap.write.createNode([1n, mapId, [], 1n, 600n, 20n, true, 1n]);
+    await nodeMap.write.createNode([1n, mapId, [], 1n, 600n, 20n, true]);
     const nodeId = await nodeMap.read.nodeCount();
 
     // Human enters with an empty fleet (cost 0, so it alone can't prove

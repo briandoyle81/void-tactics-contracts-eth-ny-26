@@ -63,11 +63,13 @@ contract RoguelikeMatch is Ownable, IGameOrchestrator {
     error WrongCampaignVariant();
     error CannotAdvance();
     error WrongNodeKind();
+    error NodeAlreadyDefeated();
     error NotYourGame();
     error NotGame();
     error GameEnded();
     error NotAITurn();
     error NoAIPlacementsConfigured();
+    error ActiveGameInProgress();
 
     event RunStarted(address indexed player, uint indexed campaignId, uint rootNodeId);
     event CombatNodeEntered(uint indexed gameId, uint indexed nodeId, address indexed player);
@@ -182,6 +184,13 @@ contract RoguelikeMatch is Ownable, IGameOrchestrator {
         if (run.status != RunStatus.Active) revert NoActiveRun();
         RoguelikeNode memory node = _commitToNode(msg.sender, run, _targetNodeId);
         if (node.kind != RoguelikeNodeKind.Combat) revert WrongNodeKind();
+        // A twoWay edge can lead back to an already-won Combat node (e.g. a
+        // resupply hub with routes to more than one fight) — reject a
+        // repeat attempt rather than letting its kill rewards be farmed
+        // indefinitely (see docs/pre-audit.md SP-05).
+        if (runLedger.isNodeDefeated(msg.sender, _targetNodeId)) {
+            revert NodeAlreadyDefeated();
+        }
 
         uint[] memory shipIds = run.rosterShipIds;
 
@@ -201,6 +210,7 @@ contract RoguelikeMatch is Ownable, IGameOrchestrator {
         uint aiFleetId = _mintAIFleet(node.mapId, gameId);
 
         gameIdToPlayer[gameId] = msg.sender;
+        runLedger.setActiveGameId(msg.sender, gameId);
 
         game.startGame(
             gameId,
@@ -252,6 +262,13 @@ contract RoguelikeMatch is Ownable, IGameOrchestrator {
             game.forceEndSession(_gameId, address(this), msg.sender);
             return;
         }
+
+        // Can't abandon "between nodes" while a combat match is actually
+        // still live — that would leave it able to resolve later and
+        // silently apply its outcome to whatever run is current for this
+        // address by then (see docs/pre-audit.md SP-04). Forfeit it via
+        // retreatRun(activeGameId) first.
+        if (run.activeGameId != 0) revert ActiveGameInProgress();
 
         fleets.clearFleet(run.reservationFleetId);
         runLedger.endRun(msg.sender, false);
@@ -374,6 +391,18 @@ contract RoguelikeMatch is Ownable, IGameOrchestrator {
 
         Run memory run = runLedger.getRun(player);
 
+        // Stale-callback guard: only mutate the run if this is genuinely
+        // still its tracked live game. Defense in depth alongside
+        // retreatRun(0)'s own activeGameId check above — a game this run
+        // no longer considers active (already abandoned, or belonging to a
+        // since-ended/since-replaced run) must not be allowed to apply its
+        // outcome to whatever run/generation is current for this address
+        // now (see docs/pre-audit.md SP-04).
+        if (run.status != RunStatus.Active || run.activeGameId != _gameId) {
+            return;
+        }
+        runLedger.setActiveGameId(player, 0);
+
         if (_winner != player) {
             // Loss or draw ends the run. Nothing to release here ourselves
             // — run.reservationFleetId was already torn down back in
@@ -386,9 +415,14 @@ contract RoguelikeMatch is Ownable, IGameOrchestrator {
             return;
         }
 
-        // Won this node. The combat fleet's survivors are still inFleet
-        // (Game._endGame only clears fleets *after* this callback returns
-        // — see the comment above), so they must be released here, before
+        // Won this node — mark it defeated so a twoWay edge back to it
+        // can't be farmed for repeat kill rewards (see docs/pre-audit.md
+        // SP-05; enforced in enterCombatNode).
+        runLedger.setNodeDefeated(player, run.currentNodeId);
+
+        // The combat fleet's survivors are still inFleet (Game._endGame
+        // only clears fleets *after* this callback returns — see the
+        // comment above), so they must be released here, before
         // re-reserving them, or _reserveRoster below would revert
         // MixedVariantFleet/ShipAlreadyInFleet trying to re-fleet a ship
         // that's still (nominally) in the just-finished combat fleet.

@@ -27,12 +27,6 @@ contract NodeMap is Ownable {
         uint turnTime;
         uint maxScore;
         bool creatorGoesFirst;
-        // Approximate enemy threat, for admin/UI reference only — purely
-        // descriptive, never enforced. The AI fleet's actual composition is
-        // whatever AIEncounters.setMapPlacements configures for this node's
-        // map; SinglePlayerMatch doesn't cap the AI fleet's cost against
-        // this or any other value (see _mintAIFleet).
-        uint enemyThreat;
         bool exists;
     }
 
@@ -173,6 +167,11 @@ contract NodeMap is Ownable {
         campaignRequiredVariant[_campaignId] = _variant;
     }
 
+    // Enemy threat is not tracked on-chain — the frontend derives it by
+    // summing ShipAttributes.calculateShipCost over
+    // AIEncounters.getMapPlacements for the node's mapId, so it's always
+    // exact and never goes stale if the encounter's placements are edited
+    // after this node is created.
     function createNode(
         uint _campaignId,
         uint _mapId,
@@ -180,8 +179,7 @@ contract NodeMap is Ownable {
         uint _costLimit,
         uint _turnTime,
         uint _maxScore,
-        bool _creatorGoesFirst,
-        uint _enemyThreat
+        bool _creatorGoesFirst
     ) external onlyNodeEditor returns (uint nodeId) {
         if (!campaignExists[_campaignId]) revert CampaignNotFound();
         _requireMapUsableForCampaign(_mapId);
@@ -202,7 +200,6 @@ contract NodeMap is Ownable {
         node.turnTime = _turnTime;
         node.maxScore = _maxScore;
         node.creatorGoesFirst = _creatorGoesFirst;
-        node.enemyThreat = _enemyThreat;
         node.exists = true;
 
         campaignNodeIds[_campaignId].push(nodeId);
@@ -218,8 +215,7 @@ contract NodeMap is Ownable {
         uint _costLimit,
         uint _turnTime,
         uint _maxScore,
-        bool _creatorGoesFirst,
-        uint _enemyThreat
+        bool _creatorGoesFirst
     ) external onlyNodeEditor {
         CampaignNode storage node = nodes[_nodeId];
         if (!node.exists) revert NodeNotFound();
@@ -242,7 +238,6 @@ contract NodeMap is Ownable {
         node.turnTime = _turnTime;
         node.maxScore = _maxScore;
         node.creatorGoesFirst = _creatorGoesFirst;
-        node.enemyThreat = _enemyThreat;
 
         emit NodeUpdated(_nodeId);
     }

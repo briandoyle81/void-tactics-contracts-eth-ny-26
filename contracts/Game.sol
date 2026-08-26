@@ -545,6 +545,12 @@ contract Game is Ownable {
     // Helper function to end the game and notify the orchestrator
     function _endGame(uint _gameId, address _winner, address _loser) internal {
         GameData storage game = games[_gameId];
+        // A single moveShip call can trigger this twice (a kill emptying a
+        // player's active ships, then a score threshold at the same round's
+        // end) — no-op on the second call rather than overwrite the winner
+        // and double-fire the orchestrator callback (see docs/pre-audit.md
+        // L-08).
+        if (game.metadata.ended) return;
         game.metadata.winner = _winner;
         game.metadata.ended = true;
         // Let whichever contract started this session (e.g. PvPMatch) decide

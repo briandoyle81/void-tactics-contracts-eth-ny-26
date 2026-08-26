@@ -199,7 +199,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -268,7 +268,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships
@@ -339,7 +339,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -426,7 +426,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships
@@ -491,7 +491,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships
@@ -563,7 +563,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships
@@ -667,7 +667,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -731,7 +731,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -804,11 +804,14 @@ describe("Game", function () {
       }
 
       // Get ships' serial numbers and fulfill random requests for all ships
-      for (let i = 1; i <= 24; i++) {
+      // (tier 0 mints 5 ships per purchase, so 24 purchases means more than
+      // 24 ships — read the real count rather than assuming 1:1).
+      const totalShipCount = Number(await ships.read.shipCount());
+      for (let i = 1; i <= totalShipCount; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -967,7 +970,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1034,7 +1037,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1105,7 +1108,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1205,7 +1208,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1276,7 +1279,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1353,7 +1356,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1430,7 +1433,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1499,7 +1502,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1598,7 +1601,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1685,7 +1688,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1824,7 +1827,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1937,7 +1940,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2001,7 +2004,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2082,7 +2085,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2187,7 +2190,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2258,7 +2261,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2345,7 +2348,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2428,7 +2431,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -2530,7 +2533,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2607,7 +2610,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2736,7 +2739,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2805,7 +2808,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2929,7 +2932,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -3037,11 +3040,12 @@ describe("Game", function () {
       );
 
       // Get ships' serial numbers and fulfill random requests
-      for (let i = 1; i <= 2; i++) {
+      const totalShipCount = Number(await ships.read.shipCount());
+      for (let i = 1; i <= totalShipCount; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -3267,11 +3271,12 @@ describe("Game", function () {
       );
 
       // Get ships' serial numbers and fulfill random requests
-      for (let i = 1; i <= 2; i++) {
+      const totalShipCount = Number(await ships.read.shipCount());
+      for (let i = 1; i <= totalShipCount; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -3374,21 +3379,13 @@ describe("Game", function () {
         { value: parseEther("4.99") },
       );
 
-      // Get ships' serial numbers and fulfill random requests
-      for (let i = 1; i <= 2; i++) {
-        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
-        const ship = tupleToShip(shipTuple);
-        const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
-      }
-
       // Construct creator's ship with EMP using
       // Get ships' serial numbers and fulfill random requests
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Create a ship with EMP for creator's first ship (ship 1)
@@ -3561,7 +3558,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -3693,7 +3690,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -3970,7 +3967,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -4054,7 +4051,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -4136,7 +4133,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -4211,7 +4208,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -4282,7 +4279,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -4355,7 +4352,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -4469,7 +4466,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -4580,7 +4577,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -4763,7 +4760,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -4869,7 +4866,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -4959,7 +4956,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Create a ship with RepairDrones for creator's first ship (ship 1)
@@ -5094,7 +5091,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -5242,7 +5239,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Create a ship with EMP for creator's first ship (ship 1)
@@ -5392,7 +5389,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // 2. Set the first ship as having a FlakArray
@@ -5635,7 +5632,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([ship.traits.serialNumber]);
+        await randomManager.write.revealRandomness([ship.traits.serialNumber]);
       }
 
       await ships.write.setIsAllowedToCreateShips(
@@ -5719,7 +5716,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([ship.traits.serialNumber]);
+        await randomManager.write.revealRandomness([ship.traits.serialNumber]);
       }
 
       await ships.write.setIsAllowedToCreateShips(
@@ -5790,7 +5787,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([ship.traits.serialNumber]);
+        await randomManager.write.revealRandomness([ship.traits.serialNumber]);
       }
 
       await ships.write.setIsAllowedToCreateShips(
@@ -5873,7 +5870,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([ship.traits.serialNumber]);
+        await randomManager.write.revealRandomness([ship.traits.serialNumber]);
       }
 
       await ships.write.setIsAllowedToCreateShips(
@@ -5981,7 +5978,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([ship.traits.serialNumber]);
+        await randomManager.write.revealRandomness([ship.traits.serialNumber]);
       }
 
       await ships.write.setIsAllowedToCreateShips(
@@ -6065,7 +6062,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([ship.traits.serialNumber]);
+        await randomManager.write.revealRandomness([ship.traits.serialNumber]);
       }
 
       await ships.write.setIsAllowedToCreateShips(
@@ -6179,7 +6176,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -6271,7 +6268,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -6369,7 +6366,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -6481,7 +6478,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -6574,7 +6571,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -6677,7 +6674,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -6780,7 +6777,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -6876,7 +6873,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players

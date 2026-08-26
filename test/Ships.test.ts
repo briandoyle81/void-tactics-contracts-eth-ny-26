@@ -517,7 +517,7 @@ describe("Ships", function () {
       const serialNumber = ship.traits.serialNumber; // traits is at index 3
 
       // Fulfill the random request
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
 
       // Construct the ship
       await ships.write.constructShip([1n], {
@@ -550,7 +550,7 @@ describe("Ships", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber; // traits is at index 3
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships at once using constructAllMyShips
@@ -584,7 +584,7 @@ describe("Ships", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber; // traits is at index 3
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships at once
@@ -620,7 +620,7 @@ describe("Ships", function () {
       const serialNumber = ship.traits.serialNumber; // traits is at index 3
 
       // Fulfill the random request
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
 
       // Try to construct as non-owner
       await expect(
@@ -646,7 +646,7 @@ describe("Ships", function () {
       const serialNumber = ship.traits.serialNumber; // traits is at index 3
 
       // Fulfill the random request
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
 
       // Construct the ship
       await ships.write.constructShip([1n], {
@@ -679,7 +679,7 @@ describe("Ships", function () {
       const serialNumber = ship.traits.serialNumber; // traits is at index 3
 
       // Fulfill the random request
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
 
       await ships.write.constructShip([1n], {
         account: user1.account,
@@ -2336,6 +2336,18 @@ describe("Ships", function () {
       ).to.be.rejectedWith("CannotRecycleFreeShip");
     });
 
+    it("blocks a reentrant claimFreeShips call from the ERC721 mint callback (SP-01)", async function () {
+      const { freeShipClaim } = await loadFixture(deployShipsFixture);
+
+      const attacker = await hre.viem.deployContract(
+        "MockFreeShipClaimReentrant",
+        [],
+      );
+      await attacker.write.setTarget([freeShipClaim.address]);
+
+      await expect(attacker.write.claim([1])).to.be.rejected;
+    });
+
     it("Should allow recycling purchased ships but not free ships in the same call", async function () {
       const { ships, universalCredits, user1, user2, shipPurchaser, freeShipClaim } =
         await loadFixture(deployShipsFixture);
@@ -3415,7 +3427,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       // Get current ship
@@ -3466,7 +3478,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       // Get current ship
@@ -3529,7 +3541,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       // Get current ship
@@ -3586,7 +3598,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       // Get current ship and name
@@ -3647,7 +3659,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       // Get current ship
@@ -3708,7 +3720,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       const currentShipTuple = (await ships.read.ships([1n])) as ShipTuple;
@@ -3771,7 +3783,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       const currentShipTuple = (await ships.read.ships([1n])) as ShipTuple;
@@ -3806,7 +3818,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       const currentShipTuple = (await ships.read.ships([1n])) as ShipTuple;
@@ -3842,7 +3854,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       const currentShipTuple = (await ships.read.ships([1n])) as ShipTuple;
@@ -3884,7 +3896,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       const currentShipTuple = (await ships.read.ships([1n])) as ShipTuple;
@@ -3950,7 +3962,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       const currentShipTuple = (await ships.read.ships([1n])) as ShipTuple;

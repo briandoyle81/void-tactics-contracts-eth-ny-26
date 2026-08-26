@@ -118,7 +118,7 @@ describe("RoguelikeMatch / RoguelikeResupply / RoguelikeNodeMap", function () {
     for (let i = 1; i <= 5; i++) {
       const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
       const ship = tupleToShip(shipTuple);
-      await randomManager.write.fulfillRandomRequest([ship.traits.serialNumber]);
+      await randomManager.write.revealRandomness([ship.traits.serialNumber]);
     }
     await ships.write.constructAllMyShips({ account: human.account });
   }
@@ -135,7 +135,6 @@ describe("RoguelikeMatch / RoguelikeResupply / RoguelikeNodeMap", function () {
       86400n,
       20n,
       true,
-      2000n,
       0n,
     ]);
     return await roguelikeNodeMap.read.nodeCount();
@@ -153,7 +152,6 @@ describe("RoguelikeMatch / RoguelikeResupply / RoguelikeNodeMap", function () {
       0n,
       0n,
       false,
-      0n,
       costCapOverride,
     ]);
     return await roguelikeNodeMap.read.nodeCount();
@@ -516,6 +514,78 @@ describe("RoguelikeMatch / RoguelikeResupply / RoguelikeNodeMap", function () {
     });
   });
 
+  describe("Combat node reward farming via a twoWay edge (SP-05)", function () {
+    // Hub (Resupply, root) <-twoWay-> Combat node -> dummy Resupply node
+    // (kept non-final so winning it doesn't immediately end the run,
+    // leaving room to walk back to the hub and try to re-enter it).
+    async function setupTwoWayCombatCampaign(
+      roguelikeNodeMap: any,
+      maps: any,
+      aiEncounters: any,
+    ) {
+      const mapId = await setupBasicAIEncounter(maps, aiEncounters);
+      await roguelikeNodeMap.write.createCampaign();
+      const campaignId = await roguelikeNodeMap.read.campaignCount();
+      const hubNodeId = await createResupplyNode(roguelikeNodeMap, campaignId);
+      const combatNodeId = await createCombatNode(
+        roguelikeNodeMap,
+        campaignId,
+        mapId,
+      );
+      const dummyNodeId = await createResupplyNode(roguelikeNodeMap, campaignId);
+      await roguelikeNodeMap.write.addChild([hubNodeId, combatNodeId, true]);
+      await roguelikeNodeMap.write.addChild([combatNodeId, dummyNodeId, false]);
+      await roguelikeNodeMap.write.setCampaignRoot([campaignId, hubNodeId]);
+      await roguelikeNodeMap.write.setCampaignInitialCostCap([campaignId, 2000n]);
+      return { campaignId, hubNodeId, combatNodeId, dummyNodeId };
+    }
+
+    it("reverts re-entering an already-won Combat node reached back via a twoWay edge", async function () {
+      const { deployed, owner, human, humanRoguelikeMatch, otherRoguelikeMatch, humanGame } =
+        await loadFixture(deployFixture);
+      const { ships, maps, aiEncounters, roguelikeNodeMap, randomManager } =
+        deployed;
+      const { campaignId, hubNodeId, combatNodeId } =
+        await setupTwoWayCombatCampaign(roguelikeNodeMap, maps, aiEncounters);
+
+      await purchaseAndConstructHumanShips(ships, randomManager, human);
+      await humanRoguelikeMatch.write.startRun([campaignId, [1n]]);
+
+      await humanRoguelikeMatch.write.enterCombatNode([
+        combatNodeId,
+        [{ row: 0, col: 0 }],
+      ]);
+      const gameId = ROGUELIKE_GAME_ID_OFFSET + 1n;
+      await winCombatNode(
+        deployed.game,
+        humanGame,
+        otherRoguelikeMatch,
+        owner,
+        human,
+        gameId,
+        1n,
+      );
+
+      // Run must still be Active (the dummy child keeps combatNodeId from
+      // being a final node) so there's something left to try to farm.
+      const runAfterWin = await deployed.roguelikeRun.read.getRun([
+        human.account.address,
+      ]);
+      expect(runAfterWin.status).to.equal(1); // Active
+
+      // Walk back to the hub via the twoWay edge...
+      await humanRoguelikeMatch.write.enterResupplyNode([hubNodeId]);
+
+      // ...and try to re-enter the already-won Combat node.
+      await expect(
+        humanRoguelikeMatch.write.enterCombatNode([
+          combatNodeId,
+          [{ row: 0, col: 0 }],
+        ]),
+      ).to.be.rejectedWith("NodeAlreadyDefeated");
+    });
+  });
+
   describe("Combat nodes: HP persistence, auto-heal, run completion", function () {
     it("persists a survivor's damage into the next combat node, applying the auto-heal floor", async function () {
       const { deployed, owner, human, humanRoguelikeMatch, otherRoguelikeMatch, humanGame } =
@@ -708,6 +778,104 @@ describe("RoguelikeMatch / RoguelikeResupply / RoguelikeNodeMap", function () {
       await expect(
         otherRoguelikeMatch.write.retreatRun([gameId]),
       ).to.be.rejectedWith("NoActiveRun");
+    });
+
+    // SP-04 (docs/pre-audit.md): retreatRun(0) used to end a run with no
+    // regard for whether a combat match it started was still unresolved,
+    // letting that game's later onGameEnded callback silently apply its
+    // outcome to whatever run/generation was current for the player by
+    // then (e.g. crediting a brand-new run as Won from an old, abandoned
+    // game's win). activeGameId tracking + the checks below close that.
+    it("reverts retreatRun(0) while a combat match is still active (SP-04)", async function () {
+      const { deployed, human, humanRoguelikeMatch } = await loadFixture(
+        deployFixture,
+      );
+      const { ships, maps, aiEncounters, roguelikeNodeMap, randomManager } =
+        deployed;
+      const { campaignId, rootNodeId } = await setupCampaignWithRoot(
+        roguelikeNodeMap,
+        maps,
+        aiEncounters,
+      );
+      await purchaseAndConstructHumanShips(ships, randomManager, human);
+      await humanRoguelikeMatch.write.startRun([campaignId, [1n]]);
+      await humanRoguelikeMatch.write.enterCombatNode([
+        rootNodeId,
+        [{ row: 0, col: 0 }],
+      ]);
+
+      await expect(
+        humanRoguelikeMatch.write.retreatRun([0n]),
+      ).to.be.rejectedWith("ActiveGameInProgress");
+    });
+
+    it("clears activeGameId once the active game resolves as a win (SP-04)", async function () {
+      const { deployed, human, owner, humanRoguelikeMatch, otherRoguelikeMatch, humanGame } =
+        await loadFixture(deployFixture);
+      const { ships, maps, aiEncounters, roguelikeNodeMap, randomManager, game } =
+        deployed;
+      const { campaignId, rootNodeId } = await setupCampaignWithRoot(
+        roguelikeNodeMap,
+        maps,
+        aiEncounters,
+      );
+      await purchaseAndConstructHumanShips(ships, randomManager, human);
+      await humanRoguelikeMatch.write.startRun([campaignId, [1n]]);
+      await humanRoguelikeMatch.write.enterCombatNode([
+        rootNodeId,
+        [{ row: 0, col: 0 }],
+      ]);
+      const gameId = ROGUELIKE_GAME_ID_OFFSET + 1n;
+
+      const runDuringCombat = await deployed.roguelikeRun.read.getRun([
+        human.account.address,
+      ]);
+      expect(runDuringCombat.activeGameId).to.equal(gameId);
+
+      await winCombatNode(
+        game,
+        humanGame,
+        otherRoguelikeMatch,
+        owner,
+        human,
+        gameId,
+        1n,
+      );
+
+      const runAfter = await deployed.roguelikeRun.read.getRun([
+        human.account.address,
+      ]);
+      expect(runAfter.activeGameId).to.equal(0n);
+    });
+
+    it("clears activeGameId once the active game resolves via retreatRun(gameId) forfeit (SP-04)", async function () {
+      const { deployed, human, humanRoguelikeMatch } = await loadFixture(
+        deployFixture,
+      );
+      const { ships, maps, aiEncounters, roguelikeNodeMap, randomManager } =
+        deployed;
+      const { campaignId, rootNodeId } = await setupCampaignWithRoot(
+        roguelikeNodeMap,
+        maps,
+        aiEncounters,
+      );
+      await purchaseAndConstructHumanShips(ships, randomManager, human);
+      await humanRoguelikeMatch.write.startRun([campaignId, [1n]]);
+      await humanRoguelikeMatch.write.enterCombatNode([
+        rootNodeId,
+        [{ row: 0, col: 0 }],
+      ]);
+      const gameId = ROGUELIKE_GAME_ID_OFFSET + 1n;
+
+      await humanRoguelikeMatch.write.retreatRun([gameId]);
+
+      // retreatRun(gameId) ends the run outright (loss), so activeGameId
+      // being cleared is checked via the raw ledger read (getRun) rather
+      // than trying to act on the run again.
+      const runAfter = await deployed.roguelikeRun.read.getRun([
+        human.account.address,
+      ]);
+      expect(runAfter.activeGameId).to.equal(0n);
     });
   });
 

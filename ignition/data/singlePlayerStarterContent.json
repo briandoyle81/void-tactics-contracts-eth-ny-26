@@ -7696,7 +7696,6 @@
       "mapKey": "m01",
       "prerequisites": [],
       "costLimit": 500,
-      "enemyThreat": 350,
       "turnTime": 600,
       "maxScore": 15,
       "creatorGoesFirst": true
@@ -7709,7 +7708,6 @@
         "m01"
       ],
       "costLimit": 540,
-      "enemyThreat": 400,
       "turnTime": 600,
       "maxScore": 21,
       "creatorGoesFirst": true
@@ -7722,7 +7720,6 @@
         "m02"
       ],
       "costLimit": 570,
-      "enemyThreat": 440,
       "turnTime": 600,
       "maxScore": 27,
       "creatorGoesFirst": true
@@ -7735,7 +7732,6 @@
         "m03"
       ],
       "costLimit": 610,
-      "enemyThreat": 490,
       "turnTime": 600,
       "maxScore": 33,
       "creatorGoesFirst": true
@@ -7748,7 +7744,6 @@
         "m04"
       ],
       "costLimit": 640,
-      "enemyThreat": 540,
       "turnTime": 600,
       "maxScore": 39,
       "creatorGoesFirst": true
@@ -7761,7 +7756,6 @@
         "m05"
       ],
       "costLimit": 680,
-      "enemyThreat": 580,
       "turnTime": 600,
       "maxScore": 45,
       "creatorGoesFirst": true
@@ -7774,7 +7768,6 @@
         "m06"
       ],
       "costLimit": 710,
-      "enemyThreat": 630,
       "turnTime": 600,
       "maxScore": 51,
       "creatorGoesFirst": true
@@ -7787,7 +7780,6 @@
         "m07"
       ],
       "costLimit": 750,
-      "enemyThreat": 680,
       "turnTime": 600,
       "maxScore": 58,
       "creatorGoesFirst": true
@@ -7800,7 +7792,6 @@
         "m08"
       ],
       "costLimit": 790,
-      "enemyThreat": 720,
       "turnTime": 600,
       "maxScore": 64,
       "creatorGoesFirst": true
@@ -7813,7 +7804,6 @@
         "m09"
       ],
       "costLimit": 820,
-      "enemyThreat": 770,
       "turnTime": 600,
       "maxScore": 70,
       "creatorGoesFirst": true
@@ -7826,7 +7816,6 @@
         "m10"
       ],
       "costLimit": 860,
-      "enemyThreat": 810,
       "turnTime": 600,
       "maxScore": 76,
       "creatorGoesFirst": true
@@ -7839,7 +7828,6 @@
         "m11"
       ],
       "costLimit": 890,
-      "enemyThreat": 860,
       "turnTime": 600,
       "maxScore": 82,
       "creatorGoesFirst": true
@@ -7852,7 +7840,6 @@
         "m12"
       ],
       "costLimit": 930,
-      "enemyThreat": 910,
       "turnTime": 600,
       "maxScore": 88,
       "creatorGoesFirst": true
@@ -7865,7 +7852,6 @@
         "m13"
       ],
       "costLimit": 960,
-      "enemyThreat": 950,
       "turnTime": 600,
       "maxScore": 94,
       "creatorGoesFirst": true
@@ -7878,7 +7864,6 @@
         "m14"
       ],
       "costLimit": 1000,
-      "enemyThreat": 1000,
       "turnTime": 600,
       "maxScore": 100,
       "creatorGoesFirst": true
@@ -7891,7 +7876,6 @@
         "m02"
       ],
       "costLimit": 570,
-      "enemyThreat": 440,
       "turnTime": 600,
       "maxScore": 27,
       "creatorGoesFirst": true
@@ -7904,7 +7888,6 @@
         "d01"
       ],
       "costLimit": 640,
-      "enemyThreat": 540,
       "turnTime": 600,
       "maxScore": 39,
       "creatorGoesFirst": true
@@ -7917,7 +7900,6 @@
         "d02"
       ],
       "costLimit": 710,
-      "enemyThreat": 630,
       "turnTime": 600,
       "maxScore": 51,
       "creatorGoesFirst": true
@@ -7930,7 +7912,6 @@
         "d03"
       ],
       "costLimit": 790,
-      "enemyThreat": 720,
       "turnTime": 600,
       "maxScore": 64,
       "creatorGoesFirst": true
@@ -7943,7 +7924,6 @@
         "d04"
       ],
       "costLimit": 860,
-      "enemyThreat": 810,
       "turnTime": 600,
       "maxScore": 76,
       "creatorGoesFirst": true
@@ -7956,7 +7936,6 @@
         "d05"
       ],
       "costLimit": 930,
-      "enemyThreat": 910,
       "turnTime": 600,
       "maxScore": 88,
       "creatorGoesFirst": true
@@ -7969,7 +7948,6 @@
         "m02"
       ],
       "costLimit": 1070,
-      "enemyThreat": 1100,
       "turnTime": 900,
       "maxScore": 107,
       "creatorGoesFirst": true
@@ -7982,7 +7960,6 @@
         "s01"
       ],
       "costLimit": 1130,
-      "enemyThreat": 1200,
       "turnTime": 900,
       "maxScore": 113,
       "creatorGoesFirst": true
@@ -7995,7 +7972,6 @@
         "s02"
       ],
       "costLimit": 1200,
-      "enemyThreat": 1300,
       "turnTime": 900,
       "maxScore": 120,
       "creatorGoesFirst": true
@@ -8009,7 +7985,6 @@
         "s03"
       ],
       "costLimit": 1330,
-      "enemyThreat": 1500,
       "turnTime": 900,
       "maxScore": 133,
       "creatorGoesFirst": true
@@ -8022,7 +7997,6 @@
         "f01"
       ],
       "costLimit": 1470,
-      "enemyThreat": 1700,
       "turnTime": 900,
       "maxScore": 147,
       "creatorGoesFirst": true
@@ -8035,7 +8009,6 @@
         "f02"
       ],
       "costLimit": 1600,
-      "enemyThreat": 1900,
       "turnTime": 900,
       "maxScore": 160,
       "creatorGoesFirst": true
@@ -8048,7 +8021,6 @@
         "f03"
       ],
       "costLimit": 1730,
-      "enemyThreat": 2100,
       "turnTime": 900,
       "maxScore": 173,
       "creatorGoesFirst": true
@@ -8061,7 +8033,6 @@
         "f04"
       ],
       "costLimit": 1870,
-      "enemyThreat": 2300,
       "turnTime": 900,
       "maxScore": 187,
       "creatorGoesFirst": true
@@ -8074,7 +8045,6 @@
         "f05"
       ],
       "costLimit": 2000,
-      "enemyThreat": 2500,
       "turnTime": 900,
       "maxScore": 200,
       "creatorGoesFirst": true

@@ -2,6 +2,8 @@
 
 **Written: 2026-07-31.** This is a delta doc — it covers everything that changed *after* `docs/update/Frontend_Update_Guide_Campaigns_Maps.md` (2026-07-30). Read that one first if you haven't already; this one only covers what's new since. `docs/singleplayer-frontend-integration.md` is still the base reference for the overall single-player flow.
 
+**Update 2026-08-26:** `enemyThreat` (section 5 below) is gone — removed entirely from `NodeMap.CampaignNode` and `RoguelikeNodeMap.RoguelikeNode` (`createNode`/`updateNode` are each one param shorter now; `getNode` no longer returns it). It was never enforced on-chain and had started drifting again from the AI fleet's actual cost. If you display a difficulty number, compute it yourself instead of reading it: sum `ShipAttributes.calculateShipCost(...)` for each ship implied by `AIEncounters.getMapPlacements(node.mapId)`'s configIds (via `AIEncounters.getAIShipConfig`) — this is exactly the number section 5's table below shows, just derived live instead of read from chain, so it's always exact and never goes stale if a map's placements are edited later.
+
 **Update 2026-08-18:** section 3's "25 configs" is now stale — see `docs/update/faction-2.md` section 8. `AIEncounters.aiShipConfigs` is now **50** entries: the original 25 variant-1 configs described below are untouched, plus 25 new variant-2 configs added alongside them. All 30 seeded campaign map placements were repointed to the new variant-2 configs, so the *live* campaign now fields variant-2 AI fleets — the cost table and archetype behavior in this section still describe the (still-existing, still on-chain, just no longer placed on any seeded map) variant-1 configs specifically. Don't hardcode "50" as a ceiling either; re-read `getAllAIShipConfigs().length`.
 
 ## 1. AI movement/targeting behavior changed (no ABI impact, but visible in play)
@@ -42,11 +44,11 @@ Approximate on-chain cost per config, if you want it for a difficulty/tier displ
 
 Still the same owner-tunable live knob (`AIEncounters.maxPlacementsPerMap`/`setMaxPlacementsPerMap`) from the last doc — just the deploy-time default changed from 8 to 14, because the hardest campaign maps now need up to 14 AI ships to hit their intended difficulty (see below). **If your admin fleet editor hardcoded "max 8 ships per map" anywhere instead of reading the live value, fix that now** — it was already the recommended action last time, but it'll actually bite if you skipped it, since some maps now exceed 8.
 
-## 5. AI fleet sizes changed on 8 of the 10 campaign maps — and now exactly match `enemyThreat`
+## 5. AI fleet sizes changed on 8 of the 10 campaign maps — and now exactly match the table below
 
-`enemyThreat` (the descriptive difficulty number on `NodeMap.CampaignNode`, introduced 2026-07-30) was never enforced against the actual AI fleet cost — it could drift arbitrarily. It no longer drifts: every node's AI fleet cost now sums to *exactly* its `enemyThreat` value.
+`enemyThreat` (the descriptive difficulty number that used to live on `NodeMap.CampaignNode`, introduced 2026-07-30) was never enforced against the actual AI fleet cost — it could drift arbitrarily. As of 2026-08-26 the field is gone entirely (see the update note at the top of this doc) — but the values below are still accurate, since every node's AI fleet cost sums to *exactly* what `enemyThreat` used to say. Re-derive it live per the note above rather than treating this table as a permanent reference.
 
-| Node (key) | enemyThreat | AI ships |
+| Node (key) | AI fleet cost | AI ships |
 |---|---|---|
 | node1 | 350 | 3 (unchanged) |
 | node2 | 700 | 5 (unchanged) |

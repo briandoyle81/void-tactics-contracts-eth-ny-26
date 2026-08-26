@@ -337,7 +337,7 @@ describe("Tournament", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -435,7 +435,7 @@ describe("Tournament", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -516,7 +516,7 @@ describe("Tournament", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -630,7 +630,7 @@ describe("Tournament", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -693,7 +693,7 @@ describe("Tournament", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }

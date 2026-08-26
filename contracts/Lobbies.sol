@@ -192,6 +192,19 @@ contract Lobbies is Ownable, ReentrancyGuard {
                 lobby.players.joiner = address(0);
                 lobby.state.status = LobbyStatus.Open;
 
+                // Clear the promoted player's old joiner-side fleet, same
+                // as the joiner-leaves branch below does — otherwise a
+                // stale joinerFleetId survives into the reopened lobby,
+                // permanently blocking a new joiner from ever creating
+                // their own fleet (FleetAlreadyCreated) and letting the
+                // promoted creator's next fleet auto-start the game bound
+                // to that stale fleet instead of the new joiner's own (see
+                // docs/pre-audit.md SP-03).
+                if (lobby.players.joinerFleetId != 0) {
+                    fleets.clearFleet(lobby.players.joinerFleetId);
+                    lobby.players.joinerFleetId = 0;
+                }
+
                 // Update joiner's state
                 PlayerLobbyState storage joinerState = playerStates[newCreator];
                 joinerState.hasActiveLobby = true;

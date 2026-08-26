@@ -28,7 +28,7 @@ async function main() {
     { value: parseEther("4.99"), account: owner.account },
   );
   const shipTuple = await ships.read.ships([1n]);
-  await randomManager.write.fulfillRandomRequest([(shipTuple as any)[3].serialNumber]);
+  await randomManager.write.revealRandomness([(shipTuple as any)[3].serialNumber]);
 
   const humanShips = await hre.viem.getContractAt("Ships", ships.address, { client: { wallet: human } });
   await humanShips.write.constructAllMyShips();
@@ -43,7 +43,7 @@ async function main() {
   // creation order (m01 first) -- verified via getCampaignNode below rather
   // than assumed.
   const node1 = await nodeMap.read.getNode([1n]) as any;
-  console.log(`\nnode 1 mapKey-derived id checks out (costLimit=${node1.costLimit}, enemyThreat=${node1.enemyThreat})`);
+  console.log(`\nnode 1 mapKey-derived id checks out (costLimit=${node1.costLimit})`);
 
   await humanSinglePlayerMatch.write.startNodeMatch([1n, [1n], [{ row: 0, col: 0 }]]);
 

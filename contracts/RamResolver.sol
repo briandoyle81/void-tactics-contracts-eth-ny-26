@@ -55,6 +55,13 @@ contract RamResolver is IEffectResolver {
         ShipPosition memory acting = game.getShipPosition(gameId, shipId);
         ShipPosition memory target = game.getShipPosition(gameId, targetShipId);
         if (acting.shipId == 0 || target.shipId == 0) revert InvalidRamTarget();
+        // Reject an already-destroyed/fled target — shipPositions entries
+        // aren't deleted on removal (only status flips), so shipId == 0
+        // alone doesn't catch this. Without this check, a stale target's
+        // deleted Attributes read hullPoints == 0 too, making it look like
+        // a legitimate (downed, in-range) ram target (see docs/pre-audit.md
+        // SP-02).
+        if (target.status != 0) revert InvalidRamTarget();
         // Ram can only hit the opposing side
         if (acting.isCreator == target.isCreator) revert InvalidRamTarget();
 

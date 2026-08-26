@@ -34,7 +34,7 @@ describe("RenderMetadata variant dispatch", function () {
     for (let id = firstNewId; id <= countAfter; id++) {
       const shipTuple = (await ships.read.ships([id])) as ShipTuple;
       const ship = tupleToShip(shipTuple);
-      await randomManager.write.fulfillRandomRequest([ship.traits.serialNumber]);
+      await randomManager.write.revealRandomness([ship.traits.serialNumber]);
     }
 
     await ships.write.constructAllMyShips({ account: user1.account });

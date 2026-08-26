@@ -338,6 +338,11 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
             revert ShipConstructed(_id);
         }
 
+        // Reverts NotYetRevealed if nobody has called
+        // randomManager.revealRandomness(serialNumber) yet — that must
+        // happen first, in its own separate transaction (see
+        // RandomManager.revealRandomness's comment for why this can't
+        // just be done inline here).
         uint64 randomBase = config.randomManager.fulfillRandomRequest(
             newShip.traits.serialNumber
         );

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./IShips.sol";
 import "./IDroneStorefront.sol";
 
@@ -10,7 +11,7 @@ import "./IDroneStorefront.sol";
 // isAllowedToCreateShips "authorized minter" pattern DroneYard/ShipPurchaser/
 // TutorialClaim already use — Ships.sol needed zero new logic beyond an
 // _isFreeShip flag on its existing createShips (see Ships.sol/IShips.sol).
-contract FreeShipClaim is Ownable {
+contract FreeShipClaim is Ownable, ReentrancyGuard {
     IShips public ships;
     address public droneStorefront;
 
@@ -35,7 +36,7 @@ contract FreeShipClaim is Ownable {
         claimCooldownPeriod = _newCooldownPeriod;
     }
 
-    function claimFreeShips(uint16 _variant) external {
+    function claimFreeShips(uint16 _variant) external nonReentrant {
         uint256 lastClaim = lastClaimTimestamp[msg.sender];
         uint256 currentTime = block.timestamp;
 
@@ -46,6 +47,14 @@ contract FreeShipClaim is Ownable {
             revert ClaimCooldownNotPassed();
         }
 
+        // Checks-effects-interactions: record the claim before minting,
+        // since ships.createShips's _safeMint can hand control to msg.sender
+        // (if it's a contract) via onERC721Received before this function
+        // returns — nonReentrant already blocks a reentrant claimFreeShips
+        // call, but this ordering is the actual fix (see docs/pre-audit.md
+        // SP-01) and matches TutorialClaim's pattern.
+        lastClaimTimestamp[msg.sender] = currentTime;
+
         // 10 base ships, plus a permanent bonus (DroneStorefront's own tier
         // count) earned by turning in drone cores — 1 tier = +1 ship.
         uint256 bonus = droneStorefront == address(0)
@@ -53,7 +62,5 @@ contract FreeShipClaim is Ownable {
             : IDroneStorefront(droneStorefront).droneCoreTier(msg.sender);
 
         ships.createShips(msg.sender, 10 + bonus, _variant, 0, true);
-
-        lastClaimTimestamp[msg.sender] = currentTime;
     }
 }

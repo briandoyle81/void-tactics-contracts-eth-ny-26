@@ -2,6 +2,15 @@
 
 **Written: 2026-08-25.** Brand-new feature, not a delta on an earlier doc. Describes contract state as of this date — check the contracts repo's recent commits if it's been a while.
 
+**Update 2026-08-26, two changes:**
+1. **A real starter campaign is now seeded by the deploy script** — `campaignId = 1`, 35 nodes (30 Combat + 5 Resupply), so `startRun(1, shipIds)` works out of the box and actually plays through a full run rather than a single fight. Shaped like the existing `NodeMap` campaign (same 30 maps/AI placements, same `turnTime`/`maxScore`/`creatorGoesFirst` per map — see `ignition/data/roguelikeStarterContent.json`), translated into this contract's branch-lockout model instead of `NodeMap`'s freely-replayable one:
+   - Root `m01` → `m02` → a **one-way branch choice**: continue the main spine (`m03`...`m15`), take the dead-end branch (`d01`...`d06`, ends with no children — a valid shorter alternate ending), or take the shortcut (`s01`...`s03`). Unlike the old campaign, picking one is a real commitment — the other two lock immediately (see "Branch lockout" in §3 below).
+   - The shortcut reconverges: `s03` and `m15` are **both** parents of `f01`, so either route reaches the same finale spine (`f01`...`f06`, the true ending).
+   - Five Resupply checkpoints are woven in (`campaignInitialCostCap` starts at 500, stepped up at each one via `costCapOverride`) — necessary because roguelike damage persists across the whole run, and a 15-hop spine with zero repair opportunity wouldn't be playable.
+   - `campaignAutoHealPercent(1) = 25`, `campaignRequiredVariant(1) = 1` (same human-variant-1-vs-AI-variant-2 asymmetry as the existing campaign, since it reuses the same AI placements).
+   - It's still a first pass, not balance-tested — MAP_EDITOR can extend/retune it further via `createNode`/`addChild`/`updateNode` per §7 below.
+2. **`enemyThreat` is gone — removed from `RoguelikeNode` entirely**, not just from `createNode`/`updateNode` (see §7's signature below, now one field shorter). It was never enforced on-chain and had started drifting from the AI fleet's real cost. If you want a difficulty number to display, compute it yourself: sum `ShipAttributes.calculateShipCost(...)` for each ship implied by `AIEncounters.getMapPlacements(node.mapId)`'s configIds (via `AIEncounters.getAIShipConfig`) — always exact, and never goes stale if the encounter's placements are edited later. `getNode(nodeId)` no longer returns this field at all.
+
 ## TL;DR
 
 A second, structurally different single-player campaign mode now exists, entirely alongside the existing one (`NodeMap.sol`/`SinglePlayerMatch.sol`, covered in `docs/singleplayer-frontend-integration.md` and `docs/update/Frontend_Update_Guide_Campaigns_Maps.md`). **Nothing about the existing campaign changed** — this is new infrastructure in new contracts, for a new "run"-based game mode:
@@ -144,7 +153,6 @@ function createNode(
     uint turnTime,            // Combat only
     uint maxScore,             // Combat only
     bool creatorGoesFirst,     // Combat only
-    uint enemyThreat,          // Combat only, descriptive
     uint costCapOverride       // Resupply only, pass 0 for Combat / "no change"
 ) external returns (uint nodeId);
 
@@ -164,7 +172,7 @@ Read surface for the editor UI: `getNode(nodeId)`, `getChildren(nodeId)`, `getEd
 | Error | Where | Meaning |
 |---|---|---|
 | `EmptyRoster` | `startRun` | Need at least one ship. |
-| `CampaignNotFound` / `CampaignHasNoRoot` | `startRun` | Admin hasn't finished setting up this campaign. |
+| `CampaignNotFound` / `CampaignHasNoRoot` | `startRun` | Admin hasn't finished setting up this campaign — shouldn't happen for `campaignId = 1` as of 2026-08-26 (the seeded starter campaign), but will for any campaign id an admin hasn't created/rooted yet. |
 | `WrongCampaignVariant` | `startRun`, `resupplyModifyRoster` | Ship variant doesn't match the campaign's requirement. |
 | `RunAlreadyActive` | `RoguelikeRun.startRun` (bubbles up through `RoguelikeMatch.startRun`) | Player already has a run in progress. |
 | `CannotAdvance` | `enterCombatNode`/`enterResupplyNode` | Not a legal move from the current node right now (locked, or not a child/valid-back-edge). |

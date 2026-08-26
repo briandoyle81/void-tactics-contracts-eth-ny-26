@@ -4,6 +4,7 @@
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
 import { parseEther } from "viem";
 import starterContent from "../data/singlePlayerStarterContent.json";
+import roguelikeStarterContent from "../data/roguelikeStarterContent.json";
 
 // Set to true only for a real production deploy. Every test fixture deploys
 // this same module via hre.ignition.deploy(DeployModule), and steps gated
@@ -12,7 +13,7 @@ import starterContent from "../data/singlePlayerStarterContent.json";
 // — this is a plain build-time boolean (not an Ignition parameter) so gated
 // m.call(...) invocations are simply never added to the deployment graph
 // when false, rather than being skipped at execution time.
-const PRODUCTION = false;
+const PRODUCTION = true;
 
 // Address allowed to mint ships from the Firebase Flow backend, with the same
 // rights as ShipPurchaser.
@@ -1099,7 +1100,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
 
   // Default cap is 8; the hardest campaign nodes (asteroidField,
   // warlordsRedoubt, gauntlet, bastion) need up to 14 ships to actually
-  // reach their enemyThreat target within the available config levels
+  // reach their intended difficulty within the available config levels
   // (I-V), so raise the live knob once here before placing any fleet.
   const setMaxPlacementsPerMapCall = m.call(
     aiEncounters,
@@ -1201,7 +1202,6 @@ const DeployModule = buildModule("DeployModule", (m) => {
         node.turnTime,
         node.maxScore,
         node.creatorGoesFirst,
-        node.enemyThreat,
       ],
       {
         id: `Create${capitalizedKey}`,
@@ -1215,6 +1215,146 @@ const DeployModule = buildModule("DeployModule", (m) => {
     );
     nodeCalls[node.key] = call;
     nodeIds[node.key] = BigInt(i + 1);
+  });
+
+  // ---- Roguelike campaign -------------------------------------------------
+  // RoguelikeNodeMap is deployed with zero content by default (unlike
+  // NodeMap above) — without at least one campaign + root Combat node,
+  // RoguelikeMatch.startRun always reverts CampaignNotFound/
+  // CampaignHasNoRoot, so a player could never begin a run. Seeds a 35-node
+  // graph (30 Combat + 5 Resupply) shaped like the existing NodeMap
+  // campaign — same 30 maps/AI placements already seeded above, same
+  // turnTime/maxScore/creatorGoesFirst per map, same main-spine (m01-m15) /
+  // dead-end-branch (d01-d06) / shortcut-branch (s01-s03) / finale-spine
+  // (f01-f06) shape — but translated into RoguelikeNodeMap's parent-lists-
+  // children + branch-lockout model instead of NodeMap's ANY-of-prerequisite
+  // model: the branch choice at m02 (continue / dead-end / shortcut) is a
+  // real one-way commitment here, not a freely-replayable side path, and
+  // f01 is a child of both m15 and s03 (whichever path reconverges there
+  // first) mirroring NodeMap's ['m15','s03'] OR-prerequisite the same way.
+  // Resupply nodes are new here (NodeMap has no such thing) — inserted at
+  // one checkpoint per branch, since a 15-hop main spine with zero repair
+  // opportunity would be unplayable given roguelike damage persists across
+  // the whole run. See ignition/data/roguelikeStarterContent.json for the
+  // full node/edge data; MAP_EDITOR can extend the graph further afterward.
+  const roguelikeContent = roguelikeStarterContent;
+
+  const createRoguelikeCampaignCall = m.call(
+    roguelikeNodeMap,
+    "createCampaign",
+    [],
+    { id: "CreateRoguelikeCampaign" },
+  );
+  const roguelikeCampaignId = 1n;
+
+  const setRoguelikeInitialCostCapCall = m.call(
+    roguelikeNodeMap,
+    "setCampaignInitialCostCap",
+    [roguelikeCampaignId, BigInt(roguelikeContent.campaign.initialCostCap)],
+    {
+      id: "SetRoguelikeInitialCostCap",
+      after: [createRoguelikeCampaignCall],
+    },
+  );
+  const setRoguelikeAutoHealPercentCall = m.call(
+    roguelikeNodeMap,
+    "setCampaignAutoHealPercent",
+    [roguelikeCampaignId, roguelikeContent.campaign.autoHealPercent],
+    {
+      id: "SetRoguelikeAutoHealPercent",
+      after: [createRoguelikeCampaignCall],
+    },
+  );
+  const setRoguelikeRequiredVariantCall = m.call(
+    roguelikeNodeMap,
+    "setCampaignRequiredVariant",
+    [roguelikeCampaignId, roguelikeContent.campaign.requiredVariant],
+    {
+      id: "SetRoguelikeRequiredVariant",
+      after: [createRoguelikeCampaignCall],
+    },
+  );
+
+  // RoguelikeNodeKind mirrored here so this file doesn't need a Solidity
+  // import — keep in sync if RoguelikeNodeMap.sol's enum changes.
+  const ROGUELIKE_NODE_KIND: Record<string, number> = {
+    Combat: 0,
+    Resupply: 1,
+  };
+
+  // Same "id is 1-indexed array position" reasoning as NodeMap's node loop
+  // above — each createNode call is forced (via `after`) to run strictly
+  // after the previous one, so Ignition's scheduler can't interleave these
+  // and desync the id guess from creation order (see this file's own
+  // comment on the NodeMap loop, and the hardhat-ignition-execution-order
+  // Cursor rule / CLAUDE.md section for the incident that taught us this).
+  const roguelikeNodeCalls: Record<string, ReturnType<typeof m.call>> = {};
+  const roguelikeNodeIds: Record<string, bigint> = {};
+  roguelikeContent.nodes.forEach((node: any, i: number) => {
+    const capitalizedKey = `${node.key[0].toUpperCase()}${node.key.slice(1)}`;
+    const previousNodeCall =
+      i > 0 ? roguelikeNodeCalls[roguelikeContent.nodes[i - 1].key] : undefined;
+    const isCombat = node.kind === "Combat";
+    const call = m.call(
+      roguelikeNodeMap,
+      "createNode",
+      [
+        roguelikeCampaignId,
+        ROGUELIKE_NODE_KIND[node.kind],
+        isCombat ? mapIds[node.mapKey] : 0n,
+        isCombat ? BigInt(node.turnTime) : 0n,
+        isCombat ? BigInt(node.maxScore) : 0n,
+        isCombat ? node.creatorGoesFirst : false,
+        isCombat ? 0n : BigInt(node.costCapOverride),
+      ],
+      {
+        id: `CreateRoguelike${capitalizedKey}Node`,
+        after: [
+          createRoguelikeCampaignCall,
+          ...(isCombat ? [mapCalls[node.mapKey], ...placementCalls] : []),
+          ...(previousNodeCall ? [previousNodeCall] : []),
+        ],
+      },
+    );
+    roguelikeNodeCalls[node.key] = call;
+    roguelikeNodeIds[node.key] = BigInt(i + 1);
+  });
+
+  const setRoguelikeRootCall = m.call(
+    roguelikeNodeMap,
+    "setCampaignRoot",
+    [roguelikeCampaignId, roguelikeNodeIds[roguelikeContent.root]],
+    {
+      id: "SetRoguelikeRoot",
+      after: [roguelikeNodeCalls[roguelikeContent.root]],
+    },
+  );
+
+  // Edges only need both endpoints to already exist (order among edges
+  // themselves doesn't affect any id-guessing), but each is still chained
+  // to the previous edge call purely to keep this loop's `after` lists
+  // short — every edge already depends on the full node-creation loop via
+  // its `from`/`to` node calls.
+  const roguelikeEdgeCalls: ReturnType<typeof m.call>[] = [];
+  roguelikeContent.edges.forEach((edge: any, i: number) => {
+    const call = m.call(
+      roguelikeNodeMap,
+      "addChild",
+      [
+        roguelikeNodeIds[edge.from],
+        roguelikeNodeIds[edge.to],
+        edge.twoWay ?? false,
+      ],
+      {
+        id: `AddRoguelikeEdge${i + 1}`,
+        after: [
+          roguelikeNodeCalls[edge.from],
+          roguelikeNodeCalls[edge.to],
+          ...(i > 0 ? [roguelikeEdgeCalls[i - 1]] : []),
+        ],
+      },
+    );
+    roguelikeEdgeCalls.push(call);
   });
 
   // Shattered Hive Campaign medal: soulbound, awarded via player-initiated
@@ -1697,7 +1837,14 @@ const DeployModule = buildModule("DeployModule", (m) => {
 
     m.call(roguelikeNodeMap, "transferOwnership", [MAP_EDITOR], {
       id: "TransferRoguelikeNodeMapOwnership",
-      after: [allowRoguelikeNodeEditorCall],
+      after: [
+        allowRoguelikeNodeEditorCall,
+        setRoguelikeInitialCostCapCall,
+        setRoguelikeAutoHealPercentCall,
+        setRoguelikeRequiredVariantCall,
+        setRoguelikeRootCall,
+        ...roguelikeEdgeCalls,
+      ],
     });
 
     m.call(roguelikeRun, "transferOwnership", [MAP_EDITOR], {

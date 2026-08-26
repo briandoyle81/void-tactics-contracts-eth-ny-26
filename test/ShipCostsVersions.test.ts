@@ -36,7 +36,7 @@ async function deployLobbyFleetFixture() {
     for (const shipId of shipIds) {
       const shipTuple = (await ships.read.ships([shipId])) as ShipTuple;
       const ship = tupleToShip(shipTuple);
-      await randomManager.write.fulfillRandomRequest([ship.traits.serialNumber]);
+      await randomManager.write.revealRandomness([ship.traits.serialNumber]);
     }
     return shipIds;
   };
@@ -261,7 +261,7 @@ describe("Ship costs, versions, and fleets", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -373,7 +373,7 @@ describe("Ship costs, versions, and fleets", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -528,7 +528,7 @@ describe("Ship costs, versions, and fleets", function () {
 
       const shipTuple = (await ships.read.ships([1n])) as ShipTuple;
       const ship = tupleToShip(shipTuple);
-      await randomManager.write.fulfillRandomRequest([ship.traits.serialNumber]);
+      await randomManager.write.revealRandomness([ship.traits.serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       await expect(
@@ -547,7 +547,7 @@ describe("Ship costs, versions, and fleets", function () {
 
       const shipTupleBefore = (await ships.read.ships([1n])) as ShipTuple;
       const s0 = tupleToShip(shipTupleBefore);
-      await randomManager.write.fulfillRandomRequest([s0.traits.serialNumber]);
+      await randomManager.write.revealRandomness([s0.traits.serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       const vBefore = await shipAttributes.read.getCurrentCostsVersion([1]);
@@ -591,7 +591,7 @@ describe("Ship costs, versions, and fleets", function () {
       for (const id of [1n, 2n] as const) {
         const shipTuple = (await ships.read.ships([id])) as ShipTuple;
         const s = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([s.traits.serialNumber]);
+        await randomManager.write.revealRandomness([s.traits.serialNumber]);
         await ships.write.constructShip([id], { account: user1.account });
       }
 

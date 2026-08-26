@@ -30,6 +30,12 @@ struct Run {
     // RoguelikeMatch for how this is created/torn down.
     uint reservationFleetId;
     uint[] rosterShipIds;
+    // The gameId of this run's currently in-progress combat match, if any
+    // (0 = between nodes, no live game). Set on enterCombatNode, cleared on
+    // that game's onGameEnded callback — lets RoguelikeMatch tell an active
+    // game apart from a stale/abandoned one calling back late (see
+    // docs/pre-audit.md SP-04).
+    uint activeGameId;
 }
 
 // Per-player roguelike run ledger — dumb state only (no Game/Fleets/token
@@ -49,6 +55,14 @@ contract RoguelikeRun is Ownable {
     // player => generation => nodeId => locked out for this run.
     mapping(address => mapping(uint => mapping(uint => bool)))
         private lockedByGen;
+    // player => generation => nodeId => already won this run — distinct
+    // from lockedByGen (access denial from branch exclusivity): this is
+    // reward-eligibility. Keyed by generation for the same reason
+    // lockedByGen is, so a new run doesn't inherit a previous one's
+    // defeats. Prevents farming a Combat node's kill rewards repeatedly via
+    // a twoWay edge back to it (see docs/pre-audit.md SP-05).
+    mapping(address => mapping(uint => mapping(uint => bool)))
+        private defeatedByGen;
 
     mapping(address => bool) public isAllowedToModifyRuns;
 
@@ -112,6 +126,19 @@ contract RoguelikeRun is Ownable {
         return lockedByGen[_player][run.generation][_nodeId];
     }
 
+    function setNodeDefeated(address _player, uint _nodeId) external onlyAllowed {
+        Run storage run = runs[_player];
+        defeatedByGen[_player][run.generation][_nodeId] = true;
+    }
+
+    function isNodeDefeated(
+        address _player,
+        uint _nodeId
+    ) external view returns (bool) {
+        Run storage run = runs[_player];
+        return defeatedByGen[_player][run.generation][_nodeId];
+    }
+
     function setCostCap(address _player, uint _costCap) external onlyAllowed {
         runs[_player].currentCostCap = _costCap;
     }
@@ -128,6 +155,13 @@ contract RoguelikeRun is Ownable {
         uint _fleetId
     ) external onlyAllowed {
         runs[_player].reservationFleetId = _fleetId;
+    }
+
+    function setActiveGameId(
+        address _player,
+        uint _gameId
+    ) external onlyAllowed {
+        runs[_player].activeGameId = _gameId;
     }
 
     function setShipHP(

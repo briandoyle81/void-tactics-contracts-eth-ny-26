@@ -130,7 +130,7 @@ describe("Lobbies", function () {
       const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
     }
     await ships.write.constructAllMyShips({ account: creator.account });
     await ships.write.constructAllMyShips({ account: joiner.account });
@@ -471,7 +471,7 @@ describe("Lobbies", function () {
         for (const shipId of shipIds) {
           const shipTuple = (await ships.read.ships([shipId])) as ShipTuple;
           const ship = tupleToShip(shipTuple);
-          await randomManager.write.fulfillRandomRequest([
+          await randomManager.write.revealRandomness([
             ship.traits.serialNumber,
           ]);
         }
@@ -563,7 +563,7 @@ describe("Lobbies", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([ship.traits.serialNumber]);
+        await randomManager.write.revealRandomness([ship.traits.serialNumber]);
       }
       await ships.write.constructAllMyShips({ account: creator.account });
       await ships.write.constructAllMyShips({ account: joiner.account });
@@ -870,6 +870,93 @@ describe("Lobbies", function () {
       expect(lobby.state.status).to.equal(LobbyStatus.Open);
     });
 
+    it("clears the promoted creator's stale joiner fleet so a new joiner isn't bound to it (SP-03)", async function () {
+      const { lobbies, creatorLobbies, joinerLobbies, ships, randomManager } =
+        await loadFixture(deployLobbiesFixture);
+      const [, creator, joiner, other] = await hre.viem.getWalletClients();
+      const otherLobbies = await hre.viem.getContractAt(
+        "Lobbies",
+        lobbies.address,
+        { client: { wallet: other } },
+      );
+
+      // Purchase and construct ships for the joiner (Bob) and the third
+      // player (Carol) who'll join after Bob is promoted to creator.
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [other.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      const totalShipCount = Number(await ships.read.shipCount());
+      for (let i = 1; i <= totalShipCount; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.revealRandomness([ship.traits.serialNumber]);
+      }
+      await ships.write.constructAllMyShips({ account: joiner.account });
+      await ships.write.constructAllMyShips({ account: other.account });
+      // Bob's ships are 1-5 (first purchase), Carol's are 6-10 (second).
+      const bobShipId = 1n;
+      const carolShipId = 6n;
+
+      // Alice creates the lobby; Bob joins and submits a fleet.
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [bobShipId],
+        generateStartingPositions([bobShipId], false),
+      ]);
+      const staleFleetId = (await lobbies.read.getLobby([1n])).players
+        .joinerFleetId;
+      expect(staleFleetId).to.not.equal(0n);
+
+      // Alice leaves before submitting her own fleet — Bob is promoted to
+      // creator, lobby reopens.
+      await creatorLobbies.write.leaveLobby([1n]);
+      const afterPromotion = await lobbies.read.getLobby([1n]);
+      expect(afterPromotion.basic.creator.toLowerCase()).to.equal(
+        joiner.account.address.toLowerCase(),
+      );
+      // The fix: the stale joinerFleetId must be cleared, not carried over.
+      expect(afterPromotion.players.joinerFleetId).to.equal(0n);
+
+      // Carol joins as the new joiner and must be able to submit her own
+      // fleet — this is exactly what reverted FleetAlreadyCreated pre-fix.
+      await otherLobbies.write.joinLobby([1n]);
+      await otherLobbies.write.createFleet([
+        1n,
+        [carolShipId],
+        generateStartingPositions([carolShipId], false),
+      ]);
+      const carolFleetId = (await lobbies.read.getLobby([1n])).players
+        .joinerFleetId;
+      expect(carolFleetId).to.not.equal(0n);
+      expect(carolFleetId).to.not.equal(staleFleetId);
+
+      // Bob (now creator) submits his own new fleet, reusing his
+      // now-freed-by-clearFleet ship — this is what auto-starts the game,
+      // and must bind to Carol's fleet, not Bob's stale old one.
+      await joinerLobbies.write.createFleet([
+        1n,
+        [bobShipId],
+        generateStartingPositions([bobShipId], true),
+      ]);
+      const started = await lobbies.read.getLobby([1n]);
+      expect(started.state.status).to.equal(LobbyStatus.InGame);
+      expect(started.players.joinerFleetId).to.equal(carolFleetId);
+    });
+
     it("should emit correct events when creator leaves alone", async function () {
       const { creatorLobbies, creator, publicClient } = await loadFixture(
         deployLobbiesFixture
@@ -1022,7 +1109,7 @@ describe("Lobbies", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1112,7 +1199,7 @@ describe("Lobbies", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1177,7 +1264,7 @@ describe("Lobbies", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       await ships.write.constructAllMyShips({ account: creator.account });
@@ -1222,11 +1309,15 @@ describe("Lobbies", function () {
         { value: parseEther("4.99") }
       );
 
-      // Fulfill random request
-      const shipTuple = (await ships.read.ships([BigInt(1)])) as ShipTuple;
-      const ship = tupleToShip(shipTuple);
-      const serialNumber = ship.traits.serialNumber;
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      // Fulfill random requests (tier 0 mints 5 ships per purchase — read
+      // the real count rather than assuming 1:1).
+      const totalShipCount = Number(await ships.read.shipCount());
+      for (let i = 1; i <= totalShipCount; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        const serialNumber = ship.traits.serialNumber;
+        await randomManager.write.revealRandomness([serialNumber]);
+      }
 
       await ships.write.constructAllMyShips({ account: creator.account });
 
@@ -1271,12 +1362,14 @@ describe("Lobbies", function () {
         { value: parseEther("4.99") }
       );
 
-      // Fulfill random requests
-      for (let i = 1; i <= 2; i++) {
+      // Fulfill random requests (tier 0 mints 5 ships per purchase — read
+      // the real count rather than assuming 1:1).
+      const totalShipCount = Number(await ships.read.shipCount());
+      for (let i = 1; i <= totalShipCount; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       await ships.write.constructAllMyShips({ account: creator.account });
@@ -1577,7 +1670,7 @@ describe("Lobbies", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       await ships.write.constructAllMyShips({ account: creator.account });
@@ -1651,7 +1744,7 @@ describe("Lobbies", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       await ships.write.constructAllMyShips({ account: creator.account });

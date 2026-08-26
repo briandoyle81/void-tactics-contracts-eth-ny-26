@@ -61,6 +61,13 @@ contract DroneSwarmResolver is IEffectResolver {
         ShipPosition memory acting = game.getShipPosition(gameId, shipId);
         ShipPosition memory target = game.getShipPosition(gameId, targetShipId);
         if (acting.shipId == 0 || target.shipId == 0) revert TargetNotFound();
+        // Reject an already-destroyed/fled target — shipPositions entries
+        // aren't deleted on removal (only status flips), so shipId == 0
+        // alone doesn't catch this. Without this check, a stale target's
+        // deleted (zeroed) Attributes would read as 0 HP and get re-added
+        // to shipsWithZeroHP, permanently bricking future round transitions
+        // (see docs/pre-audit.md SP-02).
+        if (target.status != 0) revert TargetNotFound();
         // Drone Swarm can only target enemy ships.
         if (acting.isCreator == target.isCreator) revert TargetNotEnemy();
 

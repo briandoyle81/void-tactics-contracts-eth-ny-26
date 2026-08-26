@@ -27,11 +27,11 @@ This audit covers 20 production Solidity contracts plus supporting interfaces, m
 
 ## Critical Findings
 
-### C-01 — `RandomManager.fulfillRandomRequest` Does Not Verify the Request Exists
+### ~~C-01 — `RandomManager.fulfillRandomRequest` Does Not Verify the Request Exists~~
 
 **File:** `contracts/RandomManager.sol`, lines 20–29  
 **Severity:** Critical  
-**Status:** Reclassified 2026-07-16 (was H-07 — elevated to Critical, moved above the randomness-source finding below; not yet fixed)
+**Status:** Fixed 2026-08-26 (see Addendum below)
 
 `fulfillRandomRequest(uint _requestId)` accepts any `_requestId` value and returns a `block.prevrandao`-derived value. There is no mapping of outstanding requests, no check that the ID was ever issued by `requestRandomness()`, and no single-use prevention. Any caller (including MEV bots or validators) can call `fulfillRandomRequest` with a forged ID to front-run ship construction and predict or manipulate the random outcome before `constructShip` is called.
 
@@ -39,10 +39,11 @@ This audit covers 20 production Solidity contracts plus supporting interfaces, m
 
 ---
 
-### C-02 — Insecure On-Chain Randomness via `block.prevrandao`
+### ~~C-02 — Insecure On-Chain Randomness via `block.prevrandao`~~
 
 **File:** `contracts/RandomManager.sol`, lines 14–28  
-**Severity:** Critical
+**Severity:** Critical  
+**Status:** Fixed 2026-08-26 (see Addendum below — mitigated, not eliminated; residual risk documented there)
 
 `requestRandomness()` and `fulfillRandomRequest()` both derive their output exclusively from `block.prevrandao` (formerly `DIFFICULTY`) and a simple incrementing counter. On PoS Ethereum and EVM-compatible chains using a similar mechanism, the block proposer knows `block.prevrandao` before committing the block, making it manipulable. A validator who is also a player (or colluding with one) can re-roll the random seed by skipping block proposals until a favorable value appears.
 
@@ -459,12 +460,22 @@ Net effect of self-referral: a high-volume buyer can eventually pay as little as
 
 ---
 
-### L-08 — `Game._endGame` Can Be Double-Invoked, Causing Revert on Fleet Removal
+### ~~L-08 — `Game._endGame` Can Be Double-Invoked, Causing Revert on Fleet Removal~~
 
-**File:** `contracts/Game.sol`, lines 417–435  
-**Severity:** Low
+**File:** `contracts/Game.sol`, lines 546–564 (moved since original write-up)  
+**Severity:** Low  
+**Status:** Fixed 2026-08-26
 
-`_endGame` can be triggered from multiple paths with no guard against double-invocation within the same transaction. If `_removeShipsFromFleet` calls `fleets.removeShipFromFleet` on an already-empty fleet, the Fleets contract will revert with `ShipNotFound`, potentially trapping the game in an un-finishable state.
+**Re-checked against current code before fixing, since the original description no longer matched it exactly.** The originally-described failure mode — `_removeShipsFromFleet` calling `Fleets.removeShipFromFleet` on an already-empty fleet and reverting `ShipNotFound` — no longer applies: `_removeShipsFromFleet` now calls `Fleets.clearFleet`, which is idempotent (a no-op loop on an already-empty fleet, confirmed by reading it), so that specific "trapped, un-finishable game" outcome was already closed as a side effect of an unrelated refactor.
+
+`_endGame` still had no guard against double-invocation within one transaction, though, and the actual reachable consequence turned out to be different from — and in one path worse than — a revert. `moveShip` can trigger `_endGame` twice in a single call: once via `_checkGameEndCondition` (fired from `_performAction`, when a kill empties a player's active-ship set) and again via `_handleEndOfRound`'s score-threshold check immediately after, if that same move also happens to complete the round. Checked all three `IGameOrchestrator` implementations for how they'd handle being called twice:
+- `RoguelikeMatch.onGameEnded` — accidentally idempotent (early-returns once `gameIdToPlayer[_gameId]` is deleted on the first call).
+- `SinglePlayerMatch.onGameEnded` — accidentally idempotent (`nodeMap.recordCompletion` is itself idempotent by design).
+- `PvPMatch.onGameEnded` — **not** idempotent: the second call reaches `GameResults.recordGameResult`, which reverts `GameAlreadyRecorded` — reverting the entire `moveShip` transaction. A legitimate, non-malicious winning move in a PvP match could hit this and fail unexpectedly.
+
+Independent of any revert, `game.metadata.winner` was also silently overwritten by whichever of the two calls ran second — and the two paths compute the winner independently (kill-based vs. score-based), so they aren't guaranteed to agree in a contrived-but-legitimate tie scenario.
+
+**Fix:** added `if (game.metadata.ended) return;` as the first line of `_endGame` — whichever path reaches it first wins; the same-transaction second call becomes a no-op instead of overwriting the winner or double-firing the orchestrator callback. `Game.sol` deployed size: 23.812 KiB (well within the 24.576 KiB limit). Full suite: 546 passing; the one failure (`ShipCostsVersions.test.ts`) is the same pre-existing, unrelated flake noted elsewhere in this doc.
 
 ---
 
@@ -520,13 +531,15 @@ Both lists share the same underlying gap: no timelock, multisig, or governance m
 
 ---
 
-### I-04 — `RandomManager` Is a Permanent Placeholder With No Upgrade Path
+### ~~I-04 — `RandomManager` Is a Permanent Placeholder With No Upgrade Path~~
 
 **File:** `contracts/RandomManager.sol`  
 **Severity:** Informational  
-**Status:** Corrected 2026-07-16 — a swap path does exist; see below. Title/severity otherwise unchanged (randomness quality itself is still tracked separately under C-02).
+**Status:** Resolved 2026-08-26 (both remaining premises are now stale — see below). Originally corrected 2026-07-16 re: upgrade path; that correction's own text is retained as-is beneath since it's still accurate.
 
-The comment `// TODO: Update to CadenceRandomConsumer` indicates intent to replace this with Flow's Cadence random oracle. ~~Currently deployed as-is, there is no mechanism to upgrade it~~, and the randomness is a single-step hash with no commit-reveal.
+**Resolved 2026-08-26:** the finding's other premise — "the randomness is a single-step hash with no commit-reveal" — is no longer true. `RandomManager.sol` was rewritten as part of the C-01/C-02 remediation (see that addendum) into a genuine two-step commit-reveal scheme (`requestRandomness` commits, `revealRandomness` can only reveal once the entropy source has actually refreshed, `fulfillRandomRequest` reads the locked-in result). The `// TODO: Update to CadenceRandomConsumer` comment this finding quoted is also gone entirely — Flow's Cadence Arch was never used (deploy target confirmed to be Base, not Flow), so that specific TODO was superseded rather than completed. Nothing in this finding describes the current contract anymore; closing it rather than re-correcting it further.
+
+~~The comment `// TODO: Update to CadenceRandomConsumer` indicates intent to replace this with Flow's Cadence random oracle. Currently deployed as-is, there is no mechanism to upgrade it, and the randomness is a single-step hash with no commit-reveal.~~
 
 **Correction (2026-07-16):** "No mechanism to upgrade it" is inaccurate. `Ships.setConfig(...)` (`Ships.sol:557-575`) is `onlyOwner` and takes `_randomManager` as one of its parameters, writing `config.randomManager = IRandomManager(_randomManager)`. The owner can deploy a new `RandomManager` (e.g. one that actually implements `CadenceRandomConsumer`) and repoint `Ships` at it at any time — that's the real upgrade path, and it works today. What's *not* upgradeable is the deployed `RandomManager` contract's own bytecode in place (no proxy pattern) — but that's true of every non-proxy contract in this codebase, not something specific to `RandomManager`.
 
@@ -610,8 +623,8 @@ Positions are first validated for column bounds (creator: 0–3, joiner: 13–16
 
 | ID | Contract | Function | Severity | Category |
 |---|---|---|---|---|
-| C-01 | RandomManager | `fulfillRandomRequest` | Critical | Improper Randomness (reclassified from H-07) |
-| C-02 | RandomManager | `requestRandomness`, `fulfillRandomRequest` | Critical | Improper Randomness |
+| ~~C-01~~ | RandomManager | `fulfillRandomRequest` | Critical | ~~Improper Randomness~~ (Fixed) |
+| ~~C-02~~ | RandomManager | `requestRandomness`, `fulfillRandomRequest` | Critical | ~~Improper Randomness~~ (Mitigated) |
 | ~~C-03~~ | Game | `calculateShipAttributes`, `calculateFleetAttributes` | Critical | ~~Access Control~~ (Fixed) |
 | ~~C-04~~ | Game | `getGamesForPlayer` | Critical | ~~Gas / DoS~~ (reclassified from I-07, already solved) |
 | ~~H-01~~ | ShipAttributes | `setCosts` | High | ~~Logic Bug~~ (Fixed) |
@@ -637,11 +650,11 @@ Positions are first validated for column bounds (creator: 0–3, joiner: 13–16
 | ~~L-05~~ | ShipAttributes | Multiple setters | Low | ~~Missing Events~~ (Fixed) |
 | ~~L-06~~ | Ships | `claimFreeShips` | Low | ~~Logic / Documentation~~ (Not a bug) |
 | ~~L-07~~ | ShipPurchaser | `purchaseWithUC` | Low | ~~Missing Validation~~ (Not a bug) |
-| L-08 | Game | `_endGame` | Low | Double-Invocation |
+| ~~L-08~~ | Game | `_endGame` | Low | ~~Double-Invocation~~ (Fixed) |
 | I-01 | Game | debug functions | Info | Production Readiness |
 | I-02 | Multiple | Owner functions | Info | Centralisation |
 | ~~I-03~~ | UniversalCredits | `mintedAmount` | Info | ~~Dead Code~~ (Fixed) |
-| I-04 | RandomManager | (all) | Info | Architecture (Corrected) |
+| ~~I-04~~ | RandomManager | (all) | Info | ~~Architecture~~ (Resolved) |
 | ~~I-05~~ | Multiple | pragma | Info | ~~Code Quality~~ (Partially fixed) |
 | ~~I-06~~ | Game | `lastDamage` | Info | ~~Data Isolation~~ (Fixed) |
 | I-07 | Lobbies | `getAllLobbiesForPlayerWithDupes` | Info | Code Quality (Not a bug) |
@@ -652,6 +665,11 @@ Positions are first validated for column bounds (creator: 0–3, joiner: 13–16
 | ~~T-03~~ | Tournament | `assignMatchGame`, `resolveDraw` | High | ~~Locked Funds~~ (Fixed) |
 | ~~T-04~~ | Maps | `setMapEditor` | Informational | ~~Widened Blast Radius~~ (Moot) |
 | ~~T-05~~ | Tournament | `claimForfeitWin` (new) | High | ~~Locked Funds (player inactivity)~~ (Fixed) |
+| ~~SP-01~~ | FreeShipClaim | `claimFreeShips` | High | ~~Reentrancy~~ (Fixed) |
+| ~~SP-02~~ | DroneSwarmResolver, EMPResolver, RamResolver | `resolveEffect` | High | ~~Missing Target-Status Validation~~ (Fixed) |
+| ~~SP-03~~ | Lobbies | `leaveLobby`, `createFleet` | High | ~~Stale State / Authorization~~ (Fixed) |
+| ~~SP-04~~ | RoguelikeMatch | `retreatRun`, `onGameEnded` | High | ~~Stale Callback / Reward Integrity~~ (Fixed) |
+| ~~SP-05~~ | RoguelikeMatch, RoguelikeNodeMap | `_commitToNode` | Medium | ~~Reward Farming~~ (Fixed) |
 
 ---
 
@@ -835,3 +853,154 @@ function calculateShipAttributes(uint _gameId, uint _shipId) public {
 **Ship-to-game membership (L-01):** left unaddressed — confirmed lower risk than originally stated since `shipAttributes` is scoped per-game storage (see the L-01 note above), not a cross-game hazard. Can be added later as defense in depth.
 
 **Contract size:** `Game.sol` was already within ~20 bytes of the 24 KiB (24,576-byte) Spurious Dragon limit before this change (`hardhat.config.ts` even has a comment noting `runs: 1` "keeps Game under 24 KiB"). The new guard added 34 bytes, pushing it over. Rather than touch the optimizer settings (disallowed by `CLAUDE.md` regardless — no ignoring size limits), `getAllShipPositions` (same file) was rewritten to drop its redundant first pass: it used to scan the full grid once just to count live ships (to size the `positions` memory array) and a second time to populate it. It now allocates for the theoretical worst case (`GRID_HEIGHT * GRID_WIDTH + goneShipIds.length`), fills in one pass, and shrinks the array's length word in place via `assembly { mstore(positions, index) }` once the actual count is known — same return value, one grid scan instead of two. Net effect: `Game.sol` dropped from 24.014 KiB to 23.824 KiB, restoring headroom. `Game.test.ts` passes unchanged.
+
+---
+
+## Addendum — Singleplayer/Roguelike & Lobby Findings (2026-08-26)
+
+**Scope:** The contracts directory has grown from the ~20 contracts covered above to 76, driven by the singleplayer/PvE refactor (`singleplayer-refactor` branch): `SinglePlayerMatch`, `RoguelikeMatch`/`RoguelikeRun`/`RoguelikeResupply`/`RoguelikeNodeMap`/`RoguelikeAIController`, `AIBehavior`/`AIEncounters`/`AIShips`, per-effect combat resolvers (`RamResolver`, `EMPResolver`, `ElectricStormResolver`, `FlakArrayResolver`, `DroneSwarmResolver`, `RepairResolver`, `RepairDronesResolver`, `SpecialEffectsLib`), and new economy contracts (`FreeShipClaim`, `TutorialClaim`, `DroneStorefront`, `DroneEnergyCores`, `VariantPurchaseGate`). This addendum covers findings from a full re-audit of that expanded scope, plus `Lobbies.sol`/`Tournament.sol`/`Fleets.sol` re-checked against the new orchestrator contracts that now call into them. All findings below were confirmed by direct code read, not just sub-agent report.
+
+~~**Re-confirmation of C-01/C-02 (`RandomManager`):** Still open, and now also confirmed to control ship *trait* generation, not just the originally-audited path. `Ships.constructShip` → `RandomManager.fulfillRandomRequest` → `GenerateNewShip.generateShip` derives weapon/hull/speed/accuracy tier and the 8% "shiny" roll entirely from `keccak256(block.prevrandao, requestId)`. Since `purchaseWithFlow` never requires `_to == msg.sender`, a caller can mint into a helper contract and wrap `constructShip` in a call that reverts on an unfavorable roll, at the cost of gas only — see SP details below for the general pattern; no new ID assigned since this is the same root cause as C-01/C-02.~~
+
+**Resolved 2026-08-26 — re-checked against the current `RandomManager`/`Ships.constructShip`, this specific path no longer works, independent of `_to`.** The mint-into-a-helper-contract mechanic described above still exists (`purchaseWithFlow` still doesn't require `_to == msg.sender`), but it no longer enables the exploit: `constructShip` now calls `fulfillRandomRequest`, which is a `view` that reverts `NotYetRevealed` unless `revealRandomness` was already called for that id in a **separate, earlier transaction** (see the C-01/C-02 remediation addendum). The helper contract's wrapped "construct, inspect, revert if unfavorable" attempt can't get a fresh value to discard anymore — either the reveal hasn't happened yet (in which case `constructShip` reverts immediately, before any roll exists to inspect), or it already has, in which case the result is permanently locked in from that earlier, already-mined transaction and a later `constructShip` revert can't touch it. Retrying just reads back the same fixed value every time. `_to != msg.sender` is no longer a security-relevant parameter for this finding; whether to restrict it is a separate product question (gifting/sponsored-mint flows vs. simplicity), not a fix for this.
+
+### ~~SP-01 — `FreeShipClaim.claimFreeShips` Reentrancy Bypasses the 28-Day Cooldown~~
+
+**File:** `contracts/FreeShipClaim.sol`, lines 38–58 (pre-fix)
+**Severity:** High
+**Category:** Reentrancy
+**Status:** Fixed 2026-08-26
+
+`claimFreeShips` checks `lastClaimTimestamp[msg.sender]`, calls `ships.createShips(msg.sender, ...)` (which `_safeMint`s ERC-721 ships — `Ships.sol:504`), and only writes `lastClaimTimestamp[msg.sender] = currentTime` **after** that call returns. `Ships.createShips` has no reentrancy guard. Every sibling claim path in the codebase (`TutorialClaim`, `ShipPurchaser.purchaseWithUC`, `DroneYard.modifyShip`) either sets its claimed-flag before the external call or carries `nonReentrant` (or both); `FreeShipClaim` is the one outlier missing both.
+
+**Exploit:** A contract implementing `onERC721Received` calls `claimFreeShips`. The first `_safeMint` inside `createShips`'s loop invokes the caller's `onERC721Received` callback before `lastClaimTimestamp` is written, letting it call `claimFreeShips` again with the cooldown check still reading stale state — recursing until gas limits, netting many multiples of the intended 10(+bonus)-ship batch in a single transaction.
+
+**Fix applied:** moved the `lastClaimTimestamp` write before the call to `ships.createShips(...)` (checks-effects-interactions), and added `ReentrancyGuard`/`nonReentrant`, matching `TutorialClaim`'s existing pattern.
+
+**Verification:** added `contracts/mocks/MockFreeShipClaimReentrant.sol` (an `IERC721Receiver` that reenters `claimFreeShips` from its own mint callback) and a test in `test/Ships.test.ts`. Confirmed the test methodology itself before trusting it: the mock's first version hardcoded an invalid variant (`0`) for its reentrant call, which reverted for an unrelated reason (`InvalidVariant`) and made the test pass regardless of whether the real fix was present — a false-positive-passing test. Fixed the mock to reuse the same valid variant as the outer call, then re-verified both directions by temporarily reverting just `FreeShipClaim.sol` to its pre-fix state: against the vulnerable version the reentrant call **succeeds silently** (confirming the double-claim is real), and against the fixed version it reverts `ReentrancyGuardReentrantCall()` (confirming the guard is what actually stops it, not an incidental error). Full suite: 548 passing.
+
+---
+
+### ~~SP-02 — Effect Resolvers Missing Target-Status Validation (DroneSwarm Permanently Bricks Matches)~~
+
+**Files:** `contracts/DroneSwarmResolver.sol:61-65`, `contracts/EMPResolver.sol:62-66`, `contracts/RamResolver.sol:55-62`, `contracts/Game.sol:1200-1225`, `contracts/SpecialEffectsLib.sol:178-204`
+**Severity:** High
+**Category:** Missing Validation / State Corruption
+**Status:** Fixed 2026-08-26
+
+None of these single-target resolvers check `target.status` (0=alive/1=destroyed/2=fled) — only `target.shipId == 0` and friend/enemy. `Game._removeShipFromGame` never deletes a ship's `shipPositions` entry on removal (only flips `status`), while unconditionally `delete`-ing `shipAttributes`. The only defense-in-depth check, in `SpecialEffectsLib.resolveAndApply` (`timestampDestroyed != 0`), only catches globally-destroyed ships, not fled ones.
+
+`DroneSwarmResolver`'s hull-damage path is the dangerous one: hitting an already-fled ship's stale position sees `damage >= attrs.hullPoints` (0, post-deletion) and re-adds the ghost shipId to `game.shipsWithZeroHP`. That set is iterated unconditionally on every round transition by `_incrementReactorCriticalTimerForZeroHPShips`; once the ghost's (deleted) `reactorCriticalTimer` hits 3, it calls `_removeShipFromGame` again on a ship no longer in either fleet, which reverts `ShipNotFound()`. The revert undoes only that round's increment, so the ghost is permanently stuck one tick below the threshold — **every subsequent round-completion transaction for that game reverts, forever**, freezing both players' ship NFTs in an unresolvable match.
+
+`EMPResolver`/`RamResolver` have the same missing check, but their effects resolve within the same transaction (reactor-timer-triggered removal or ram removal), so hitting an already-gone target just reverts the acting player's own move — self-limiting, not persistent, but confirms the gap is systemic.
+
+**Fix applied:** added `if (target.status != 0) revert ...;` right after the existing `shipId == 0` check in all three resolvers (`TargetNotFound` for DroneSwarm/EMP, `InvalidRamTarget` for Ram — reusing each resolver's existing error rather than adding new ones), matching the pattern `ElectricStormResolver`/`FlakArrayResolver` already use in their AoE loops. Did **not** apply the doc's secondary suggestion (hardening `_incrementReactorCriticalTimerForZeroHPShips` to skip rather than revert on a missing shipId) — `Game.sol` is already the tightest contract in the repo on bytecode, and the primary fix already prevents a ghost from ever being re-added to `shipsWithZeroHP` in the first place, so that path is now structurally unreachable rather than merely tolerated. Can revisit if a different path is ever found to reach it.
+
+**Verification:** added `contracts/mocks/MockGameView.sol` (a settable stand-in for the small `IGameView` surface every resolver reads) and `contracts/mocks/MockShipAttributesSpecial.sol`, plus `test/EffectResolverTargetStatus.test.ts` — unit-level tests per resolver rather than a full game setup, since `IGameView` is only 3 functions. Each resolver gets a "rejects a fled/destroyed target" case and a "accepts a live target" control (learned from SP-01's false-positive-passing test — confirmed the controls actually exercise a successful path, not just any revert). Then, per the same SP-01-taught methodology, temporarily reverted just the three resolver files to their pre-fix state and reran: exactly the 3 "rejects" tests failed (proving the vulnerability is real) while the 3 controls still passed (proving the mocks aren't the reason). Restored the fix and confirmed all 6 pass. Full suite: 553 passing; the one failure (`ShipCostsVersions.test.ts`) is the same pre-existing, unrelated, intermittent flake noted elsewhere in this doc.
+
+---
+
+### ~~SP-03 — `Lobbies.leaveLobby` Leaves a Stale `joinerFleetId`, Letting a Creator Force a Stranger Into a Rigged Fleet~~
+
+**File:** `contracts/Lobbies.sol:189-212` (leave), `486-489, 522-524` (create/auto-start)
+**Severity:** High
+**Category:** Authorization / Stale State
+**Status:** Fixed 2026-08-26
+
+When the creator leaves a lobby that already has a joiner, the joiner is promoted to creator and the lobby reopens — but unlike the symmetric "joiner leaves" branch, `lobby.players.joinerFleetId` is never reset. If the promoted player had already submitted a fleet before the original creator left, that fleet id survives into the reopened lobby.
+
+**Exploit:** Alice creates lobby L; Bob joins and submits a fleet (`joinerFleetId = 100`). Alice leaves before submitting hers → Bob is promoted to creator, lobby reopens, `joinerFleetId` stays `100`. Carol joins as the new joiner and calls `createFleet` — it reverts `FleetAlreadyCreated` against the stale id, permanently blocking her. Bob (now creator) submits a new fleet; since `creatorFleetId != 0 && joinerFleetId != 0` (still the stale value) is now satisfied, the game auto-starts with Carol bound as "joiner" but fleet `#100` — Bob's own old fleet — used as the joiner's fleet. `Game.startGame` never re-validates that the joiner fleet's owner matches the joiner address.
+
+**Fix applied:** in the "joiner becomes new creator" branch of `leaveLobby`, added the same `if (lobby.players.joinerFleetId != 0) { fleets.clearFleet(...); lobby.players.joinerFleetId = 0; }` the joiner-leaves branch already does, applied while promoting rather than after. `Lobbies.sol` deployed size: 14.886 KiB, well within the 24.576 KiB limit.
+
+**Verification:** added a test to `test/Lobbies.test.ts` reproducing the exact three-party exploit scenario (Alice creates, Bob joins and submits a fleet, Alice leaves promoting Bob, Carol joins and must be able to submit her own fleet, Bob submits a new fleet reusing his now-freed ship, game auto-starts). Asserts `joinerFleetId` resets to `0` on promotion, Carol's `createFleet` succeeds with a fresh fleet id distinct from the stale one, and the auto-started game binds to *Carol's* fleet, not Bob's old one. Per the SP-01/SP-02-established methodology, temporarily reverted just `Lobbies.sol` to its pre-fix state and reran: failed exactly at the `joinerFleetId == 0` assertion (got the stale `1n`), confirming the vulnerability is real; restored the fix and confirmed it passes. Full suite: 554 passing; the one failure (`ShipCostsVersions.test.ts`) is the same pre-existing, unrelated, intermittent flake noted elsewhere in this doc.
+
+---
+
+### ~~SP-04 — `RoguelikeMatch.onGameEnded` Credits a Run as Won From a Stale Game Callback~~
+
+**File:** `contracts/RoguelikeMatch.sol:246-258` (`retreatRun`), `364-431` (`onGameEnded`)
+**Severity:** High
+**Category:** Reward Integrity / Stale Callback
+**Status:** Fixed 2026-08-26
+
+`retreatRun(0)` ends the caller's run whenever `run.status == Active`, without checking whether the player still has a live, unresolved `gameId` tracked in `gameIdToPlayer`. `onGameEnded` resolves purely by `address` (`runLedger.getRun(player)`), with no check that `run.status == Active` and no binding between the resolving `_gameId` and the run/generation that actually started it.
+
+**Exploit:** Player starts Run R1, reaches a non-final combat node, calls `enterCombatNode` → game G1 is created and tracked. Instead of finishing G1, the player calls `retreatRun(0)`, ending R1 — G1 stays live and still mapped to the player. The player starts Run R2, rushes it to its final combat node Z, calls `enterCombatNode` there to create G2 (left unfinished). The player then finishes the still-live G1 to a win. `onGameEnded(G1, player, ...)` fires, reads `run = runLedger.getRun(player)` — now **R2's** data, parked at final node Z — and since `isFinalNode` is true, calls `runLedger.endRun(player, true)`, crediting R2 as fully won even though its real final encounter (G2) was never completed.
+
+**Fix applied:** exactly the recommendation above, implemented in full (not just one half). Added `activeGameId` to `RoguelikeRun.Run` (plus a `setActiveGameId` setter), set to the new `gameId` in `enterCombatNode`. `retreatRun(0)` now reverts `ActiveGameInProgress` if `run.activeGameId != 0` — this alone closes the exploit's first step, since the player can no longer abandon a run "between nodes" while a combat match is still genuinely unresolved; they must forfeit it explicitly via `retreatRun(activeGameId)` first, which resolves it as a real loss through the normal callback path. `onGameEnded` additionally verifies `run.status == RunStatus.Active && run.activeGameId == _gameId` before mutating roster/status (returning early, a no-op, otherwise) and clears `activeGameId` back to `0` once a game is genuinely resolved — kept as defense in depth even though the `retreatRun(0)` guard already makes the described stale-callback path unreachable through any currently-known legitimate flow. `RoguelikeMatch.sol` deployed size: 20.908 KiB; `RoguelikeRun.sol`: 3.384 KiB — both well within the 24.576 KiB limit.
+
+**Related, out-of-scope observation (not fixed here):** `enterResupplyNode` never checks `activeGameId` either, so a player can currently call it (to move `currentNodeId` forward, e.g. to a resupply node that's a legitimate child of the in-progress combat node) *while* a combat match is still unresolved. If that combat game later resolves as a win, `onGameEnded`'s `isFinalNode`/reward logic runs against `run.currentNodeId` as of *that moment* (the resupply node the player already moved to), not the node the win actually happened at — a state-consistency gap, not obviously a free-reward exploit, but related enough to flag. Left alone since it's not part of this finding and needs its own look.
+
+**Verification:** added tests to `test/RoguelikeMatch.test.ts`: `retreatRun(0)` reverts `ActiveGameInProgress` while a combat match is active; `activeGameId` is set correctly on `enterCombatNode` and clears to `0` on both resolution paths (win, and forfeit-loss via `retreatRun(activeGameId)`). Reconstructing the full original multi-run exploit chain end-to-end wasn't attempted as a test — the `retreatRun(0)` guard closes its first step, so there's no longer a legitimate path to reach it. Per the established methodology, temporarily reverted both `RoguelikeMatch.sol` and `RoguelikeRun.sol` to their pre-fix state and reran: all 3 new tests failed for the expected reasons (the `retreatRun(0)` call that should revert instead succeeded; `run.activeGameId` read back `undefined` since the field didn't exist yet). Restored the fix and confirmed all 3 pass. Full suite: 558 passing, no failures this run (the usual pre-existing `ShipCostsVersions.test.ts` flake is intermittent, not present every run).
+
+---
+
+### ~~SP-05 — Two-Way Edge Into a Combat Node Permits Unbounded Reward Farming~~
+
+**File:** `contracts/RoguelikeMatch.sol:272-329` (`_commitToNode`), `contracts/RoguelikeNodeMap.sol` (`twoWay` edges)
+**Severity:** Medium
+**Category:** Economic Logic (content-configuration-dependent)
+**Status:** Fixed 2026-08-26
+
+`_commitToNode` only locks sibling nodes (and the departed node, unless the traversed edge is `twoWay`) on a forward move. Nothing stops a `twoWay` edge from terminating at a `Combat` node, and a Combat node is never flagged "already paid out" once defeated. This requires an admin/content choice (marking an edge into a Combat node `twoWay`), but the contract enforces nothing preventing it.
+
+**Exploit:** An edge hub A ↔ Combat node B is marked `twoWay` (a plausible content choice, e.g. "return to the hub after this fight"). Clearing B once, walking back to A (never locked, two-way), then re-entering B (never locked — only siblings of a forward move get locked) repeats the fight and its kill-based DEC/UTC reward indefinitely.
+
+**Fix applied:** the second option — an explicit "already defeated this run-generation" flag — not the first (disallowing `twoWay` into Combat nodes), which would have removed legitimate replayable-hub graph designs entirely rather than just closing the farming loophole. Added `defeatedByGen[player][generation][nodeId]` to `RoguelikeRun` (keyed by generation, same reasoning as the existing `lockedByGen`, so a new run doesn't inherit a previous one's defeats), plus `setNodeDefeated`/`isNodeDefeated`. `RoguelikeMatch.onGameEnded` marks the just-won node defeated; `enterCombatNode` reverts `NodeAlreadyDefeated` if the target is already marked, before any fleet/game side effects run. A different combat node reachable from the same hub is unaffected — only re-entering the *same* already-cleared one is blocked, preserving the "hub with routes to more than one fight" design intent the `twoWay` comment describes.
+
+Considered (per a question from the user) whether to also vary the *reward amount* for a first vs. subsequent clear, rather than just gating access — decided against it for this fix. The kill reward (`Ships.recycleReward() >> 2`) is a single flat global constant applied identically to every kill in every game mode via `Game._removeShipFromGame` → `ShipsRouter.setTimestampDestroyed` → `DestroyRewardLib`, with zero per-node/per-game context today. Making it context-aware would require new plumbing reaching into `Game.sol` specifically — the tightest-budget contract in the repo (23.8/24.576 KiB) — for a product feature (tiered rewards) the user confirmed wasn't actually intended; blocking re-entry outright fully closes the security issue without touching `Game.sol` at all.
+
+**Verification:** added `test/RoguelikeMatch.test.ts` coverage: a custom two-node graph (Resupply hub, root) `<->twoWay<->` (Combat node) `->` (dummy Resupply child, so winning the Combat node doesn't immediately end the run) — win the Combat node, walk back to the hub, attempt to re-enter, confirm `NodeAlreadyDefeated`. Per the established methodology, temporarily stripped just the `enterCombatNode`/`onGameEnded` integration (leaving `RoguelikeRun`'s new functions defined but unused) and reran: the re-entry attempt succeeded instead of reverting, confirming the farming path is real and the test catches it. Restored the fix and confirmed it passes. `RoguelikeMatch.sol` deployed size: 21.149 KiB; `RoguelikeRun.sol`: 3.611 KiB — both within the 24.576 KiB limit. Full suite: 558 passing; the one failure (`ShipCostsVersions.test.ts`) is the same pre-existing, unrelated, intermittent flake noted elsewhere in this doc.
+
+**All five SP findings from the 2026-08-26 addendum are now resolved.**
+
+---
+
+## Addendum — C-01/C-02 Remediation: `RandomManager` Commit-Reveal Rewrite (2026-08-26)
+
+**Context:** The deploy target is confirmed to be Base (chain 84532), not Flow — so the originally-considered fix (wiring up `@onflow/flow-sol-utils`'s `CadenceRandomConsumer`, which calls a Flow-only precompile) was not applicable. `contracts/RandomManager.sol` was rewritten from scratch as a commit-reveal scheme over `block.prevrandao`/`block.timestamp`, since Base has no on-chain unpredictable-randomness precompile to call instead.
+
+**What changed:**
+- `requestRandomness()` now records the commit block and returns a sequential `requestId` (previously a hash, now just a counter — cosmetic only, `Ships.traits.serialNumber` still just needs to be a unique handle).
+- New `revealRandomness(requestId)` — the **reveal** step — now: (1) reverts `RequestNotFound` for any id that was never actually issued (closes C-01's forged-id gap), (2) reverts `AlreadyRevealed` on a repeat call (closes C-01's replay gap), and (3) reverts `TooSoonToReveal` unless `block.prevrandao` has genuinely *changed* since the request's commit block (not merely "a later block number was reached" — see next paragraph for why that distinction is load-bearing on this specific chain). Once revealed, the result is permanently locked into storage.
+
+**Correction made same day, before this was ever deployed:** the first version of this fix checked `block.number > commitBlock` rather than "prevrandao changed." That's wrong on Base specifically — pulled live Base Sepolia blocks and confirmed `prevrandao` there is relayed from Ethereum L1's own RANDAO output, so it only updates roughly every 6 L2 blocks (~12s, matching L1's block time), not every L2 block:
+
+```
+block 45999196-45999201  (6 blocks, ~12s)  → same prevrandao: 0x661129...
+block 45999202-45999207  (6 blocks, ~12s)  → same prevrandao: 0xc4cd9b...
+block 45999208-45999213  (6 blocks, ~12s)  → same prevrandao: 0x846354...
+```
+
+A "later block number" reveal could easily land inside the *same* ~12-second window as the request — a window whose `prevrandao` becomes public the instant it starts. That means anyone (not just a block producer) could watch for a window they like and time a normal, non-reverting `revealRandomness` call to land inside it — free, no wasted gas, no special access — which is a materially easier version of the exact grinding exploit this fix exists to close. Checking that `block.prevrandao` has actually changed since commit (`Request.prevRandaoAtCommit`, stored at request time) closes this regardless of how many L2 blocks a chain happens to share one prevrandao value across, present or future — it targets the real entropy-refresh boundary instead of assuming it lines up with block numbers.
+
+Practical consequence: the wait between commit and a successful reveal isn't a fixed number — it's "however long until the epoch you landed in rolls over," which on the measured ~12s/~6-block cadence works out to roughly 1–6 L2 blocks (best case: commit lands right before rollover; worst case: right after). New `canReveal(requestId) view returns (bool)` lets a caller (the frontend, a keeper) poll for "is it ready yet" instead of guessing a block count or eating a revert.
+- `fulfillRandomRequest(requestId)` — **the same name/shape `Ships.sol` has always called** — is now a view that reads back the already-locked-in result, reverting `NotYetRevealed` if `revealRandomness` hasn't been called yet. Deliberately kept as the stable consumer-facing entry point (rather than renamed to something like `getRandomResult`) specifically so a future provider swap — e.g. a real VRF — only needs to satisfy this one signature; `Ships.sol` doesn't need to change again, and doesn't need to know anything about how reveal actually works.
+- `Ships.constructShip` still calls `fulfillRandomRequest`, unchanged from before this whole rewrite — it just now requires `revealRandomness` to have already been called separately. **This separation is the load-bearing part of the fix**, not a side detail: if `constructShip` revealed inline (as the old contract effectively let it do), an attacker could still wrap it, inspect the resulting ship, and revert on an unfavorable roll — the delay-one-block check alone doesn't stop that, since the revert would undo the reveal too and the same request could just be retried in yet another later block, indefinitely, for the cost of gas only (this is exactly the grinding exploit C-02 originally described). Requiring `revealRandomness` to have already happened in a **separate, prior, already-mined transaction** — which by construction can't be undone by a later `constructShip` call reverting — is what actually closes it.
+
+**Residual risk (by design, not an oversight):** this is a mitigation, not a cryptographic guarantee, and it's narrower than originally described above. `block.prevrandao` on Base is *not* something Base's sequencer chooses directly — it's relayed from L1 Ethereum's own RANDAO, so biasing it requires the much more limited, more decentralized options an L1 validator has (proposer-known-in-advance, skip-to-regrind), not anything Base-specific.
+
+What Base's sequencer *does* retain is broader than just "picking a timestamp": since `revealRandomness` is permissionless, anyone can submit it, but only the sequencer decides which block a given submitted transaction actually lands in. A sequencer motivated to bias one specific high-value reveal could simply decline to include that transaction for a while, let several future prevrandao epochs (each individually still legitimate/unpredictable to everyone else) go by, and only include it once one of those epochs — combined with whatever timestamp they assign that block — happens to produce a result they like. Timestamp choice is one small knob on top of that; selective delay of inclusion across many future epochs is the bigger one. Both require actually being the block producer, though — no external caller (requester or bystander) retains any of this. That's a fundamentally different (and much narrower) threat than the original C-01/C-02 findings, which any external caller — not just a chain operator — could exploit for free. Closing it completely would require a real external randomness source (Chainlink VRF is the standard option on Base); flagged as a follow-up, not blocking.
+
+**Test suite impact:** every ship-construction test in the suite already called the reveal step manually before `constructShip`/`constructAllMyShips` (apparently anticipating this exact separation, even though the old contract didn't enforce it) — those calls were renamed from `fulfillRandomRequest` to `revealRandomness` to match. Five test setups had reveal loops that under-covered the ships actually minted (assuming 1 ship per `purchaseWithFlow` call, when tier 0 mints 5) — invisible before since the old contract accepted a reveal for any id unconditionally, now surfaced as `NotYetRevealed`/`AlreadyRevealed` reverts and fixed in `test/Game.test.ts` (4 spots) and `test/Lobbies.test.ts` (2 spots) to read the real `shipCount()` instead of a hardcoded bound. Full suite: 547 passing (occasionally 546/1 — `ShipCostsVersions.test.ts`'s ship-variant hull-tier lookup is a pre-existing, intermittent, unrelated flake confirmed to reproduce identically on the pre-fix code).
+
+**With this fix, all four originally-listed Critical findings (C-01 through C-04) are now resolved** (C-01/C-02 here; C-03/C-04 were already fixed per the entries above) — though see the residual-risk note above before treating randomness as fully trustless.
+
+---
+
+## Addendum — Design Note: Future Token-Gated Claim/Kill-Bonus Mechanics (2026-08-26)
+
+**Not a security finding.** This is a sizing/feasibility note for two mechanics discussed but explicitly **not yet being built**: (1) a turn-in that reduces `FreeShipClaim.claimCooldownPeriod` per player, and (2) a turn-in that gives a bonus to a ship's starting `shipsDestroyed` roll. Both are planned to be funded by a **new token distinct from DEC and UTC** — most likely a future reward for defeating AI ships from factions 3/4, which don't exist yet (see project memory `project_future_faction_kill_token`). Recorded here so the constraint is visible before either mechanic is actually implemented.
+
+**Headroom at time of writing** (`npx hardhat size-contracts`, 2026-08-26): `Ships.sol` 23.715 / 24 KiB deployed (~292 bytes free); `Game.sol` 23.812 / 24 KiB (~192 bytes free). Neither mechanic touches `Game.sol`.
+
+**Cooldown-reduction mechanic:** No `Ships.sol` changes of any kind. Fully contained to `FreeShipClaim.sol` (1.3/24 KiB, ample room) plus a new turn-in contract mirroring `DroneStorefront.turnInCores`, once the funding token exists.
+
+**Kill-roll-bonus mechanic:** This is the one with `Ships.sol` exposure. The starting `shipsDestroyed` roll happens in `GenerateNewShip.generateShip`, called only from `Ships.constructShip` (`Ships.sol:350`), which has no notion of the ship's owner today. Three implementation paths, in order of `Ships.sol` cost:
+
+1. **Reuse `customizeShip` — zero new `Ships.sol` code.** It's already gated by the `isAllowedToCreateShips` allowlist, and `_applyShipCustomization` (`Ships.sol:263`) already does `ship.shipData.shipsDestroyed = _ship.shipData.shipsDestroyed`. A future turn-in contract could read a ship via `getShip`, bump `shipsDestroyed`, and call `customizeShip` with the full struct back — no PR to `Ships.sol` required. **Caveat:** the same call also force-sets `constructed = true` and increments the `modified` counter (`Ships.sol:268-274`), which feeds `calculateShipCost` — so this path also marks the ship "modified" and shifts its cost, a side effect that has nothing to do with the intended bonus.
+2. **A new minimal function** (e.g. `addBonusKills(uint _id, uint16 _amount)`) reusing the existing `isAllowedToCreateShips` mapping and `NotAuthorized` error (no new storage, no new error type). Clean semantics, no `modified`/`constructed` side effects, but it is new bytecode against a ~292-byte budget.
+3. **True "bonus layered on the roll,"** by threading the player through the `generateShip` call itself — requires changing `IGenerateNewShip`, `GenerateNewShip.sol`, and the `Ships.sol:350` call site. Adds an extra ABI-encoded argument to `Ships.sol`'s single tightest external call; real risk of not fitting in the remaining headroom without trimming something else first (see the `Ships.sol` size-extraction pattern used elsewhere in this codebase, e.g. `FreeShipClaim`'s own extraction from `Ships.sol`).
+
+**Conclusion:** No `Ships.sol` or `Game.sol` changes are required today for either mechanic to become buildable later. Option 1 already works with zero new code, if the cost/`modified` side effect is acceptable (arguably even desirable). Option 2 is the smallest deliberate addition if clean semantics are wanted instead. Option 3 should be avoided unless `Ships.sol` regains headroom from unrelated work first.

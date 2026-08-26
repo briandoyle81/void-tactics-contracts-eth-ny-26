@@ -19,7 +19,7 @@ describe("ShatteredHiveMedal", function () {
     await nodeMap.write.createCampaign();
     await maps.write.createPresetMap([[], MapMode.Both]);
 
-    await nodeMap.write.createNode([1n, 1n, [], 2000n, 600n, 20n, true, 2000n]);
+    await nodeMap.write.createNode([1n, 1n, [], 2000n, 600n, 20n, true]);
     const finalNodeId = 1n;
 
     await nodeMap.write.setIsAllowedToCompleteNodes([
@@ -199,7 +199,6 @@ describe("ShatteredHiveMedal", function () {
         600n,
         20n,
         true,
-        2000n,
       ]);
       const newFinalNodeId = 2n;
 

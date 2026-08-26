@@ -55,7 +55,7 @@ describe("NodeMap", function () {
   }
 
   const defaultNodeArgs = (mapId: bigint, prerequisites: bigint[] = []) =>
-    [1n, mapId, prerequisites, 2000n, 600n, 20n, true, 2000n] as const;
+    [1n, mapId, prerequisites, 2000n, 600n, 20n, true] as const;
 
   describe("Node editor role", function () {
     it("owner can grant and revoke node-editor rights", async function () {
@@ -130,7 +130,6 @@ describe("NodeMap", function () {
         300n,
         10n,
         false,
-        1200n,
       ]);
       const node = await nodeMap.read.getNode([1n]);
 
@@ -141,7 +140,6 @@ describe("NodeMap", function () {
       expect(node.turnTime).to.equal(300n);
       expect(node.maxScore).to.equal(10n);
       expect(node.creatorGoesFirst).to.equal(false);
-      expect(node.enemyThreat).to.equal(1200n);
       expect(node.exists).to.equal(true);
     });
 
@@ -149,7 +147,7 @@ describe("NodeMap", function () {
       const { nodeMap } = await loadFixture(deployFixture);
 
       await expect(
-        nodeMap.write.createNode([999n, 1n, [], 1n, 1n, 1n, true, 1n]),
+        nodeMap.write.createNode([999n, 1n, [], 1n, 1n, 1n, true]),
       ).to.be.rejectedWith("CampaignNotFound");
     });
 
@@ -193,7 +191,6 @@ describe("NodeMap", function () {
         111n,
         5n,
         false,
-        850n,
       ]);
       const node = await nodeMap.read.getNode([1n]);
       expect(node.mapId).to.equal(2n);
@@ -201,14 +198,13 @@ describe("NodeMap", function () {
       expect(node.turnTime).to.equal(111n);
       expect(node.maxScore).to.equal(5n);
       expect(node.creatorGoesFirst).to.equal(false);
-      expect(node.enemyThreat).to.equal(850n);
     });
 
     it("reverts updateNode for a node that doesn't exist", async function () {
       const { nodeMap } = await loadFixture(deployFixture);
 
       await expect(
-        nodeMap.write.updateNode([999n, 1n, 1n, [], 1n, 1n, 1n, true, 1n]),
+        nodeMap.write.updateNode([999n, 1n, 1n, [], 1n, 1n, 1n, true]),
       ).to.be.rejectedWith("NodeNotFound");
     });
 
@@ -217,7 +213,7 @@ describe("NodeMap", function () {
       await nodeMap.write.createNode(defaultNodeArgs(1n));
 
       await expect(
-        nodeMap.write.updateNode([1n, 999n, 1n, [], 1n, 1n, 1n, true, 1n]),
+        nodeMap.write.updateNode([1n, 999n, 1n, [], 1n, 1n, 1n, true]),
       ).to.be.rejectedWith("CampaignNotFound");
     });
 
@@ -238,7 +234,6 @@ describe("NodeMap", function () {
         600n,
         20n,
         true,
-        2000n,
       ]);
 
       expect(await nodeMap.read.getNodesInCampaign([1n])).to.deep.equal([]);
@@ -441,7 +436,6 @@ describe("NodeMap", function () {
         600n,
         20n,
         true,
-        2000n,
       ]); // move node 2 to campaign 2
 
       expect(await nodeMap.read.getNodesInCampaign([1n])).to.deep.equal([
