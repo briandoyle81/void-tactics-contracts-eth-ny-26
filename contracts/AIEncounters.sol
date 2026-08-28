@@ -184,6 +184,28 @@ contract AIEncounters is Ownable {
         }
     }
 
+    // Bounded escape hatch for getAllAIShipConfigs (see docs/pre-audit.md
+    // GR-02) — measured empirically to exceed Base's 30M block gas limit
+    // somewhere between 800 and 1,000 configs (a real threshold at this
+    // game's stated growth scale, not a distant hypothetical one), and
+    // estimateGas fails outright past that point rather than merely costing
+    // more. _offset is 0-indexed into the logical config sequence (offset 0
+    // = configId 1); returns fewer than _limit entries (down to an empty
+    // array) if the range runs past aiShipConfigCount, rather than
+    // reverting.
+    function getAIShipConfigsPaginated(
+        uint _offset,
+        uint _limit
+    ) external view returns (AIShipConfig[] memory configs) {
+        if (_offset >= aiShipConfigCount) return new AIShipConfig[](0);
+        uint end = _offset + _limit;
+        if (end > aiShipConfigCount) end = aiShipConfigCount;
+        configs = new AIShipConfig[](end - _offset);
+        for (uint i = _offset; i < end; i++) {
+            configs[i - _offset] = aiShipConfigs[i + 1];
+        }
+    }
+
     /// @dev _configId == 0 clears the cell.
     function setMapPlacement(
         uint _mapId,

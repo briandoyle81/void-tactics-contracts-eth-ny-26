@@ -276,7 +276,28 @@ describe("ShipsRouter", function () {
   });
 
   describe("dead-in-production passthroughs", function () {
-    it("createSpecificShip reverts through the router since it is deliberately never whitelisted on Ships.sol", async function () {
+    // createShips/createSpecificShip/customizeShip revert unconditionally
+    // (HA-01, docs/pre-audit.md) rather than forwarding to Ships.sol: a
+    // forwarding version — even one that reverted today because the router
+    // isn't on Ships.isAllowedToCreateShips — would become a live, free,
+    // unlimited ship-minting/customization backdoor the moment anyone ever
+    // added this router to that allowlist. These exist only to satisfy the
+    // IShips interface Game.sol's constructor expects.
+    it("createShips reverts unconditionally", async function () {
+      const { shipsRouter, human } = await loadFixture(deployFixture);
+
+      await expect(
+        shipsRouter.write.createShips([
+          human.account.address,
+          1n,
+          1,
+          0,
+          false,
+        ]),
+      ).to.be.rejectedWith("NotSupported");
+    });
+
+    it("createSpecificShip reverts unconditionally, never reaching Ships.sol", async function () {
       const { shipsRouter, human } = await loadFixture(deployFixture);
 
       await expect(
@@ -284,7 +305,18 @@ describe("ShipsRouter", function () {
           human.account.address,
           { name: "x", id: 0n, equipment: defaultEquipment, traits: defaultTraits, shipData, owner: zeroAddress },
         ]),
-      ).to.be.rejectedWith("NotAuthorized");
+      ).to.be.rejectedWith("NotSupported");
+    });
+
+    it("customizeShip reverts unconditionally", async function () {
+      const { shipsRouter } = await loadFixture(deployFixture);
+
+      await expect(
+        shipsRouter.write.customizeShip([
+          1n,
+          { name: "x", id: 1n, equipment: defaultEquipment, traits: defaultTraits, shipData, owner: zeroAddress },
+        ]),
+      ).to.be.rejectedWith("NotSupported");
     });
 
     it("maxVariant/recycleReward passthrough to Ships.sol's own values", async function () {

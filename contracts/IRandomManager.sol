@@ -6,5 +6,5 @@ interface IRandomManager {
 
     function revealRandomness(uint) external returns (uint64);
 
-    function fulfillRandomRequest(uint) external view returns (uint64);
+    function fulfillRandomRequest(uint) external returns (uint64);
 }

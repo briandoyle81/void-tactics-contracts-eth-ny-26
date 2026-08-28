@@ -346,13 +346,6 @@ contract NodeMap is Ownable {
         return completedNodes[_player][_nodeId];
     }
 
-    function getAllNodes() external view returns (CampaignNode[] memory all) {
-        all = new CampaignNode[](nodeCount);
-        for (uint i = 1; i <= nodeCount; i++) {
-            all[i - 1] = nodes[i];
-        }
-    }
-
     function getNodesInCampaign(
         uint _campaignId
     ) external view returns (uint[] memory) {

@@ -2277,4 +2277,161 @@ describe("Lobbies", function () {
     });
   });
 
+  describe("Stale lobby pruning (GR-03)", function () {
+    async function createOpenLobby(creatorLobbies: any) {
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n, // selectedMapId - no preset map
+        100n, // maxScore
+        zeroAddress, // reservedJoiner - no reservation
+      ]);
+    }
+
+    it("defaults staleLobbyThreshold to 7 days", async function () {
+      const { lobbies } = await loadFixture(deployLobbiesFixture);
+      expect(await lobbies.read.staleLobbyThreshold()).to.equal(
+        BigInt(7 * 24 * 60 * 60),
+      );
+    });
+
+    it("reverts LobbyNotStaleYet before the threshold has elapsed", async function () {
+      const { lobbies, creatorLobbies, other } = await loadFixture(
+        deployLobbiesFixture,
+      );
+      await createOpenLobby(creatorLobbies);
+
+      await expect(
+        lobbies.write.pruneStaleLobby([1n], { account: other.account }),
+      ).to.be.rejectedWith("LobbyNotStaleYet");
+    });
+
+    it("lets anyone prune an unjoined lobby once staleLobbyThreshold has elapsed", async function () {
+      const { lobbies, creatorLobbies, other } = await loadFixture(
+        deployLobbiesFixture,
+      );
+      await createOpenLobby(creatorLobbies);
+      expect(await lobbies.read.getOpenLobbies()).to.deep.equal([1n]);
+
+      await hre.network.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
+      await hre.network.provider.send("evm_mine");
+
+      // A totally unrelated address can prune it — permissionless by design.
+      await lobbies.write.pruneStaleLobby([1n], { account: other.account });
+
+      expect(await lobbies.read.getOpenLobbies()).to.deep.equal([]);
+      // The lobby record itself is untouched — only delisted, not deleted.
+      const lobby = await lobbies.read.getLobby([1n]);
+      expect(lobby.basic.id).to.equal(1n);
+      expect(lobby.state.status).to.equal(LobbyStatus.Open);
+    });
+
+    it("reverts LobbyNotOpen if the lobby was already joined (and is therefore no longer in the open set)", async function () {
+      const { lobbies, creatorLobbies, joinerLobbies, other } =
+        await loadFixture(deployLobbiesFixture);
+      await createOpenLobby(creatorLobbies);
+      await joinerLobbies.write.joinLobby([1n]);
+
+      await hre.network.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
+      await hre.network.provider.send("evm_mine");
+
+      await expect(
+        lobbies.write.pruneStaleLobby([1n], { account: other.account }),
+      ).to.be.rejectedWith("LobbyNotOpen");
+    });
+
+    it("measures staleness from when a lobby last re-entered the open set, not from its original creation time (regression)", async function () {
+      // A lobby created long ago, then joined and left again, should get a
+      // fresh staleness clock — not be immediately pruneable just because
+      // its original createdAt is old. Catches a bug where pruneStaleLobby
+      // read lobby.basic.createdAt (set once, at creation) instead of a
+      // timestamp refreshed on every re-entry into openLobbyIds.
+      const { lobbies, creatorLobbies, joinerLobbies, other } =
+        await loadFixture(deployLobbiesFixture);
+      await createOpenLobby(creatorLobbies);
+
+      // Age the lobby well past the stale threshold while it's still
+      // unjoined.
+      await hre.network.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+      await hre.network.provider.send("evm_mine");
+
+      // Now a joiner arrives and leaves — the lobby re-enters openLobbyIds
+      // "fresh," even though its basic.createdAt is still 8 days old.
+      await joinerLobbies.write.joinLobby([1n]);
+      await joinerLobbies.write.leaveLobby([1n]);
+      expect(await lobbies.read.getOpenLobbies()).to.deep.equal([1n]);
+
+      // Must NOT be immediately pruneable — it just became open again.
+      await expect(
+        lobbies.write.pruneStaleLobby([1n], { account: other.account }),
+      ).to.be.rejectedWith("LobbyNotStaleYet");
+
+      // Once the threshold genuinely elapses from the re-entry, pruning
+      // works as normal.
+      await hre.network.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
+      await hre.network.provider.send("evm_mine");
+      await lobbies.write.pruneStaleLobby([1n], { account: other.account });
+      expect(await lobbies.read.getOpenLobbies()).to.deep.equal([]);
+    });
+
+    it("owner can change staleLobbyThreshold, and the new value is what gets enforced", async function () {
+      const { lobbies, creatorLobbies, other } = await loadFixture(
+        deployLobbiesFixture,
+      );
+      await lobbies.write.setStaleLobbyThreshold([60n * 60n]); // 1 hour
+      expect(await lobbies.read.staleLobbyThreshold()).to.equal(3600n);
+
+      await createOpenLobby(creatorLobbies);
+
+      // Not stale yet at 30 minutes.
+      await hre.network.provider.send("evm_increaseTime", [30 * 60]);
+      await hre.network.provider.send("evm_mine");
+      await expect(
+        lobbies.write.pruneStaleLobby([1n], { account: other.account }),
+      ).to.be.rejectedWith("LobbyNotStaleYet");
+
+      // Stale by 31 more minutes (61 total).
+      await hre.network.provider.send("evm_increaseTime", [31 * 60]);
+      await hre.network.provider.send("evm_mine");
+      await lobbies.write.pruneStaleLobby([1n], { account: other.account });
+      expect(await lobbies.read.getOpenLobbies()).to.deep.equal([]);
+    });
+
+    it("reverts when a non-owner tries to change staleLobbyThreshold", async function () {
+      const { creatorLobbies } = await loadFixture(deployLobbiesFixture);
+      await expect(
+        creatorLobbies.write.setStaleLobbyThreshold([1n]),
+      ).to.be.rejected;
+    });
+
+    it("getOpenLobbiesPaginated pages through the open set and matches getOpenLobbies when read in full", async function () {
+      const { lobbies, creatorLobbies, joinerLobbies, other } =
+        await loadFixture(deployLobbiesFixture);
+      // Three separate creators so each can have an active lobby simultaneously.
+      await createOpenLobby(creatorLobbies);
+      await createOpenLobby(joinerLobbies);
+      await createOpenLobby(
+        await hre.viem.getContractAt("Lobbies", lobbies.address, {
+          client: { wallet: other },
+        }),
+      );
+
+      const all = await lobbies.read.getOpenLobbies();
+      expect(all.length).to.equal(3);
+
+      const page1 = await lobbies.read.getOpenLobbiesPaginated([0n, 2n]);
+      const page2 = await lobbies.read.getOpenLobbiesPaginated([2n, 2n]);
+      expect(page1.length).to.equal(2);
+      // Runs past the end (offset 2, limit 2, only 1 remains) — returns
+      // fewer than _limit rather than reverting.
+      expect(page2.length).to.equal(1);
+      expect([...page1, ...page2].map(String).sort()).to.deep.equal(
+        all.map(String).sort(),
+      );
+
+      const pastEnd = await lobbies.read.getOpenLobbiesPaginated([50n, 10n]);
+      expect(pastEnd.length).to.equal(0);
+    });
+  });
 });

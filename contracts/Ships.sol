@@ -338,11 +338,13 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
             revert ShipConstructed(_id);
         }
 
-        // Reverts NotYetRevealed if nobody has called
-        // randomManager.revealRandomness(serialNumber) yet — that must
-        // happen first, in its own separate transaction (see
-        // RandomManager.revealRandomness's comment for why this can't
-        // just be done inline here).
+        // Reveals (locks in, permanently) this ship's randomness on first
+        // call if the commit-reveal entropy window has opened, then returns
+        // it — no separate prior reveal transaction required. Reverts
+        // TooSoonToReveal if called before block.prevrandao has actually
+        // changed since the ship was minted (see RandomManager.sol's header
+        // comment for why this must be a genuine change, not just a later
+        // block number).
         uint64 randomBase = config.randomManager.fulfillRandomRequest(
             newShip.traits.serialNumber
         );
@@ -688,6 +690,25 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         address _owner
     ) external view returns (uint[] memory) {
         return shipsOwned[_owner].values();
+    }
+
+    // GR-01 pagination escape hatch (see docs/pre-audit.md) for owners with
+    // too many ships for getShipIdsOwned's full-array return to fit in an
+    // RPC provider's eth_call response/gas cap. Deliberately the two
+    // smallest possible primitives (count + index) rather than a single
+    // paginated-array function, to minimize bytecode in this
+    // already-near-the-limit contract — a caller pages by calling
+    // shipIdOwnedAt in a loop (or a JSON-RPC batch request) from _offset to
+    // min(_offset + _limit, shipsOwnedCount(_owner)) itself.
+    function shipsOwnedCount(address _owner) external view returns (uint) {
+        return shipsOwned[_owner].length();
+    }
+
+    function shipIdOwnedAt(
+        address _owner,
+        uint _index
+    ) external view returns (uint) {
+        return shipsOwned[_owner].at(_index);
     }
 
     // // TODO CRITICAL: This almost certainly needs to be paginated

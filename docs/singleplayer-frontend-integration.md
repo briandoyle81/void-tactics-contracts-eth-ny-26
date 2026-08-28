@@ -4,6 +4,8 @@
 
 **Correction, same day:** the first version of this doc said `AIShips.AI_SHIP_ID_OFFSET`/`SinglePlayerMatch.NODE_MATCH_ID_OFFSET` were `2**128`. That was a real bug, not just a doc error — `2**128` is astronomically past `Number.MAX_SAFE_INTEGER` (2^53-1), so any JS-number-native id handling (which is what your shared grid components use) would silently collide every AI ship in a fleet onto the same coerced number. Both offsets are now `2**40` (~1.1T, ~8,192x under the safe-integer ceiling — bumped once more from an initial `2**32` fix purely for extra headroom, same cost either way) on the contract side specifically so they stay exact as JS numbers — no change needed on your end, the fix is entirely in the contracts. Everywhere below already reflects the corrected value.
 
+**Update 2026-08-27: `NodeMap.getAllNodes()` has been removed entirely.** It returned every node across *every* campaign flat in one call — harmless with one small campaign, but its cost scales with total node count across the whole game, not per-campaign, and measured gas showed it exceeds a full Base block's gas limit at roughly 1,600 total nodes (see `docs/pre-audit.md`'s GR-02 growth-audit addendum). It was never actually needed: every real use case already knows which campaign it's asking about. Use `NodeMap.getNodesInCampaign(campaignId)` (returns `uint[]` node ids for that campaign only) followed by `getNode(nodeId)` per id instead — see the updated step 1 below.
+
 **This replaces the previous version of this doc.** Single-player no longer goes through `Lobbies` at all — the reservation-based flow this doc used to describe (`Lobbies.createLobby` with `reservedJoiner`, `SinglePlayerMatch.acceptMatch`/`setupAIFleet`) has been removed from the contracts entirely. If your frontend still has that flow wired up, it will not compile against the current ABI. Everything below reflects the current contracts.
 
 ## The mental model
@@ -22,7 +24,10 @@ What's new since the last version of this doc, in order of how much it affects y
 
 1. **Fetch the campaign graph and figure out what's unlocked.**
    ```js
-   const allNodes = await nodeMap.read.getAllNodes(); // CampaignNode[] — id, mapId, prerequisites[], costLimit, turnTime, maxScore, creatorGoesFirst
+   const nodeIds = await nodeMap.read.getNodesInCampaign([campaignId]); // uint[] — this campaign's nodes only
+   const allNodes = await Promise.all(
+     nodeIds.map((id) => nodeMap.read.getNode([id])) // CampaignNode — id, campaignId, mapId, prerequisites[], costLimit, turnTime, maxScore, creatorGoesFirst
+   );
    const unlocked = await Promise.all(
      allNodes.map((n) => nodeMap.read.isNodeUnlocked([player, n.id]))
    );
@@ -83,7 +88,7 @@ AI ships used to be real ERC-721s minted fresh on `Ships.sol` every match. They'
 
 ## Current campaign shape (10 nodes)
 
-`NodeMap.getAllNodes()` gives you this graph directly, but here's the shape as seeded so you can sanity-check your rendering and build matching flavor copy (again: none of these names exist on-chain, this is just what the content is *for*):
+`NodeMap.getNodesInCampaign`/`getNode` gives you this graph directly, but here's the shape as seeded so you can sanity-check your rendering and build matching flavor copy (again: none of these names exist on-chain, this is just what the content is *for*):
 
 ```
 node 1 (root, always unlocked)
@@ -112,7 +117,7 @@ node 1 (root, always unlocked)
 - `SinglePlayerMatch.startNodeMatch(nodeId, shipIds, positions) -> gameId` — replaces the old `acceptMatch`/`setupAIFleet` two-step. Permissionless, one call, only the human calls it (it's their fleet).
 - `SinglePlayerMatch.takeAITurn(gameId)` — unchanged, permissionless.
 - `SinglePlayerMatch.aiShipInfo(shipId)` → `{archetype, variant, special}` — unchanged in shape.
-- `NodeMap.getAllNodes()`, `.getNode(nodeId)`, `.getPrerequisites(nodeId)`, `.isNodeUnlocked(player, nodeId)`, `.isNodeCompleted(player, nodeId)`, `.nodeCount()` — the whole campaign-graph read surface. Replaces the old "which map" section entirely; there's no more `Lobbies`/`selectedMapId` player choice.
+- `NodeMap.getNodesInCampaign(campaignId)`, `.getNode(nodeId)`, `.getPrerequisites(nodeId)`, `.isNodeUnlocked(player, nodeId)`, `.isNodeCompleted(player, nodeId)`, `.nodeCount()` — the whole campaign-graph read surface. Replaces the old "which map" section entirely; there's no more `Lobbies`/`selectedMapId` player choice.
 - `ShipsRouter.getShip(shipId)`, `.isShipDestroyed(shipId)` — the one call site for ship data regardless of human/AI. Get its address from `Game.ships()`/`Fleets.ships()`/`ShipAttributes.ships()`, or from your deployment config.
 - `AIShips.AI_SHIP_ID_OFFSET` — public constant, `2**40`. Use for the free client-side "is this an AI ship" check.
 - `SinglePlayerMatch.NODE_MATCH_ID_OFFSET` — public constant, `2**40`. Same idea for gameId, though you shouldn't normally need it (see step 2 above).

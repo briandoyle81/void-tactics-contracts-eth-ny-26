@@ -1,6 +1,6 @@
 # Frontend Update Guide — 2026-08-26 Miscellaneous Fixes
 
-**Written: 2026-08-26.** Describes contract state as of this date — check the contracts repo's recent commits if it's been a while. Three unrelated changes today: `RandomManager.sol`'s commit-reveal rewrite (ship construction needs one extra step — see below), a new revert condition on the three targeted combat effects, and two new reverts in the roguelike campaign mode (`RoguelikeMatch.sol`). Nothing else in the ship-purchase/construct flow changed.
+**Written: 2026-08-26, updated 2026-08-27.** Describes contract state as of this date — check the contracts repo's recent commits if it's been a while. Three unrelated changes: `RandomManager.sol`'s commit-reveal rewrite (see below — as of 2026-08-27 this needs no new integration steps at all, mint→construct is still exactly 2 transactions), a new revert condition on the three targeted combat effects, and two new reverts in the roguelike campaign mode (`RoguelikeMatch.sol`). Nothing else in the ship-purchase/construct flow changed.
 
 ## New: two roguelike-campaign reverts (`RoguelikeMatch.sol`)
 
@@ -33,17 +33,18 @@
 
 ## TL;DR
 
-Buying/claiming ships is unchanged. Constructing them now needs a **reveal step in between**, in its own transaction, before `constructShip`/`constructAllMyShips`/`constructShips` will succeed:
+**Buying and constructing ships is exactly 2 transactions, same as it always was — nothing new to integrate.**
 
 1. Buy or claim ships (`purchaseWithFlow`, `FreeShipClaim.claimFreeShips`, etc.) — **unchanged**. Each new ship still gets a `serialNumber` at mint time via `RandomManager.requestRandomness()`, same as before.
-2. **New:** call `RandomManager.revealRandomness(serialNumber)` for each ship's serial number — anyone can call this (the player, a backend keeper, doesn't matter who), but it can't succeed immediately; see "The wait" below.
-3. Call `constructShip`/`constructAllMyShips`/`constructShips` — **unchanged call**, but it will now revert `NotYetRevealed` if step 2 hasn't happened yet for a given ship.
+2. Call `constructShip`/`constructAllMyShips`/`constructShips` — **unchanged call**. Internally, this now reveals each ship's randomness (locking it in permanently) on first use if the entropy source has had a chance to refresh, then applies it — no separate reveal transaction required.
 
-This was a security fix (see `docs/pre-audit.md`'s C-01/C-02 remediation addendum for the full writeup) — the old `RandomManager` let anyone predict or manipulate ship traits before committing to construct. It's not a cosmetic change; skipping step 2 isn't optional, and doing steps 2 and 3 back-to-back before the wait has elapsed will revert.
+This was a security fix (see `docs/pre-audit.md`'s C-01/C-02 remediation addendum, and the 2026-08-27 follow-up addendum, for the full writeup) — the original `RandomManager` let anyone predict or manipulate ship traits before committing to construct. The fix is real (traits are genuinely not previewable/manipulable before they're locked in), it just no longer requires a separate step to get it.
 
-## The wait
+**History, for context:** earlier same-day versions of this doc described a mandatory middle "reveal" transaction (first one-per-ship, then batched). That step has since been folded into `constructShip` itself — construction now does the reveal internally on first use instead of requiring a prior `revealRandomness`/`revealRandomnessBatch` call. If you already built around the 3-step flow, it still works unchanged (calling `revealRandomness` ahead of time is harmless — `constructShip` just sees it's already revealed and uses the cached result) — but you no longer need to build it that way for new integrations.
 
-Step 2 can't succeed the instant after step 1 — it has to wait until the chain's randomness source has actually refreshed, which on Base is **not every block**. Measured empirically: Base's `block.prevrandao` only changes roughly every 6 L2 blocks (~12 seconds), because it's relayed from Ethereum L1's own randomness, not generated fresh per L2 block.
+## The one thing to still handle: too-early construction
+
+`constructShip` can't succeed the instant after minting — it has to wait until the chain's randomness source has actually refreshed, which on Base is **not every block**. Measured empirically: Base's `block.prevrandao` only changes roughly every 6 L2 blocks (~12 seconds), because it's relayed from Ethereum L1's own randomness, not generated fresh per L2 block.
 
 Practically:
 - Best case: ~1 block (~2s) if the mint happened to land right before a refresh.
@@ -51,34 +52,44 @@ Practically:
 - **Don't hardcode a wait time or a fixed block count.** Call the new view instead:
 
 ```solidity
-function canReveal(uint requestId) external view returns (bool);
+function canFulfill(uint requestId) external view returns (bool);
+function canFulfillBatch(uint[] calldata requestIds) external view returns (bool);
 ```
 
-Poll this (or just try `revealRandomness` and retry on a `TooSoonToReveal` revert with a short backoff) rather than assuming any specific number of blocks or seconds. If Base's block-time ratio ever changes, this adapts automatically — a hardcoded wait wouldn't.
+Poll `canFulfillBatch` with the full list of serial numbers from the mint (or just try `constructShip`/`constructAllMyShips` and retry on a `TooSoonToReveal` revert with a short backoff) rather than assuming any specific number of blocks or seconds. Returns `true` once every id in the batch is either already revealed or ready to be — since every request from one mint transaction shares one commit block, in practice they all flip to ready at once. If Base's block-time ratio ever changes, this adapts automatically — a hardcoded wait wouldn't.
 
 ## Suggested integration pattern
 
 ```
-1. purchaseWithFlow(...) / claimFreeShips(...)
-2. Read the new ship id(s) and their serialNumber(s) (Ships.ships(id).traits.serialNumber)
-3. Poll canReveal(serialNumber) until true (or catch TooSoonToReveal and retry)
-4. revealRandomness(serialNumber)  — once per ship
-5. constructShip(id) / constructAllMyShips() / constructShips(ids)
+1. purchaseWithFlow(...) / claimFreeShips(...)                         — 1 tx, mints N ships
+2. Read the new ship ids and their serialNumbers (Ships.ships(id).traits.serialNumber)
+3. Poll canFulfillBatch(serialNumbers) until true (or catch TooSoonToReveal and retry)
+4. constructShip(id) / constructAllMyShips() / constructShips(ids)     — 1 tx, reveals + constructs all N
 ```
 
-Steps 3–4 can be done by the player's own wallet (one extra signature/tx per ship, or batch if you build a multicall helper) or automated server-side by a keeper that watches for unrevealed requests and calls `revealRandomness` on their behalf — the function has no access control, so either works. If you want the smoothest player-facing UX, a backend keeper calling step 4 automatically (as soon as `canReveal` goes true) so the player only ever sees "buy" then "construct" is the way to avoid surfacing this extra step in the UI at all.
+That's it — 2 transactions total (mint, then construct), regardless of N. Step 3 is a free read, not a transaction.
 
 ## Errors reference
 
 | Error | Where | Meaning |
 |---|---|---|
-| `RequestNotFound` | `revealRandomness`, `fulfillRandomRequest`, `canReveal` (returns `false` instead of reverting) | The id was never issued by `requestRandomness` (or is 0). Shouldn't happen from normal ship serial numbers. |
-| `AlreadyRevealed` | `revealRandomness` | Someone already revealed this request — harmless if your own retry logic races with a keeper; just proceed to construct. |
-| `TooSoonToReveal` | `revealRandomness` | The randomness source hasn't refreshed since the request was made yet. Wait and retry, or check `canReveal` first. |
-| `NotYetRevealed` | `fulfillRandomRequest` (called internally by `constructShip`) | You called construct before reveal. Do step 4 above first. |
+| `RequestNotFound` | `constructShip` (via `fulfillRandomRequest`), `canFulfill`/`canFulfillBatch` (return `false` instead of reverting) | The ship's serial number was never issued by `requestRandomness`. Shouldn't happen from normal ship data — this would indicate a corrupted/mismatched id, a caller-side bug. |
+| `TooSoonToReveal` | `constructShip` (via `fulfillRandomRequest`) | The randomness source hasn't refreshed since the ship was minted yet. Wait and retry, or check `canFulfillBatch` first. Not attacker-triggerable against you specifically — it only depends on chain time passing. |
+
+## Optional: pre-warming (not required for new integrations)
+
+`revealRandomness(uint requestId)` / `revealRandomnessBatch(uint[] requestIds)` still exist and do the same lock-in `constructShip` would do automatically — calling them ahead of time just moves the (SSTORE-heavy) first-reveal gas cost into its own transaction, e.g. if a backend keeper wants to spread that cost out ahead of a large batched `constructAllMyShips()` call, or if you want to preview a ship's fully-resolved traits (via `GenerateNewShip.generateShip`, using `RandomManager.requests(id).result`) before the player pays gas to construct. Nothing requires this — skip it entirely unless you have a specific reason to pre-warm.
+
+```solidity
+function revealRandomness(uint requestId) external returns (uint64);
+function revealRandomnessBatch(uint[] calldata requestIds) external returns (uint64[] memory results);
+function canRevealBatch(uint[] calldata requestIds) external view returns (bool); // true if calling revealRandomnessBatch on this exact array would succeed
+```
+
+`revealRandomnessBatch` tolerates an already-revealed id in its array (skips it, returns the cached result) rather than reverting the whole batch — this matters because reveal is permissionless, so a third party (or your own earlier pre-warm call) could have already revealed one of your ids. `RequestNotFound`/`TooSoonToReveal` still revert the whole batch, since neither is something a third party can selectively trigger against your specific array.
 
 ## What did NOT change
 
 - Ship purchase/claim mechanics, pricing, tiers, referrals — all untouched.
-- `constructShip`/`constructAllMyShips`/`constructShips`' call signatures — identical to before.
-- Everything downstream of construction (ship traits, rendering, gameplay) — unaffected; traits are still derived the same way, just from a value that's now actually unpredictable at request time instead of freely previewable.
+- `constructShip`/`constructAllMyShips`/`constructShips`' call signatures — identical to before, and still exactly 2 transactions total per purchase, same as pre-rewrite.
+- Everything downstream of construction (ship traits, rendering, gameplay) — unaffected; traits are still derived the same way, just from a value that's now actually unpredictable and permanently locked in, instead of freely previewable/manipulable.

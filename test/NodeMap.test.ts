@@ -587,17 +587,6 @@ describe("NodeMap", function () {
   });
 
   describe("View helpers", function () {
-    it("getAllNodes returns every created node in order", async function () {
-      const { nodeMap } = await loadFixture(deployFixture);
-      await nodeMap.write.createNode(defaultNodeArgs(1n));
-      await nodeMap.write.createNode(defaultNodeArgs(2n));
-
-      const all = await nodeMap.read.getAllNodes();
-      expect(all.length).to.equal(2);
-      expect(all[0].id).to.equal(1n);
-      expect(all[1].id).to.equal(2n);
-    });
-
     it("getNode reverts for a node that doesn't exist", async function () {
       const { nodeMap } = await loadFixture(deployFixture);
 

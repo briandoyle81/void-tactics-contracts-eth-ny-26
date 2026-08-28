@@ -293,6 +293,51 @@ describe("AIEncounters", function () {
       expect(all[0].name).to.equal("First");
       expect(all[1].name).to.equal("Second");
     });
+
+    it("getAIShipConfigsPaginated (GR-02 escape hatch) matches getAllAIShipConfigs when paged in full", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      for (let i = 0; i < 5; i++) {
+        await aiEncounters.write.createAIShipConfig([
+          `Config ${i}`,
+          defaultEquipment,
+          defaultTraits,
+          defaultArchetype,
+        ]);
+      }
+
+      const all = await aiEncounters.read.getAllAIShipConfigs();
+
+      const page1 = await aiEncounters.read.getAIShipConfigsPaginated([0n, 2n]);
+      const page2 = await aiEncounters.read.getAIShipConfigsPaginated([2n, 2n]);
+      const page3 = await aiEncounters.read.getAIShipConfigsPaginated([4n, 2n]);
+
+      expect(page1.length).to.equal(2);
+      expect(page2.length).to.equal(2);
+      // Last page runs past the end (offset 4, limit 2, only 1 remains) —
+      // returns fewer than _limit rather than reverting.
+      expect(page3.length).to.equal(1);
+
+      const reassembled = [...page1, ...page2, ...page3];
+      expect(reassembled.map((c) => c.name)).to.deep.equal(
+        all.map((c) => c.name),
+      );
+    });
+
+    it("getAIShipConfigsPaginated returns an empty array for an offset past the end", async function () {
+      const { aiEncounters } = await loadFixture(deployFixture);
+      await aiEncounters.write.createAIShipConfig([
+        "Only",
+        defaultEquipment,
+        defaultTraits,
+        defaultArchetype,
+      ]);
+
+      const page = await aiEncounters.read.getAIShipConfigsPaginated([
+        50n,
+        10n,
+      ]);
+      expect(page.length).to.equal(0);
+    });
   });
 
   describe("Map placements", function () {

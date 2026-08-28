@@ -297,6 +297,40 @@ describe("Ships", function () {
       );
     });
 
+    it("shipsOwnedCount/shipIdOwnedAt (GR-01 pagination escape hatch) match getShipIdsOwned", async function () {
+      const [owner, , user2] = await hre.viem.getWalletClients();
+      const { ships, publicClient } = await loadFixture(deployShipsFixture);
+
+      const ownerShips = await hre.viem.getContractAt("Ships", ships.address, {
+        client: { wallet: owner },
+      });
+
+      const tx = await ownerShips.write.purchaseWithFlow(
+        [owner.account.address, 0n, user2.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await publicClient.waitForTransactionReceipt({ hash: tx });
+
+      const fullList = await ships.read.getShipIdsOwned([
+        owner.account.address,
+      ]);
+      const count = await ships.read.shipsOwnedCount([owner.account.address]);
+      expect(count).to.equal(BigInt(fullList.length));
+
+      const paged: bigint[] = [];
+      for (let i = 0n; i < count; i++) {
+        paged.push(
+          await ships.read.shipIdOwnedAt([owner.account.address, i]),
+        );
+      }
+      // EnumerableSet iteration order is consistent between .values() and
+      // .at(i) for the same underlying set with no intervening writes, so
+      // paging one-at-a-time must reconstruct the exact same list.
+      expect(paged.map(String).sort()).to.deep.equal(
+        fullList.map(String).sort(),
+      );
+    });
+
     it("Should purchase 1,000 ships", async function () {
       const [owner, user1, user2] = await hre.viem.getWalletClients();
       const { ships, publicClient } = await loadFixture(deployShipsFixture);

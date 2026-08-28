@@ -583,17 +583,17 @@ Net effect on size: removing the old mapping's auto-generated `public` getter mo
 
 ---
 
-### I-07 — `Lobbies.getAllLobbiesForPlayerWithDupes` Returns Duplicates
+### ~~I-07 — `Lobbies.getAllLobbiesForPlayerWithDupes` Returns Duplicates~~
 
-**File:** `contracts/Lobbies.sol`, lines 746–763  
+**File:** `contracts/Lobbies.sol` (removed)  
 **Severity:** Informational  
-**Status:** Not a bug (2026-07-16) — mechanism confirmed, deliberate gas/bytecode tradeoff, not an oversight. No fix needed.
+**Status:** Superseded 2026-08-27 — function removed entirely (see GR-04 below); this finding no longer applies to anything.
 
-The function comment says "This function will have dupes that must be filtered on the client side." Returning duplicates from an on-chain function is an unusual pattern that may cause confusion and double-processing bugs in client applications.
+The function comment said "This function will have dupes that must be filtered on the client side." Returning duplicates from an on-chain function is an unusual pattern that may cause confusion and double-processing bugs in client applications.
 
-**Resolution (2026-07-16):** Traced the exact mechanism. The function concatenates two independent `EnumerableSet.UintSet`s — `playerLobbies[_player]` (lobbies this player created/joined) and `openLobbyIds` (every currently-open lobby, any player) — rather than taking their union. If the player's own lobby is still open (waiting for a joiner), its id is a member of both sets simultaneously, so it's copied into the result twice: once from the player-lobbies loop, once from the open-lobbies loop. Each set is individually dedupe-safe (that's what `EnumerableSet` guarantees) — nothing dedupes *across* the two, which is exactly what the function's own comment already flagged.
+**Original resolution (2026-07-16):** Traced the exact mechanism. The function concatenated two independent `EnumerableSet.UintSet`s — `playerLobbies[_player]` (lobbies this player created/joined) and `openLobbyIds` (every currently-open lobby, any player) — rather than taking their union. If the player's own lobby was still open (waiting for a joiner), its id was a member of both sets simultaneously, so it was copied into the result twice. Each set is individually dedupe-safe (that's what `EnumerableSet` guarantees) — nothing deduped *across* the two, which is exactly what the function's own comment already flagged. At the time this was accepted as a deliberate gas/bytecode tradeoff (dedupe pushed to the client) rather than a bug worth fixing.
 
-This is a deliberate tradeoff, not an oversight: deduping the union on-chain would cost an extra O(n·m) contains-check pass (or a temporary set) on every call, and pushing that to the client (trivial there — e.g. a JS `Set`) avoids paying for it in gas/bytecode. Expanded the contract comment (`Lobbies.sol:755-765`) to spell out this mechanism for future readers, so it isn't mistaken for an unexplained bug again. No code behavior changed.
+**Superseded 2026-08-27:** re-examined during the growth audit (see GR-04) — confirmed the function had zero on-chain callers, zero test coverage, and zero frontend documentation referencing it anywhere, unlike its sibling `getPlayerLobbies` (16+ test call sites, clearly a real function). Removed entirely rather than fixed, since nothing was actually using it.
 
 ---
 
@@ -657,7 +657,7 @@ Positions are first validated for column bounds (creator: 0–3, joiner: 13–16
 | ~~I-04~~ | RandomManager | (all) | Info | ~~Architecture~~ (Resolved) |
 | ~~I-05~~ | Multiple | pragma | Info | ~~Code Quality~~ (Partially fixed) |
 | ~~I-06~~ | Game | `lastDamage` | Info | ~~Data Isolation~~ (Fixed) |
-| I-07 | Lobbies | `getAllLobbiesForPlayerWithDupes` | Info | Code Quality (Not a bug) |
+| I-07 | Lobbies | `getAllLobbiesForPlayerWithDupes` | Info | Superseded — function removed (see GR-04) |
 | I-08 | Ships | `_update` | Info | ERC-721 Safety |
 | ~~I-09~~ | Fleets | `createFleet` | Info | ~~Gas Efficiency~~ (Fixed) |
 | ~~T-01~~ | Tournament | `resolveDraw` | High | ~~Missing Validation~~ (Fixed) |
@@ -989,6 +989,64 @@ What Base's sequencer *does* retain is broader than just "picking a timestamp": 
 
 ---
 
+## Addendum — `RandomManager` Batch Reveal (2026-08-26, same day as the rewrite above)
+
+**Not a new finding — a usability follow-up to the C-01/C-02 remediation above, caught before the frontend doc for it went out.** The commit-reveal rewrite added a `revealRandomness(uint requestId)` step between minting and constructing a ship, callable only one request id at a time. That's fine for a single ship, but `Ships.createShips`/`purchaseWithFlow` mint N ships (up to 60, at the top tier) in one transaction, each with its own `requestId` — the one-at-a-time reveal would have forced N separate reveal transactions to unblock construction of a single purchase, wrecking the "mint in one tx" UX the rest of the purchase flow provides.
+
+**Fix:** `RandomManager.sol` gained `revealRandomnessBatch(uint[] calldata requestIds) external returns (uint64[] memory)` and `canRevealBatch(uint[] calldata requestIds) external view returns (bool)`, alongside (not replacing) the original single-id `revealRandomness`/`canReveal`. Since every request minted in the same transaction shares that transaction's block (and therefore its `prevRandaoAtCommit`), all of them become revealable at exactly the same moment — there's no per-request staggering for the batch to account for. Net effect: minting N ships and revealing all N is exactly 2 transactions, regardless of N, matching the original (pre-rewrite) UX shape.
+
+**Correction, same day, before this shipped to the frontend doc:** the first version of `revealRandomnessBatch` reverted the entire batch if even one id in it was already revealed (looping the same internal logic `revealRandomness` uses, unconditionally). This was flagged as a real griefing vector, not a benign edge case: `revealRandomness` is deliberately permissionless (anyone can call it, by design — see the C-01/C-02 remediation above), so any outside address can watch for a pending mint and front-run a single id out of the victim's batch with their own `revealRandomness` call, for the cost of gas only. Reverting the whole batch on that would let an attacker force any player back to one-at-a-time reveals for free, with zero funds gained — pure griefing, and exactly the kind of "no one has a reason to do this" reasoning this project has now written a standing rule against (see `CLAUDE.md`'s "Assume Hostile Outside Actors"). Fixed by making `revealRandomnessBatch` skip an already-revealed id (returning its already-locked-in result) instead of reverting; `RequestNotFound`/`TooSoonToReveal` still revert the whole batch, since neither depends on anything a third party can selectively trigger against a specific victim's array — a bad id or a too-early call is a caller-side bug/timing issue, not an attack surface. `canRevealBatch` was updated to match: it now answers "would `revealRandomnessBatch` succeed on this exact array," so an already-revealed id no longer makes it return `false`.
+
+`IRandomManager.sol` and `Ships.sol` are untouched — `Ships.constructShip` only ever called `fulfillRandomRequest`, never `revealRandomness` directly, so this whole addendum is purely additive on the consumer-facing (frontend/keeper) side of `RandomManager`.
+
+`test/RandomManager.test.ts` (standalone fixture, no dependency on `Ships`) covers: batch reveal matching individual reveals, `canRevealBatch` reverting-check semantics for a genuinely invalid id, and — the key regression test — a batch reveal succeeding and returning the correct result even when a simulated hostile third party has already revealed one of the batch's ids first. `RandomManager.sol` has no meaningful size constraint (well under 2 KiB of the 24 KiB limit), so this carried no contract-size risk.
+
+---
+
+## Addendum — Hostile-Actor Sweep (2026-08-26)
+
+**Context:** Prompted by a new standing rule (see `CLAUDE.md`'s "Assume Hostile Outside Actors", added the same day after the `RandomManager.revealRandomnessBatch` griefing vector above was caught and fixed). This is a targeted re-sweep of every `external`/`public` state-mutating function across all 49 non-interface/non-mock contracts, specifically asking: "what's the worst a purely malicious, zero-profit-seeking caller could do to someone else, and does the code tolerate it?" — not a full re-audit of every function's business logic. One new finding; everything else checked is documented below as reviewed-and-clear so this sweep isn't silently re-litigated later.
+
+### ~~HA-01 — `ShipsRouter.createShips`/`createSpecificShip`/`customizeShip` Have No Caller Check At All~~
+
+**File:** `contracts/ShipsRouter.sol`, lines 128–147
+**Severity:** High (currently **not exploitable** — see below — but zero defense-in-depth against a plausible future config change)
+**Status:** Fixed 2026-08-26
+
+`ShipsRouter` is a facade Game.sol/Fleets.sol/ShipAttributes.sol call instead of `Ships.sol` directly (see the contract's own header comment). Two of its other proxied functions, `setInFleet` and `setTimestampDestroyed`, explicitly re-implement the same caller check `Ships.sol` would apply directly — with a comment spelling out exactly why:
+
+> "Ships.sol/AIShips.sol both whitelist this router as a caller, so this router must enforce the same caller check Ships.sol used to apply directly — otherwise any account could call through the router and silently unlock/lock a ship it doesn't control, since the backing contracts see the trusted router as msg.sender regardless of who called the router itself."
+
+`createShips`, `createSpecificShip`, and `customizeShip` do not get this treatment — they are bare passthroughs with no check of their own:
+
+```solidity
+function createShips(address _to, uint _amount, uint16 _variant, uint8 _tier, bool _isFreeShip) external {
+    ships.createShips(_to, _amount, _variant, _tier, _isFreeShip);
+}
+function createSpecificShip(address _to, Ship calldata _ship) external returns (uint) {
+    return ships.createSpecificShip(_to, _ship);
+}
+function customizeShip(uint _id, Ship memory _ship) external {
+    ships.customizeShip(_id, _ship);
+}
+```
+
+`Ships.createShips`/`createSpecificShip`/`customizeShip` are each gated by `isAllowedToCreateShips[msg.sender]` — but as seen from `Ships.sol`, `msg.sender` is `ShipsRouter`'s own address, not whoever called the router. The exact same reasoning the header comment above applies to `setInFleet`/`setTimestampDestroyed` applies here: if `ShipsRouter` is ever added to `Ships.isAllowedToCreateShips`, these three functions become a **completely open, unlimited, free ship-minting/customization backdoor** — any address could mint arbitrary quantities of ships (any variant/tier, flagged free or not) to any address, or rewrite any existing ship's traits/equipment/kill count via `customizeShip`, for the cost of gas alone.
+
+**Why it matters:** Under the new standing assumption (assume every permissionless surface will be hit by a maximally hostile, zero-cost-seeking caller), a function with zero access control sitting one config change away from being a full economic exploit is a real finding, not a hypothetical — especially in a file where the *exact same author, in the same file*, already identified and closed this precise class of bug for two sibling functions.
+
+**Current exploitability: none, verified.** Checked `ignition/modules/DeployAndConfig.ts`'s every `setIsAllowedToCreateShips` call against `ships` (there are five: `ShipPurchaser`, `DroneYard`, `TutorialClaim`, the Firebase Flow backend minter, `FreeShipClaim`) — `shipsRouter` is not among them. Per `ShipsRouter.sol`'s own comment, these three functions exist purely so the contract satisfies the `IShips` interface `Game.sol`'s constructor expects; nothing routes through them in production today. Calling any of the three right now reverts `NotAuthorized(shipsRouterAddress)` inside `Ships.sol`. This is a latent gap, not a live one.
+
+**Fix:** `createShips`/`createSpecificShip`/`customizeShip` now revert unconditionally with a new `NotSupported()` error (each is `external pure`, parameter names commented out to silence unused-parameter warnings) instead of forwarding to `Ships.sol` at all — satisfying the `IShips` interface's shape without ever forwarding a real call, so no future `isAllowedToCreateShips` config change can silently reactivate this regardless of intent. `test/ShipsRouter.test.ts`'s existing `createSpecificShip` test (previously asserting the old passthrough's incidental `NotAuthorized` revert) was updated to assert `NotSupported`, plus two new tests for `createShips`/`customizeShip`; all 11 tests in that file pass. `ShipsRouter.sol` shrank by ~1.1 KiB (dead forwarding logic removed) — no size risk anywhere.
+
+### Reviewed, no issue found
+
+Every other `external`/`public` state-mutating function across the following was checked for the same "permissionless + affects another party's state or funds" shape and found properly gated (owner/allowlist/`msg.sender`-identity check, or genuinely self-scoped so a hostile caller can only affect their own state): `AIEncounters`, `AIShips` (`releaseShips`/`markDestroyed`/`recordKill` all allowlist- or router-gated), `DroneEnergyCores`/`UniversalCredits` (`mint` gated by `authorizedToMint`), `DroneStorefront`, `DroneYard`, `Fleets` (`clearFleet`/`removeShipFromFleet` gated by `isAllowedToManageFleets`/`gameAddress`), `FreeShipClaim`, `Game` (`forceEndSession` gated to `game.metadata.orchestrator`; the six `setXAddress`/`debug*` functions are `onlyOwner`), `GameBlobRegistry.record` (must be the player themselves or the configured `authorizedWriter`), `GameResults` (`recordGameResult`/`addWin`/`addLoss` each gated to a specific configured contract address), `Lobbies`, `Maps` (`setBlockedTile`/`setScoringTile`/`applyPresetMapToGame` all `onlyMapEditor` or game-address-gated, per H-06/T-04 above), `NodeMap.recordCompletion` (gated by `isAllowedToCompleteNodes`), `PvPMatch`, `RoguelikeMatch.takeAITurn` (permissionless by design, same as `RandomManager.revealRandomness` — but deterministic and gated by `currentTurn == address(this)`, so a hostile caller can only advance the AI's own turn correctly, never act out of turn or on someone else's behalf), `RoguelikeResupply` (`resupplyRepair`/`resupplyModifyRoster` both keyed to `msg.sender`'s own run/roster via `runLedger.getRun(msg.sender)`, ownership-checked for any ship added), `RoguelikeRun` (all mutators `onlyAllowed`), `ShatteredHiveMedal.claimMedal` (self-claim, one-per-address, self-verifying), `ShipPurchaser`, `Ships` (`createShips`/`createSpecificShip`/`customizeShip` all allowlist-gated; `markDestroyed`/`recordKill` gated to `owner()`/`gameAddress`; `setInFleet` gated to lobby/game/fleets addresses; `syncShipCosts`'s permissionless-but-inert id-0 case already covered by L-03), `Tournament` (post T-01–T-05 fixes), `TutorialClaim`, `VariantPurchaseGate` (view-only gate check, owner-configured).
+
+**Not yet re-verified against the full test suite as of this writing** — a full `npx hardhat test` run was still in progress when this addendum was written; results (and whether HA-01's proposed fix gets applied) to follow once that lands and the user has weighed in on the fix approach.
+
+---
+
 ## Addendum — Design Note: Future Token-Gated Claim/Kill-Bonus Mechanics (2026-08-26)
 
 **Not a security finding.** This is a sizing/feasibility note for two mechanics discussed but explicitly **not yet being built**: (1) a turn-in that reduces `FreeShipClaim.claimCooldownPeriod` per player, and (2) a turn-in that gives a bonus to a ship's starting `shipsDestroyed` roll. Both are planned to be funded by a **new token distinct from DEC and UTC** — most likely a future reward for defeating AI ships from factions 3/4, which don't exist yet (see project memory `project_future_faction_kill_token`). Recorded here so the constraint is visible before either mechanic is actually implemented.
@@ -1004,3 +1062,207 @@ What Base's sequencer *does* retain is broader than just "picking a timestamp": 
 3. **True "bonus layered on the roll,"** by threading the player through the `generateShip` call itself — requires changing `IGenerateNewShip`, `GenerateNewShip.sol`, and the `Ships.sol:350` call site. Adds an extra ABI-encoded argument to `Ships.sol`'s single tightest external call; real risk of not fitting in the remaining headroom without trimming something else first (see the `Ships.sol` size-extraction pattern used elsewhere in this codebase, e.g. `FreeShipClaim`'s own extraction from `Ships.sol`).
 
 **Conclusion:** No `Ships.sol` or `Game.sol` changes are required today for either mechanic to become buildable later. Option 1 already works with zero new code, if the cost/`modified` side effect is acceptable (arguably even desirable). Option 2 is the smallest deliberate addition if clean semantics are wanted instead. Option 3 should be avoided unless `Ships.sol` regains headroom from unrelated work first.
+
+**Added consideration (2026-08-27) — pre-reveal tradeability creates a marketplace information asymmetry for any "known before reveal" trait, including a future kill-bonus.** Confirmed `Ships._update` (the ERC721 transfer hook, `Ships.sol:427-470`) has no check on `shipData.constructed` or reveal status at all — only `!destroyed`, `!inFleet`, and `amountPurchased >= 10` for both parties gate a transfer. So an unrevealed, unconstructed ship is freely tradeable today, same as any other. Separately, `_mintShip` (`Ships.sol:481-511`) already demonstrates the exact shape of the concern for the existing tier-purchase rank mechanic: `shipsDestroyed` for a ranked ship is written directly into public storage **at mint time**, before reveal, before construction — anyone can read it immediately, no waiting required. Whichever implementation path above gets chosen for a future campaign-win kill bonus, if it similarly writes `shipsDestroyed` (or any other trait) as an immediately-public, pre-reveal value on the ship, that specific field becomes visible/verifiable before reveal while every other trait (weapon, hull, speed, accuracy, colors, armor/shields, special, shiny) stays hidden until someone actually reveals+previews it. That combination — one guaranteed-good, publicly-verifiable trait plus several still-hidden ones, on a token that's freely tradeable in that state — lets a seller who has privately revealed (via the free `GenerateNewShip.generateShip` view-call preview, see `docs/singleplayer-frontend-integration.md`-adjacent frontend docs) offload a campaign-bonus ship with bad remaining rolls onto a buyer who can only verify the guaranteed kill floor, while keeping the good rolls for themselves. Not a reason to avoid the bonus mechanic — just something to weigh when choosing *how* it's applied (e.g., whether campaign-bonus ships should be non-transferable until constructed, mirroring the existing free-ship soulbound-until-`amountPurchased>=10` pattern, if this asymmetry is judged worth closing).
+
+---
+
+## Addendum — `RandomManager`: Drop `block.timestamp` From the Hash, Collapse Reveal Into `fulfillRandomRequest` (2026-08-27)
+
+**Context:** While comparing the commit-reveal design against a proposed simpler alternative, pulled live data from Base Sepolia to settle an empirical question rather than argue it in the abstract (same method as the original C-01/C-02 fix's prevrandao-cadence measurement). Method: `eth_getBlockByNumber` over three separate 150–300 block windows (most recent ~10 minutes, ~2 hours prior, ~24 hours prior), computing every consecutive-block timestamp delta.
+
+**Result: 597 consecutive block-pairs, 100% exactly `2` seconds, zero exceptions, zero variance, across a full day of real chain activity.** Base Sepolia's block timestamps are not "approximately 2 seconds with jitter" — they are a rigid, deterministic 2-second grid: `block(N+1).timestamp = block(N).timestamp + 2`, always.
+
+**Why this mattered:** `revealRandomness`'s result was `keccak256(block.prevrandao, block.timestamp, _requestId)`. `block.prevrandao` is stable for ~6 consecutive L2 blocks (one L1 epoch, per the original C-01/C-02 addendum). Given the timestamp grid above, every block's timestamp *within* that stable epoch is a fully deterministic function of when the epoch started — so all 6 possible `(prevrandao, timestamp)` outputs for an entire epoch become computable the instant the epoch begins, with no simulation or estimation needed. Mixing in `block.timestamp` therefore contributed no real entropy; it just handed anyone 6 exactly-known candidate outcomes per epoch instead of 1 — a ~6x weakening of the "must wait for a fresh epoch" protection this scheme depends on, in the already-deployed C-01/C-02 remediation.
+
+**Separately identified while working through this: the reveal-once-and-lock property doesn't actually block grinding via a wrapper.** A contract can call `revealRandomness`, immediately feed the returned `randomBase` into `GenerateNewShip.generateShip` (an unrestricted public view) to preview the resulting ship, and `revert()` if unsatisfied — unwinding the reveal too, since it's all one transaction. `AlreadyRevealed` only blocks a *second* attempt after a *successful* one; a reverted attempt leaves nothing behind to block anything, so the same wrapper can retry every ~12s epoch until a favorable roll appears. This exposure exists identically whether reveal is a separate call or merged into consumption — separating them never actually closed it.
+
+**Fix, two parts:**
+
+1. **Drop `block.timestamp` from the hash.** `_revealRandomness` now computes `keccak256(block.prevrandao, _requestId)` only. This restores the intended ~1-candidate-per-epoch density (removing the accidental 6x amplification) — a real improvement independent of anything else in this addendum.
+2. **Collapse reveal into `fulfillRandomRequest`.** Given (a) the wrapper-revert exposure exists in exactly the same shape whether reveal is separate or not, and (b) the low practical stakes already established for this game (99.9% of ships worth under $1, construction itself free — see the conversation history this addendum summarizes), there's no remaining reason to require a separate mandatory reveal transaction. `fulfillRandomRequest` — the function `Ships.constructShip` has always called — now reveals-and-locks on first call (if the entropy window has opened) and simply returns the cached result on every call after. **Mint → construct is now exactly 2 transactions**, with no separate reveal step required. `revealRandomness`/`revealRandomnessBatch` remain as an *optional* pre-warming path (e.g. a keeper wanting to front-load the first-reveal SSTORE cost ahead of a large batched construct call) — nothing requires calling them, and existing tests that do (all of `Game.test.ts`, `Lobbies.test.ts`, etc.) continue to work unchanged, since `fulfillRandomRequest` just returns the already-locked value in that case.
+
+**API changes:** `IRandomManager.fulfillRandomRequest` is no longer declared `view` (it now writes state on first call) — this is load-bearing, not cosmetic: had the interface still declared it `view`, `Ships.sol`'s call through that interface type would compile to a `STATICCALL`, which reverts on any attempted state write. `canReveal`/`_canReveal` (old semantics: false once already revealed) were replaced with `canFulfill`/`canFulfillBatch` (true once `fulfillRandomRequest` would succeed, including when already revealed) — the question a caller actually needs answered before calling `constructShip` now. `NotYetRevealed`/`AlreadyRevealed` errors were removed as dead code — neither can be triggered through the new consumer-facing entry point. `requests` (the per-id `Request` struct mapping) changed from `private` to `public`, so a read-only caller (frontend, test) can inspect an already-locked result via `requests(id)` without needing a state-changing call — the same data was already emitted via `RandomnessRevealed`, so this exposes nothing new, just makes lookup by id direct.
+
+**Residual risk, updated:** unchanged in kind from the original C-01/C-02 remediation's own residual-risk section — a patient caller can still choose *when* to trigger the one-time lock-in, previewing the current, already-public epoch's `prevrandao` for free and declining to act until a favorable one appears. This is inherent to any scheme built on caller-timed reveal rather than an external oracle (Chainlink VRF is the only way to remove it entirely) and applies identically whether reveal is a separate step or inline — collapsing the steps doesn't add to it. Given the ship-value distribution already discussed (99.9% under $1) and free construction removing any incentive to selectively abandon a bad roll, this residual is accepted as low-stakes, same conclusion as before, now resting on a design with fewer moving parts.
+
+**Test/doc impact:** `test/RandomManager.test.ts` rewritten for the new API (`fulfillRandomRequest` reveal-on-first-call and idempotency, `canFulfill`/`canFulfillBatch`, `requests(id)` inspection) plus the existing batch-griefing regression tests, unchanged in intent. `Ships.sol`'s comment above its `fulfillRandomRequest` call updated to describe the new behavior. No other test files needed changes — every existing test that calls `revealRandomness` before constructing continues to pass, since that path is still fully supported. `docs/update/Frontend_Updates_2026-08-26.md`'s RandomManager section needs a rewrite to reflect the simpler flow (separate follow-up).
+
+---
+
+## Addendum — Growth Audit at Scale (2026-08-27)
+
+**Assumed scale for this pass:** 100,000,000 total ships, 100 factions, a single player owning 1,000,000+ ships, 1,000,000 total games+lobbies. Method: enumerated every function across all contracts that returns a dynamic array or loops over a `EnumerableSet`/counter-indexed collection, then classified each by which of these four axes (if any) its size scales with, and whether growth is caller-bounded (safe) or tied to unbounded global/per-account state (not safe at this scale). This is a *view-function/off-chain-usability* audit, not an on-chain-safety one — every finding below was verified to have **no on-chain caller** (nothing in the contracts themselves invokes these functions), so none of this threatens a real transaction; it threatens the ability of a frontend, indexer, or wallet to ever successfully call these functions once the underlying collection is large, since standard RPC providers (Infura/Alchemy-style) commonly cap `eth_call` gas/response size well below what a very large ABI-encoded array requires.
+
+### ~~GR-01 — `Ships.getShipIdsOwned` Has No Bounded Alternative, Unlike Every Other Per-Owner Getter in This Codebase~~
+
+**File:** `contracts/Ships.sol:689-692`
+**Severity:** High at the stated scale (1,000,000+ ships for one owner)
+**Status:** Fixed 2026-08-27
+
+```solidity
+function getShipIdsOwned(address _owner) external view returns (uint[] memory) {
+    return shipsOwned[_owner].values();
+}
+```
+
+Returns the caller's *entire* lifetime ship holdings in one call. At 1M+ ships, the ABI-encoded response is tens of megabytes — this will fail against essentially every production RPC provider's response-size/gas cap, long before any theoretical block-gas-limit concern. Unlike the analogous per-player collections elsewhere in this codebase (see GR-05 below, and the already-resolved C-04 finding for `Game.getGamesForPlayer`), **there is no caller-bounded alternative for ships** — no `getShipsByIdRange`/paginated equivalent exists. `getShipsByIds(uint[] calldata)` exists but requires the caller to already know which ids to ask for, which is exactly what `getShipIdsOwned` was supposed to answer in the first place; a whale-scale owner has no on-chain path to enumerate their own holdings at all once this call stops working.
+
+Notably, the *commented-out* `getShipsOwned` (Ship-struct version, `Ships.sol:696-703`) carries a `// TODO CRITICAL: This almost certainly needs to be paginated` note — the developer flagged this exact concern for that variant, but the **live, uncommented** `getShipIdsOwned` has the identical unaddressed risk with no such flag anywhere near it.
+
+**Fix:** `Ships.sol` was already at ~297 bytes of headroom under the 24 KiB limit — not enough margin to safely assume a full bounds-checked paginated function (loop, offset/limit math, an extra memory array) would fit. Rather than guess, tried the smallest possible primitives first and measured: `shipsOwnedCount(address) view returns (uint)` (→ `shipsOwned[_owner].length()`) and `shipIdOwnedAt(address, uint) view returns (uint)` (→ `shipsOwned[_owner].at(_index)`), each a single storage read with no loop. Compiled cost: **+217 bytes** (23.717 → 23.929 KiB), leaving ~73 bytes to spare — fits, where a heavier paginated-array function likely would not have. Pagination now happens entirely caller-side: read `shipsOwnedCount`, then call `shipIdOwnedAt` for each index in the desired page (a JSON-RPC batch request handles this in one round trip, same technique used elsewhere in this doc to pull live chain data). `getShipIdsOwned` is untouched and still the right call for the common (small/medium collector) case. New test in `test/Ships.test.ts` confirms paging via the two primitives reconstructs the same set `getShipIdsOwned` returns. If a heavier one-call paginated getter is ever wanted, it belongs in a separate satellite contract calling these two primitives in a loop, not in `Ships.sol` itself, given the remaining margin.
+
+### `NodeMap.getAllNodes` — ~~Grew With Total Content Across All Factions, Not Per-Faction~~ — Removed
+
+**File:** `contracts/NodeMap.sol` (was lines 349-354)
+**Severity:** Confirmed High via measurement (was estimated Medium) — see below
+**Status:** Fixed 2026-08-27 — function removed entirely
+
+**Measured, not estimated:** wrote `scratch/measure-getallnodes-gas.ts`, created real nodes at increasing scale, measured `getAllNodes()`'s actual gas via `estimateContractGas`. Cost is cleanly linear at **~19,000 gas/node** (10 nodes → 208,893 gas; 400 nodes → 7,704,848 gas — no quadratic blowup in this range, SLOAD cost dominates over memory expansion at these sizes). Extrapolating: **`getAllNodes()` exceeds Base's 30,000,000 block gas limit at roughly 1,580 total nodes across all campaigns combined.** At the scale this audit assumes (e.g. 100 campaigns × 30 nodes, or 30 × 100 — both are 3,000 nodes total, and the split between them is irrelevant since this function was never scoped by campaign) it needed **~57,000,000 gas — nearly double the block limit**, meaning it wasn't just expensive, it would flatly fail against any RPC provider capping `eth_call` at or near the block gas limit (the common default).
+
+**Resolution:** confirmed with the project owner that an unscoped "every node in the game" read was never actually a real use case — every real caller already knows which campaign it's asking about. Rather than paginate or scope it, removed `getAllNodes()` entirely; `getNodesInCampaign(campaignId)` (already existed, already properly scoped, unaffected by this) is now the only way to enumerate nodes, paired with `getNode(nodeId)` per id. At the same 3,000-node scale, `getNodesInCampaign` + per-node reads cost ~570,000 gas for a 30-node campaign or ~1,900,000 gas for a 100-node campaign — trivial either way, confirming the campaign-scoped split is what actually matters, not the total node count. Removed the corresponding `getAllNodes` test in `test/NodeMap.test.ts` (coverage for `getNodesInCampaign` already existed independently) and updated `docs/singleplayer-frontend-integration.md` (the active base reference doc) to use the scoped call instead — older, already-superseded dated delta docs mentioning `getAllNodes()` were left as historical snapshots, consistent with how this doc handles doc staleness elsewhere (e.g. `enemyThreat`'s removal).
+
+### ~~GR-02 — `AIEncounters.getAllAIShipConfigs` Grows With Total Content Across All Factions~~
+
+**File:** `contracts/AIEncounters.sol` (original getter at lines 176-184)
+**Severity:** Confirmed High via measurement (was estimated Medium) — see below
+**Status:** Fixed 2026-08-27 — paginated alternative added
+
+**Measured, not estimated — and it doesn't just get expensive, it fails outright.** Wrote `scratch/measure-getall-gas.ts` and `scratch/measure-getall-gas-extended.ts`, created real configs at increasing scale, measured `getAllAIShipConfigs()`'s actual gas via `estimateContractGas`:
+
+```
+configs=10    gas=218,809      (21,881/config)
+configs=100   gas=2,069,734    (20,697/config)
+configs=400   gas=9,524,887    (23,812/config)
+configs=600   gas=15,593,621   (25,989/config)
+configs=800   gas=22,541,262   (28,177/config)
+configs=1000  → FAILS: "Transaction ran out of gas" — exceeds the 30,000,000
+               block gas limit entirely; estimateGas can't produce a number
+```
+
+Unlike `getAllNodes()`'s cleanly linear cost, gas/config here climbs steadily (21,881 → 28,177 and rising) — likely `AIShipConfig`'s dynamic `name` string plus nested `Equipment`/`Traits`/`Colors` structs pushing memory-expansion cost into a more visible range sooner. **The break is confirmed empirically between 800 and 1,000 configs** — not a distant hypothetical: at the *already-observed* real growth rate (25 configs added per faction, confirmed in `faction-2.md`'s history — 50 total after just the second faction), this line gets crossed after roughly **32-40 factions**, well under a third of the way to the 100 this audit assumes.
+
+**Resolution:** unlike `NodeMap.getAllNodes()`, this one has a real (if admin-only) documented use case — `docs/singleplayer-frontend-integration.md:125` recommends it for an admin fleet-editor's config picker when authoring new map placements. Rather than remove it, added a bounded alternative: `getAIShipConfigsPaginated(uint _offset, uint _limit)`, 0-indexed into the config sequence, returning fewer than `_limit` entries (down to empty) if the range runs past `aiShipConfigCount` rather than reverting — mirrors the pagination shape already used elsewhere in this codebase (`getGamesFromIds`, `getLobbiesFromIds`). `getAllAIShipConfigs()` itself is untouched and still fine at small/medium scale; admin tooling should move to the paginated form before config count approaches the low hundreds. New tests in `test/AIEncounters.test.ts` confirm paging through in full reassembles the same data `getAllAIShipConfigs()` returns, and that an out-of-range offset returns an empty array rather than reverting.
+
+### ~~GR-02 — `Maps.getAllPresetMapIds` Grows With Total Content Across All Factions~~ — Not Actually a Risk, Confirmed by Measurement
+
+**File:** `contracts/Maps.sol:612-618`
+**Severity:** Downgraded to none — measurement showed the original "Medium, worsening" estimate was too pessimistic
+**Status:** Reviewed 2026-08-27, no fix needed
+
+Measured the same way (`scratch/measure-getall-gas.ts`): unlike the two `AIShipConfig`/`CampaignNode` full-struct getters above, this one returns bare `uint[]` ids, and its *marginal* cost per additional map stabilizes quickly and stays flat — not increasing:
+
+```
+mapCount=10   gas=27,212    (2,721/map, includes fixed overhead)
+mapCount=100  gas=57,714    (577/map)
+mapCount=400  gas=160,302   (401/map)
+```
+
+Marginal cost between samples is consistently ~339-343 gas/map (e.g. `(160302-91754)/(400-200) ≈ 343`), meaning a large fixed base cost (~24,000 gas) amortizing over a genuinely linear, small per-entry cost. Extrapolating that steady-state rate, it would take **~88,000 total preset maps** to approach the 30M block gas limit — even 100 factions authoring 100 maps each (10,000 total) costs only ~3.4M gas, trivial. No realistic content-authoring pace reaches this. Originally flagged as "the mildest of the three, but still unbounded" — the real numbers confirm it's not a practical risk at any scale this game will plausibly reach, so no fix is planned.
+
+### ~~GR-03 — `Lobbies.getOpenLobbies()` Is a Global Set With No Expiry, Growing With Total Abandoned Lobbies~~
+
+**File:** `contracts/Lobbies.sol` (original getter unchanged, at `getOpenLobbies`)
+**Severity:** Medium — depends on real-world abandonment rate, but has no ceiling
+**Status:** Fixed 2026-08-27 — both recommended fixes applied (plenty of headroom to do both, see below)
+
+```solidity
+function getOpenLobbies() public view returns (uint[] memory) {
+    return openLobbyIds.values();
+}
+```
+
+`openLobbyIds` is a single global set shared by every player, not scoped per-player. Traced every path that removes a lobby from it (`_removeLobbyFromOpenSet` — called from `leaveLobby`, `acceptGame`, `rejectGame`, `timeoutJoiner`, `quitWithPenalty`) — all of them require an **active participant** to take an action. A lobby whose creator opens it and simply never returns (no joiner ever arrives, creator never calls `leaveLobby`) has no timeout or permissionless sweep that removes it — it sits in `openLobbyIds` forever. At 1,000,000 total games+lobbies, even a modest abandonment rate (a few percent — free/no-stakes lobbies in particular are cheap to abandon) accumulates into a standing set of tens of thousands of entries that `getOpenLobbies()` must return in full every time, with no way for that number to ever go back down on its own.
+
+**Fix — both recommended options, not just one:** `Lobbies.sol` had ~9 KiB of headroom under the 24 KiB limit (14.886 KiB before this change), so unlike `Ships.sol`'s GR-01 fix there was no need to pick just one approach.
+
+1. **`pruneStaleLobby(uint _lobbyId)` (new, permissionless)** — removes a lobby from `openLobbyIds` once it's been open (unjoined) longer than `staleLobbyThreshold` (new state var, defaults to `7 days`). Deliberately narrow: only touches `openLobbyIds` membership — not `lobby.state.status`, not `playerLobbies`, not the creator's `PlayerLobbyState`. The lobby record itself is untouched and still directly joinable/leaveable exactly as before; this only delists it from the public open-browse list. Requiring current membership in `openLobbyIds` to even attempt a prune is also what guarantees the target has no joiner — `joinLobby` removes a lobby from this set the instant someone joins, so nothing reachable here ever had one.
+2. **`setStaleLobbyThreshold(uint)` (new, `onlyOwner`)** — the 7-day default is adjustable without a redeploy.
+3. **`getOpenLobbiesPaginated(uint _offset, uint _limit)` (new)** — bounded escape hatch for `getOpenLobbies` itself, same shape as `AIEncounters.getAIShipConfigsPaginated` (0-indexed, returns fewer than `_limit` rather than reverting past the end). `getOpenLobbies()` is untouched for small/medium scale.
+
+Compiled cost: **+643 bytes** (14.886 → 15.514 KiB), leaving ~8.5 KiB of headroom — comfortably affordable to add both fixes together rather than choosing. New tests in `test/Lobbies.test.ts` (7 cases) cover: default threshold value, reverting before the threshold elapses, successful permissionless prune after it elapses (by an unrelated address), reverting `LobbyNotOpen` for an already-joined lobby (confirming the "never has a joiner" invariant), owner-adjustable threshold actually being enforced, non-owner rejection, and `getOpenLobbiesPaginated` reassembling the same data as `getOpenLobbies` when paged in full plus an empty-page-past-the-end case.
+
+### ~~GR-04 — `Lobbies.getAllLobbiesForPlayerWithDupes` Compounds GR-03 With Full-Struct Payloads and Per-Player History~~
+
+**File:** `contracts/Lobbies.sol` (was lines 786-804)
+**Severity:** Medium-High — the worst single offender found in this pass
+**Status:** Fixed 2026-08-27 — function removed entirely
+
+Already flagged as I-07 in this document for returning duplicates (a correctness note, client-side dedupe required) — this was a *different* axis on the same function. It concatenated `playerLobbies[_player]` (unbounded per-player lifetime lobby count) with `openLobbyIds` (GR-03's unbounded global set), and — unlike GR-03's id-only return — fetched the **full `Lobby` struct** for every entry in both. This was strictly worse than either GR-03 or a hypothetical unbounded `getPlayerLobbies` alone: it inherited both axes of growth simultaneously, at the heavier per-entry payload.
+
+**Resolution:** checked for any real use first, same as `NodeMap.getAllNodes()` (GR-02) — confirmed zero on-chain callers, zero test coverage, and zero mentions in any frontend integration doc, unlike its sibling `getPlayerLobbies` (16+ test call sites, actively used). Nothing was ever built against this function. Removed it entirely rather than paginating it — `getPlayerLobbies` (per-player history) and `getOpenLobbies`/`getOpenLobbiesPaginated` (global open set, now with GR-03's pruning on top) already cover both halves separately, without the accepted-but-awkward duplicate-and-dedupe-yourself contract this function required. `Lobbies.sol` shrank by ~949 bytes as a result (15.514 → 14.565 KiB, after GR-03's fixes were already applied).
+
+### GR-05 — `Lobbies.getPlayerLobbies` Mirrors the Already-Resolved `Game.getGamesForPlayer` Pattern (C-04) — Same Conclusion Applies
+
+**File:** `contracts/Lobbies.sol:786-789` (shifted after GR-03/GR-04's edits to this file; function itself unchanged)
+**Severity:** Low — a safe, bounded alternative already exists — no fix planned, intentionally
+
+```solidity
+function getPlayerLobbies(address _player) public view returns (uint[] memory) {
+    return playerLobbies[_player].values();
+}
+```
+
+Same shape as `Game.getGamesForPlayer`, addressed in C-04 above: unbounded per-player history, but `getLobbiesFromIds(uint[] calldata)` already exists as the caller-bounded escape hatch (mirroring `Game.getGamesFromIds`). Per C-04's resolution: pagination lives off-chain — a frontend/indexer that wants a hard cost ceiling for a high-activity player should track lobby ids itself (via `LobbyCreated`/`LobbyJoined`-style event logs or a backend indexer) and call `getLobbiesFromIds` with a bounded batch, rather than relying on this convenience getter for whale-scale accounts. No code change needed; noted here only so this doesn't get rediscovered as a new finding.
+
+### Reviewed, no issue found (checked against all four scale axes)
+
+- **`GameResults.getTopPlayersByWins`** — already a non-functional stub (`return new address[](0);`) with an explicit comment acknowledging "this would require iterating over all players which could be gas-intensive." Confirmed not a live risk. It *is* a dead/misleading function today — any leaderboard feature will need real off-chain indexing infrastructure, not this getter, regardless of scale.
+- **`SpecialEffectsLib.resolveAndApply`'s worst-case-allocate-then-truncate arrays** (see the hostile-actor-sweep-adjacent question this addendum follows up on) — sized to `game.getAllShipPositions(gameId).length`, hard-capped at 44 ships/side by the 17×11 grid's column restrictions in `Fleets.createFleet` (88/game absolute max) — independent of total ship supply, faction count, or total game count.
+- **`AIShips.freeSlots`** — could in principle accumulate many entries over the lifetime of 1,000,000 games (released AI ship slots), but is only ever used as a stack (`push`/`pop` from the end) — every operation is O(1) regardless of array length, so this never becomes a growth risk no matter how large it gets.
+- **`Tournament` brackets/registrant arrays** — capped per-tournament by admin-configured `maxPlayers` at creation time (`register` reverts `RegistrationFull` once `registrants.length >= maxPlayers`), not tied to global ship/game/faction counts.
+- **`ShipAttributes`'s per-variant admin-config loops** (`setAllAttributes`/`setVariantAttributes`) — bounded by fixed-cardinality trait arrays (guns/armor/shields/specials, each ≤8 by enum size), not by faction count; each variant's attributes are set independently, one owner call per variant, not aggregated into a "loop over all variants" pattern anywhere.
+- **`Fleets.createFleet`** — hard-capped at 44 ships/side regardless of total ship supply (see above) — this bound was already load-bearing for the hostile-actor sweep's `SpecialEffectsLib` question and holds equally here.
+- **`RoguelikeNodeMap`** — never had a `getAllNodes()`-style global getter at all (unlike `NodeMap`, which had one and has since had it removed — see above), so it never shared this risk; its own `getNode`/`getChildren`/`getEdge` are all single-id or bounded-by-a-node's-own-edge-list lookups.
+
+**Common thread across GR-01 through GR-05:** every finding is a `view` function nobody calls on-chain — the pattern this codebase already uses correctly for genuinely bounded collections (`getGamesFromIds`, `getLobbiesFromIds`, `getShipsByIds`, `getNodesInCampaign`) is the right fix wherever it's missing. None of this requires new access control or economic changes, just adding the caller-bounded-batch escape hatch consistently everywhere an "return the whole collection" getter exists next to a global or per-account counter.
+
+---
+
+## Addendum — Root-Caused and Fixed the Recurring `ShipCostsVersions.test.ts` Flake (2026-08-27)
+
+**Not a contract finding — a test-data gap.** The "pre-existing, intermittent, unrelated flake" referenced throughout this document (first noted in the C-01/C-02 remediation addendum, recurring across several subsequent fixes' verification runs) was never root-caused before now — it was just something every full-suite run had to route around. Traced it down after being asked to fix it rather than keep noting it.
+
+**Root cause:** `GenerateNewShip.sol` rolls `equipment.special` as `uint(keccak256(...)) % 8` — unlike `mainWeapon`/`armor`/`shields`, which all roll `% 4` — deliberately, per that file's own comment, "across the full fixed range, not just the first 4" (`Special` has 8 defined slots per faction, see `Types.sol`). Two tests in `test/ShipCostsVersions.test.ts` ("gives ships of different variants different hull points and special data" and "gives ships of different variants different weapon/armor/shield stats") configure variant 2 via `setVariantAttributes` with only **4** `specials` entries, then construct real ships and call `calculateShipAttributesById` on one of them. Whenever that ship's random roll landed on `special` slot 4-7 (a coin-flip-ish ~50% of the time per affected ship), `ShipAttributes.sol`'s `.specials[uint8(_ship.equipment.special)]` lookup panicked out-of-bounds on the 4-length array — the exact array-bounds shape already documented as M-04 above, except M-04 is about *production* config potentially under-provisioning these arrays; this was the *test's own* config under-provisioning them, unrelated to whether M-04 itself gets fixed.
+
+**Fix:** extended both tests' `specials` arrays from 4 to 8 entries (slots 4-7 filled with the same inert zero values slot 0 already used — neither test's assertions touch those slots, they only ever check slot 1 or a ship's own rolled slot). No contract change — this doesn't reopen or affect the M-04 "won't fix" decision, which is specifically about whether *production* `setVariantAttributes` calls should be validated against the full 0-7 range; that remains a separate, still-open question.
+
+**Verification:** ran the two affected tests in isolation 5 times in a row after the fix (`--grep "different variants"`) — 2/2 passing every time, no failures, where before this would fail roughly every other run. Full suite confirmed clean afterward with no other regressions.
+
+---
+
+## Addendum — Full Security Re-Review of the Session's Diff (2026-08-27)
+
+**Scope:** every file actually changed this session (`RandomManager.sol`, `IRandomManager.sol`, `Ships.sol`, `ShipsRouter.sol`, `NodeMap.sol`, `AIEncounters.sol`, `Lobbies.sol`, `DeployAndConfig.ts`) — not the full historical repo diff. Ran via the `/security-review` skill's methodology: an independent pass to find vulnerabilities *newly introduced* by this session's changes specifically (as opposed to pre-existing issues already covered elsewhere in this document), then verified each candidate directly (read the code, and for the two real ones, reproduced the failure by temporarily reverting the fix and confirming a test catches it — same methodology used throughout this document).
+
+### HA-02 — `RandomManager.revealRandomness` Dropped Its Request-ID Bounds Check
+
+**File:** `contracts/RandomManager.sol` (the standalone `revealRandomness`, not `fulfillRandomRequest` or `revealRandomnessBatch`)
+**Severity:** Low-Medium — confirmed real regression, but does not defeat the commit-reveal protection for actual ship construction
+**Status:** Fixed 2026-08-27
+
+When reveal was collapsed into `fulfillRandomRequest` (see the 2026-08-27 addendum above), the standalone `revealRandomness` — kept as an optional pre-warming path — lost the `if (_requestId == 0 || _requestId > requestCount) revert RequestNotFound();` guard that both `fulfillRandomRequest` and `revealRandomnessBatch` still have. For any never-issued id, `requests[_requestId]` reads as an all-zero-default struct; `_revealRandomness`'s own checks (`block.number <= 0`, `block.prevrandao == 0`) both trivially pass, so the call proceeds to compute and permanently store a "result" and emit `RandomnessRevealed` for a phantom id — for free, by any permissionless caller — directly contradicting this file's own header comment ("every id must have genuinely been issued by requestRandomness").
+
+**Why it isn't worse than Low-Medium:** `fulfillRandomRequest`, `canFulfill`, and `canFulfillBatch` all independently re-check `requestCount` bounds before ever reading `revealed`, so `Ships.constructShip`'s actual flow can't be tricked by a phantom entry, and if that same id is later legitimately issued by `requestRandomness()`, the resulting full-struct overwrite erases the tampering. Net effect of the bug: junk storage writes and misleading events for an id nobody legitimately owns yet — a real validation regression, not a bypass of ship-construction security.
+
+**Fix:** restored the missing bounds check to `revealRandomness`, identical to its siblings. `test/RandomManager.test.ts` gained a regression test (`revealRandomness` reverts `RequestNotFound` for id `0` and an unissued id); confirmed it fails without the fix and passes with it.
+
+### GR-06 — `Lobbies.pruneStaleLobby` Measured Staleness From Original Creation, Not From Re-Entry Into the Open Set
+
+**File:** `contracts/Lobbies.sol` (new function from the 2026-08-27 GR-03 fix, `pruneStaleLobby`)
+**Severity:** Medium — real logic bug, but limited to browse-list discoverability, not fund loss or state corruption
+**Status:** Fixed 2026-08-27
+
+`pruneStaleLobby` checked `block.timestamp < lobby.basic.createdAt + staleLobbyThreshold` — but `createdAt` is set exactly once, at lobby creation, and is never refreshed by any of the paths that put a lobby back into `openLobbyIds` after it stops being unjoined (`leaveLobby`'s abandon/reset branches, `timeoutJoiner`, `quitWithPenalty`, `createLobbyForAddresses`). A lobby created 8+ days ago that goes through a completely ordinary join → leave cycle *today* re-enters `openLobbyIds` still carrying its 8-day-old `createdAt` — making it immediately, permissionlessly pruneable by anyone the instant it becomes open again, even though it hasn't sat idle at all. Direct-by-id `joinLobby`/`getLobby` still work regardless (matches the fix's documented "delist only" scope), so this degrades organic-matchmaking visibility rather than breaking anything load-bearing — but it's exactly the kind of pure-griefing, zero-cost-to-the-attacker vector this session's own "Assume Hostile Outside Actors" rule (`CLAUDE.md`) exists to catch, and it was introduced by the GR-03 fix itself, not a pre-existing issue.
+
+**Fix:** added `mapping(uint => uint) public lobbyOpenedAt`, stamped inside `_addLobbyToOpenSet` (the single internal choke point every re-entry path already goes through — `createLobby`, both `leaveLobby` branches, `timeoutJoiner`, `quitWithPenalty`, `createLobbyForAddresses` all route through it, so no call site needed individual updates). `pruneStaleLobby` now checks against `lobbyOpenedAt[_lobbyId]` instead of `lobby.basic.createdAt`. `test/Lobbies.test.ts` gained a regression test that ages a lobby past the threshold, cycles it through join→leave, and confirms it's *not* immediately pruneable (only after the threshold elapses from the re-entry) — confirmed this test fails against the pre-fix code (reverted just the `pruneStaleLobby` check line, reran, got the exact wrong-immediate-success behavior) and passes with the fix restored.
+
+### Reviewed, no issue found
+
+- **`ShipsRouter`'s revert-unconditionally change** — confirmed via repo-wide grep that `DroneYard`/`ShipPurchaser`/`TutorialClaim`/`FreeShipClaim` are all wired directly to `Ships.sol` in `DeployAndConfig.ts`, never through `ShipsRouter`, and nothing calls `createShips`/`createSpecificShip`/`customizeShip` through any `IShips`-typed reference anywhere else in `contracts/`.
+- **`IRandomManager`'s `view` → non-view change** — `Ships.sol` is the only consumer; its call site already sits inside a state-mutating function, so this is a pure, necessary signature correction (see the original 2026-08-27 addendum for why the mismatch would otherwise compile to a reverting `STATICCALL`).
+- **`AIEncounters.getAIShipConfigsPaginated`, `Ships.shipsOwnedCount`/`shipIdOwnedAt`, `Lobbies.getOpenLobbiesPaginated`** — all thin, bounds-correct wrappers; no issues found.
+- **Removal of `NodeMap.getAllNodes()` and `Lobbies.getAllLobbiesForPlayerWithDupes()`** — confirmed zero remaining callers anywhere in `contracts/`, `test/`, or `ignition/`.
+- **`DeployAndConfig.ts`'s `PRODUCTION` flag now resting at `false`** — the gating logic itself is unchanged (only the boolean's committed value flipped, fixing the opposite mistake from before); flagged only as a known, already-documented process risk (someone could deploy for real without remembering to flip it back to `true`), not a new code defect. Already covered by this session's new `CLAUDE.md` rule requiring the flag be checked before every deploy.
+
+**Test suite impact:** 2 new regression tests (one in each of `test/RandomManager.test.ts`, `test/Lobbies.test.ts`), both confirmed to fail against the pre-fix code and pass against the fix. Full suite reconfirmed clean afterward.

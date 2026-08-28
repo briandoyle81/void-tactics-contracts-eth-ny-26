@@ -40,6 +40,7 @@ contract ShipsRouter is IShips, Ownable {
     address public lobbyAddress; // SinglePlayerMatch — see DestroyRewardLib
 
     error NotAuthorized(address);
+    error NotSupported();
 
     constructor(
         address _ships,
@@ -120,30 +121,42 @@ contract ShipsRouter is IShips, Ownable {
         }
     }
 
-    // The functions below are only ever exercised against real (human)
-    // ships in production — DroneYard/ShipPurchaser/TutorialClaim stay
-    // wired directly to Ships.sol, never through this router. They exist
-    // here purely so this contract satisfies the IShips interface that
-    // Game.sol's constructor expects.
+    // The three functions below exist purely so this contract satisfies the
+    // IShips interface Game.sol's constructor expects — nothing legitimately
+    // calls them through this router (DroneYard/ShipPurchaser/TutorialClaim/
+    // FreeShipClaim all stay wired directly to Ships.sol). Unlike
+    // setInFleet/setTimestampDestroyed above, they deliberately do NOT
+    // forward to Ships.sol at all, not even behind a caller check: Ships.sol
+    // only gates createShips/createSpecificShip/customizeShip on
+    // isAllowedToCreateShips[msg.sender], and from Ships.sol's perspective
+    // msg.sender would be this router regardless of who called the router
+    // itself. If this router were ever added to that allowlist for a
+    // legitimate reason, a forwarding version of these functions — even a
+    // "correctly" caller-checked one — would still be a live, unlimited,
+    // free ship-minting/customization backdoor for anyone the moment that
+    // allowlist entry existed (see docs/pre-audit.md HA-01). Reverting
+    // unconditionally closes that off regardless of future allowlist
+    // changes, since satisfying IShips only requires these to exist with
+    // the right signature, not to do anything.
     function createShips(
-        address _to,
-        uint _amount,
-        uint16 _variant,
-        uint8 _tier,
-        bool _isFreeShip
-    ) external {
-        ships.createShips(_to, _amount, _variant, _tier, _isFreeShip);
+        address /* _to */,
+        uint /* _amount */,
+        uint16 /* _variant */,
+        uint8 /* _tier */,
+        bool /* _isFreeShip */
+    ) external pure {
+        revert NotSupported();
     }
 
     function createSpecificShip(
-        address _to,
-        Ship calldata _ship
-    ) external returns (uint) {
-        return ships.createSpecificShip(_to, _ship);
+        address /* _to */,
+        Ship calldata /* _ship */
+    ) external pure returns (uint) {
+        revert NotSupported();
     }
 
-    function customizeShip(uint _id, Ship memory _ship) external {
-        ships.customizeShip(_id, _ship);
+    function customizeShip(uint /* _id */, Ship memory /* _ship */) external pure {
+        revert NotSupported();
     }
 
     function maxVariant() external view returns (uint16) {

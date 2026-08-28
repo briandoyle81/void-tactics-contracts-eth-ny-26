@@ -6,13 +6,20 @@ import { parseEther } from "viem";
 import starterContent from "../data/singlePlayerStarterContent.json";
 import roguelikeStarterContent from "../data/roguelikeStarterContent.json";
 
-// Set to true only for a real production deploy. Every test fixture deploys
-// this same module via hre.ignition.deploy(DeployModule), and steps gated
-// behind this flag (e.g. transferring contract ownership away from the
-// deployer) would break owner-gated test setup if they ran unconditionally
-// — this is a plain build-time boolean (not an Ignition parameter) so gated
-// m.call(...) invocations are simply never added to the deployment graph
-// when false, rather than being skipped at execution time.
+// Set to true only for a real production deploy, and flip it back to false
+// immediately afterward — do not leave it committed as true. Every test
+// fixture deploys this same module via hre.ignition.deploy(DeployModule),
+// and steps gated behind this flag (e.g. pointing at hardcoded real-network
+// addresses instead of test mocks, and transferring contract ownership away
+// from the deployer) silently break the entire test suite if this is left
+// true, with no error at the call site that changed it — the deploy itself
+// "succeeds" against real/hardcoded addresses and only surfaces as mass,
+// seemingly-unrelated test failures elsewhere (confirmed 2026-08-26: this
+// was left true after the last real deploy and broke every test using the
+// shared deploy fixture). Before running `npx hardhat test`, confirm this
+// is false — this is a plain build-time boolean (not an Ignition
+// parameter) so gated m.call(...) invocations are simply never added to the
+// deployment graph when false, rather than being skipped at execution time.
 const PRODUCTION = true;
 
 // Address allowed to mint ships from the Firebase Flow backend, with the same

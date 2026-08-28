@@ -231,11 +231,27 @@ describe("Ship costs, versions, and fleets", function () {
             hull: [0, 50, 100],
             engineSpeeds: [0, 1, 2],
             ...defaultGunsArmorsShields(),
+            // 8 entries, not 4: GenerateNewShip.sol rolls equipment.special
+            // as `% 8` (unlike mainWeapon/armor/shields, which are `% 4`),
+            // so any ship can randomly land on slot 4-7. Configuring only
+            // 4 here caused this test to flake — ship 6 (the variant-2 ship
+            // under test) intermittently rolled special 4-7, and
+            // ShipAttributes.calculateShipAttributes's specials[special]
+            // lookup panicked out-of-bounds on a 4-length array (this is
+            // the same underlying array-bounds shape as pre-audit.md's
+            // M-04, here hitting test data rather than production config).
+            // Slots 4-7 are unused by this test's assertions (only slot 1
+            // and ship 6's own rolled slot are checked), so they're filled
+            // with the same inert zero values slot 0 uses.
             specials: [
               { range: 0, strength: 0, movement: 0 },
               { range: 5, strength: 99, movement: 0 },
               { range: 3, strength: 40, movement: 0 },
               { range: 3, strength: 30, movement: 0 },
+              { range: 0, strength: 0, movement: 0 },
+              { range: 0, strength: 0, movement: 0 },
+              { range: 0, strength: 0, movement: 0 },
+              { range: 0, strength: 0, movement: 0 },
             ],
           },
         ],
@@ -332,11 +348,21 @@ describe("Ship costs, versions, and fleets", function () {
               v1Armors[3],
             ],
             shields: v1Shields,
+            // 8 entries, not 4 — see the identical comment in the previous
+            // test above; equipment.special rolls 0-7 (GenerateNewShip.sol
+            // uses `% 8` for it, unlike mainWeapon/armor/shields' `% 4`),
+            // and this test also calls calculateShipAttributesById on ship
+            // 6 below, which panics out-of-bounds if that ship's random
+            // special roll lands on an unconfigured slot 4-7.
             specials: [
               { range: 0, strength: 0, movement: 0 },
               { range: 1, strength: 1, movement: 0 },
               { range: 3, strength: 40, movement: 0 },
               { range: 3, strength: 30, movement: 0 },
+              { range: 0, strength: 0, movement: 0 },
+              { range: 0, strength: 0, movement: 0 },
+              { range: 0, strength: 0, movement: 0 },
+              { range: 0, strength: 0, movement: 0 },
             ],
           },
         ],
