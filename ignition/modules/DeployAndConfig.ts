@@ -20,7 +20,7 @@ import roguelikeStarterContent from "../data/roguelikeStarterContent.json";
 // is false — this is a plain build-time boolean (not an Ignition
 // parameter) so gated m.call(...) invocations are simply never added to the
 // deployment graph when false, rather than being skipped at execution time.
-const PRODUCTION = true;
+const PRODUCTION = false;
 
 // Address allowed to mint ships from the Firebase Flow backend, with the same
 // rights as ShipPurchaser.
@@ -364,6 +364,14 @@ const DeployModule = buildModule("DeployModule", (m) => {
   // Reuses AIShips/Fleets/Game/AIEncounters/ShipAttributes exactly as-is,
   // via the additive permission grants below.
   const roguelikeNodeMap = m.contract("RoguelikeNodeMap", [maps]);
+
+  // Permanent on-chain title/description storage for campaign and
+  // roguelike nodes — additive, standalone (doesn't touch NodeMap/
+  // RoguelikeNodeMap's structs), keyed by (isRoguelike, nodeId) since
+  // those two contracts each run their own global node id counter. See the
+  // contract's header comment for the full pull/edit/publish rationale.
+  const nodeContentRegistry = m.contract("NodeContentRegistry");
+
   const roguelikeRun = m.contract("RoguelikeRun");
   const roguelikeAIController = m.contract("RoguelikeAIController");
   const roguelikeMatch = m.contract("RoguelikeMatch", [
@@ -453,6 +461,17 @@ const DeployModule = buildModule("DeployModule", (m) => {
     "setNodeEditor",
     [MAP_EDITOR, true],
     { id: "AllowRoguelikeNodeEditor" },
+  );
+
+  // Reuse the same map-editor wallet as the node-content-registry publisher
+  // — lets MAP_EDITOR publish content manually in addition to whatever
+  // backend signer (NODE_CONTENT_PUBLISHER_PRIVATE_KEY, granted separately
+  // once provisioned) drives the batched frontend publish flow.
+  const allowNodeContentEditorCall = m.call(
+    nodeContentRegistry,
+    "setNodeEditor",
+    [MAP_EDITOR, true],
+    { id: "AllowNodeContentEditor" },
   );
 
   const tutorialClaim = m.contract("TutorialClaim", [ships, gameResults]);
@@ -1862,6 +1881,11 @@ const DeployModule = buildModule("DeployModule", (m) => {
       ],
     });
 
+    m.call(nodeContentRegistry, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferNodeContentRegistryOwnership",
+      after: [allowNodeContentEditorCall],
+    });
+
     m.call(roguelikeMatch, "transferOwnership", [MAP_EDITOR], {
       id: "TransferRoguelikeMatchOwnership",
     });
@@ -1998,6 +2022,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
     lobbies,
     nodeMap,
     roguelikeNodeMap,
+    nodeContentRegistry,
     roguelikeRun,
     roguelikeAIController,
     roguelikeMatch,
