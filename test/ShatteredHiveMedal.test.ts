@@ -216,4 +216,46 @@ describe("ShatteredHiveMedal", function () {
       );
     });
   });
+
+  describe("tokenURI", function () {
+    function decodeDataUri(uri: string, prefix: string): string {
+      expect(uri.startsWith(prefix)).to.be.true;
+      return Buffer.from(uri.slice(prefix.length), "base64").toString("utf8");
+    }
+
+    it("reverts for a nonexistent token id", async function () {
+      const { medal } = await loadFixture(deployFixture);
+
+      await expect(medal.read.tokenURI([1n])).to.be.rejectedWith(
+        "ERC721NonexistentToken",
+      );
+    });
+
+    it("reverts setArtAddress for non-owner callers", async function () {
+      const { player1Medal } = await loadFixture(deployFixture);
+
+      await expect(
+        player1Medal.write.setArtAddress([
+          "0x0000000000000000000000000000000000000001",
+        ]),
+      ).to.be.rejectedWith("OwnableUnauthorizedAccount");
+    });
+
+    it("returns a JSON data URI embedding the art contract's SVG once set", async function () {
+      const { medal, player2 } = await loadFixture(deployFixture);
+      const art = await hre.viem.deployContract("ShatteredHiveMedalArt", []);
+
+      await medal.write.setArtAddress([art.address]);
+      await medal.write.ownerMint([player2.account.address]);
+
+      const uri = await medal.read.tokenURI([1n]);
+      const json = JSON.parse(
+        decodeDataUri(uri, "data:application/json;base64,"),
+      );
+      expect(json.name).to.equal("Shattered Hive Campaign Medal #1");
+
+      const svg = decodeDataUri(json.image, "data:image/svg+xml;base64,");
+      expect(svg).to.equal(await art.read.getSVG());
+    });
+  });
 });

@@ -1067,6 +1067,57 @@ describe("Lobbies", function () {
       expect(lobby.state.status).to.equal(LobbyStatus.Open);
     });
 
+    it("should free the creator's own ships when timing out a joiner who never created a fleet", async function () {
+      // Regression test: a creator who commits their fleet before the
+      // joiner does, then has to timeoutJoiner() because the joiner never
+      // creates one, must get their own ships back (inFleet == false).
+      // Previously timeoutJoiner wiped lobby.players.creatorFleetId to 0
+      // without ever calling fleets.clearFleet() on it, permanently
+      // trapping the creator's ships with no remaining on-chain reference
+      // to their fleet id (see docs/design-analysis ship-trap audit).
+      const { creatorLobbies, joinerLobbies, creator, ships, randomManager } =
+        await loadFixture(deployLobbiesFixture);
+      const costLimit = 1000n;
+      const turnTime = 300n;
+      const creatorGoesFirst = true;
+
+      // Give the creator a ship and construct it.
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, zeroAddress, 1],
+        { value: parseEther("4.99") }
+      );
+      const shipTuple = (await ships.read.ships([1n])) as ShipTuple;
+      const ship = tupleToShip(shipTuple);
+      await randomManager.write.revealRandomness([ship.traits.serialNumber]);
+      await ships.write.constructAllMyShips({ account: creator.account });
+
+      // Create and join a lobby; creator commits their fleet first.
+      await creatorLobbies.write.createLobby([
+        costLimit,
+        turnTime,
+        creatorGoesFirst,
+        0n, // selectedMapId - no preset map,
+        100n, // maxScore
+        zeroAddress, // reservedJoiner - no reservation
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n],
+        generateStartingPositions([1n], true),
+      ]);
+
+      // Joiner never creates a fleet. Wait for timeout and kick them.
+      await hre.network.provider.send("evm_increaseTime", [301]);
+      await creatorLobbies.write.timeoutJoiner([1n]);
+
+      // The creator's ship must be released, not trapped.
+      const shipAfter = tupleToShip(
+        (await ships.read.ships([1n])) as ShipTuple
+      );
+      expect(shipAfter.shipData.inFleet).to.equal(false);
+    });
+
     it("should emit correct events when joiner quits with penalty", async function () {
       const {
         creatorLobbies,

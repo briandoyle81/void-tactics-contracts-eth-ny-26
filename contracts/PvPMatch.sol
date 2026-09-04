@@ -6,6 +6,7 @@ import "./Types.sol";
 import "./Game.sol";
 import "./IGameResults.sol";
 import "./IGameOrchestrator.sol";
+import "./IWinEffect.sol";
 
 // PvP-specific orchestration split out of Game.sol: this is what Lobbies
 // talks to for starting a match, and it owns human-forfeit mechanics
@@ -17,11 +18,30 @@ contract PvPMatch is Ownable, IGameOrchestrator {
     IGameResults public gameResults;
     address public lobbiesAddress;
 
+    // Pluggable win effects (see IWinEffect.sol) — fires for the winner of
+    // every non-draw PvP match, same mechanism roguelike combat nodes use
+    // via RoguelikeNodeMap's per-node list. PvP has no curated per-instance
+    // content the way roguelike nodes do, so this is one flat list rather
+    // than per-map/per-lobby — empty by default (opt-in), same as a
+    // roguelike node with nothing configured.
+    // Private + explicit getter (not a bare public array) so callers get a
+    // full-array read in one call, matching RoguelikeNodeMap.
+    // getNodeWinEffects — a public array only auto-generates an index
+    // accessor, not a length/full-array getter.
+    address[] private winEffects;
+
     error NotGame();
     error NotLobbiesContract();
     error TurnTimeoutNotReached();
     error NotInGame();
     error InvalidMove();
+
+    event WinEffectsSet(uint effectCount);
+    event WinEffectFailed(
+        address indexed player,
+        uint indexed gameId,
+        address indexed resolver
+    );
 
     constructor(address _game, address _gameResults) Ownable(msg.sender) {
         game = Game(_game);
@@ -30,6 +50,17 @@ contract PvPMatch is Ownable, IGameOrchestrator {
 
     function setLobbiesAddress(address _lobbiesAddress) external onlyOwner {
         lobbiesAddress = _lobbiesAddress;
+    }
+
+    /// @dev Full-replace the win-effect list, same "full replace, not
+    /// add/remove" shape as RoguelikeNodeMap.setNodeWinEffects.
+    function setWinEffects(address[] calldata _effects) external onlyOwner {
+        winEffects = _effects;
+        emit WinEffectsSet(_effects.length);
+    }
+
+    function getWinEffects() external view returns (address[] memory) {
+        return winEffects;
     }
 
     function setGameAddress(address _game) external onlyOwner {
@@ -116,6 +147,18 @@ contract PvPMatch is Ownable, IGameOrchestrator {
         // Only record non-draw results, matching Game._endGame's old guard
         if (_winner != address(0)) {
             gameResults.recordGameResult(_gameId, _winner, _loser);
+
+            // Each call is individually try/catch'd — onGameEnded is
+            // invoked by Game.sol as a bare external call with no
+            // try/catch of its own (see Game.sol's _endGame), so an
+            // unguarded revert here would fail the entire game-ending
+            // transaction. Same reasoning as RoguelikeMatch.onGameEnded's
+            // matching dispatch loop.
+            for (uint i = 0; i < winEffects.length; i++) {
+                try IWinEffect(winEffects[i]).onWin(_winner, _gameId) {} catch {
+                    emit WinEffectFailed(_winner, _gameId, winEffects[i]);
+                }
+            }
         }
     }
 }

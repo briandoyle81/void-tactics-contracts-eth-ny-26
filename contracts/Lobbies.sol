@@ -514,7 +514,15 @@ contract Lobbies is Ownable, ReentrancyGuard {
         _removePlayerFromLobby(lobby.players.joiner, _lobbyId);
         _addLobbyToOpenSet(_lobbyId);
 
-        // Reset lobby state
+        // Reset lobby state. The creator may already have committed a fleet
+        // (locking real ship NFTs via inFleet) before the joiner timed out —
+        // clear it the same way leaveLobby/quitWithPenalty do, or those
+        // ships are stuck inFleet=true forever with no remaining on-chain
+        // reference to their fleet id.
+        if (lobby.players.creatorFleetId != 0) {
+            fleets.clearFleet(lobby.players.creatorFleetId);
+        }
+
         lobby.players.joiner = address(0);
         lobby.state.status = LobbyStatus.Open;
         lobby.players.creatorFleetId = 0;

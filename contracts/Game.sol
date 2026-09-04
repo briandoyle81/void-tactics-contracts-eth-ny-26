@@ -57,6 +57,16 @@ contract Game is Ownable {
     // Game.sol's bytecode.
     mapping(uint16 => mapping(Special => address)) public specialResolvers;
 
+    // Ceiling on how high any heal effect (RepairDrones, faction Repair,
+    // etc.) can raise a ship's HP, as a percent of maxHullPoints — applies
+    // globally, across every mode (PvP/campaign/roguelike alike), since
+    // SpecialEffectsLib's hull-delta application has no per-mode context
+    // to key a narrower cap off of. Damage is unaffected; a ship already
+    // above this ceiling when it's lowered is left alone, not healed down
+    // to it (see SpecialEffectsLib._applyHullDelta). Defaults to 100 (no
+    // cap beyond the existing max-HP ceiling — unchanged prior behavior).
+    uint8 public healCapPercent = 100;
+
     mapping(uint => GameData) games;
     uint public gameCount;
 
@@ -93,6 +103,7 @@ contract Game is Ownable {
     error ShipNotOwned();
     error ShipAlreadyMoved();
     error InvalidMove();
+    error InvalidHealCapPercent();
     error ShipDestroyed();
     error GameAlreadyExists();
 
@@ -135,6 +146,11 @@ contract Game is Ownable {
         address _resolver
     ) public onlyOwner {
         specialResolvers[_variant][_slot] = _resolver;
+    }
+
+    function setHealCapPercent(uint8 _percent) public onlyOwner {
+        if (_percent > 100) revert InvalidHealCapPercent();
+        healCapPercent = _percent;
     }
 
     function startGame(
@@ -1094,7 +1110,8 @@ contract Game is Ownable {
                     targetShipId: _targetShipId,
                     newRow: _newRow,
                     newCol: _newCol
-                })
+                }),
+                healCapPercent
             );
         // Removals must be applied before relocations — a relocation that
         // lands on a cell a removal is vacating would otherwise get

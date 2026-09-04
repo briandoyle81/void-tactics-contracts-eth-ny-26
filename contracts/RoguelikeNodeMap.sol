@@ -65,6 +65,14 @@ contract RoguelikeNodeMap is Ownable {
     mapping(uint => RoguelikeNode) private nodes;
     uint public nodeCount;
 
+    // nodeId => ordered list of pluggable win-effect resolvers
+    // (IRoguelikeWinEffect) to run after a combat win at that node, in
+    // addition to the fixed campaignAutoHealPercent floor step (which
+    // stays hardcoded in RoguelikeMatch, since every node needs it).
+    // Additive/optional — a node with nothing configured runs no extra
+    // effects. Read by RoguelikeMatch.onGameEnded.
+    mapping(uint => address[]) private nodeWinEffects;
+
     mapping(address => bool) public isNodeEditor;
 
     error NotNodeEditor();
@@ -88,6 +96,7 @@ contract RoguelikeNodeMap is Ownable {
     event NodeUpdated(uint indexed nodeId);
     event ChildAdded(uint indexed parentId, uint indexed childId, bool twoWay);
     event ChildRemoved(uint indexed parentId, uint indexed childId);
+    event NodeWinEffectsSet(uint indexed nodeId, uint effectCount);
 
     constructor(address _maps) Ownable(msg.sender) {
         maps = IMaps(_maps);
@@ -135,6 +144,24 @@ contract RoguelikeNodeMap is Ownable {
         if (!campaignExists[_campaignId]) revert CampaignNotFound();
         if (_percent > 100) revert InvalidHealPercent();
         campaignAutoHealPercent[_campaignId] = _percent;
+    }
+
+    /**
+     * @dev Full-replace the list of win-effect resolvers (IRoguelikeWinEffect)
+     * for a node, run in order by RoguelikeMatch.onGameEnded after every
+     * combat win there — a bonus/reward/etc. beyond the fixed
+     * campaignAutoHealPercent floor. Pass an empty array to clear. No
+     * validation of the addresses themselves (e.g. that they implement the
+     * interface) — same trust level as the existing resolver-address
+     * setters elsewhere in this codebase (Game.setFactionAbilityResolver).
+     */
+    function setNodeWinEffects(
+        uint _nodeId,
+        address[] calldata _effects
+    ) external onlyNodeEditor {
+        if (!nodes[_nodeId].exists) revert NodeNotFound();
+        nodeWinEffects[_nodeId] = _effects;
+        emit NodeWinEffectsSet(_nodeId, _effects.length);
     }
 
     function setCampaignRequiredVariant(
@@ -274,6 +301,12 @@ contract RoguelikeNodeMap is Ownable {
     ) external view returns (RoguelikeEdge[] memory) {
         if (!nodes[_nodeId].exists) revert NodeNotFound();
         return nodes[_nodeId].children;
+    }
+
+    function getNodeWinEffects(
+        uint _nodeId
+    ) external view returns (address[] memory) {
+        return nodeWinEffects[_nodeId];
     }
 
     // Finds the edge from _parentId to _childId, reverting if _childId

@@ -5068,6 +5068,148 @@ describe("Game", function () {
       expect(ship2AttrsAfter.hullPoints).to.equal(40); // Should be exactly 40 since RepairDrones restores 40 HP
     });
 
+    it("should cap a RepairDrones heal at healCapPercent of maxHullPoints instead of the full 40", async function () {
+      const {
+        creatorLobbies,
+        joinerLobbies,
+        creator,
+        joiner,
+        ships,
+        game,
+        randomManager,
+        owner,
+      } = await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.revealRandomness([
+          ship.traits.serialNumber,
+        ]);
+      }
+
+      const repairShip: Ship = {
+        name: "Repair Ship",
+        id: 1n,
+        equipment: {
+          mainWeapon: 0,
+          armor: 0,
+          shields: 0,
+          special: 2, // RepairDrones
+        },
+        traits: {
+          serialNumber: 12345n,
+          colors: {
+            h1: 0,
+            s1: 0,
+            l1: 0,
+            h2: 0,
+            s2: 0,
+            l2: 0,
+            h3: 0,
+            s3: 0,
+            l3: 0,
+          },
+          variant: 1,
+          accuracy: 0,
+          hull: 0,
+          speed: 2,
+        },
+        shipData: {
+          shipsDestroyed: 0,
+          costsVersion: 1,
+          cost: 0,
+          shiny: false,
+          constructed: false,
+          inFleet: false,
+          isFreeShip: false,
+          modified: 0,
+          timestampDestroyed: 0n,
+        },
+        owner: creator.account.address,
+      };
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+      await ships.write.customizeShip([1n, repairShip], {
+        account: owner.account,
+      });
+      await ships.write.constructShip([2n], { account: creator.account });
+      await ships.write.constructShip([6n], { account: joiner.account });
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n, 2n],
+        generateStartingPositions([1n, 2n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n],
+        generateStartingPositions([6n], false),
+      ]);
+
+      await (game.write as any).debugSetHullPointsToZero([1n, 2n], {
+        account: owner.account,
+      });
+      const { maxHullPoints } = await game.read.getShipAttributes([1n, 2n]);
+
+      // Deliberately far below RepairDrones' fixed 40-HP strength (the
+      // baseline test above confirms maxHullPoints >= 40, since an
+      // uncapped heal there lands at exactly 40) — 1% is guaranteed to
+      // bite regardless of this ship's actual max HP.
+      const capPercent = 1;
+      const expectedCap = (Number(maxHullPoints) * capPercent) / 100; // integer division, matches _applyHullDelta's Solidity math
+      await game.write.setHealCapPercent([capPercent], {
+        account: owner.account,
+      });
+      expect(await game.read.healCapPercent()).to.equal(capPercent);
+
+      await game.write.moveShip([1n, 1n, 2, 0, ActionType.Special, 2n], {
+        account: creator.account,
+      });
+
+      const ship2AttrsAfter = await game.read.getShipAttributes([1n, 2n]);
+      expect(ship2AttrsAfter.hullPoints).to.equal(Math.floor(expectedCap));
+      expect(ship2AttrsAfter.hullPoints).to.be.lessThan(40);
+    });
+
+    it("reverts setHealCapPercent above 100 and from a non-owner address", async function () {
+      const { game, creator } = await loadFixture(deployGameFixture);
+
+      await expect(
+        game.write.setHealCapPercent([101]),
+      ).to.be.rejectedWith("InvalidHealCapPercent");
+
+      const creatorGame = await hre.viem.getContractAt(
+        "Game",
+        game.address,
+        { client: { wallet: creator } },
+      );
+      await expect(
+        creatorGame.write.setHealCapPercent([50]),
+      ).to.be.rejected;
+
+      expect(await game.read.healCapPercent()).to.equal(100);
+    });
+
     it("should not complete round until repaired (formerly 0 HP) ship moves", async function () {
       const {
         creatorLobbies,

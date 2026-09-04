@@ -695,6 +695,280 @@ describe("RoguelikeMatch / RoguelikeResupply / RoguelikeNodeMap", function () {
     });
   });
 
+  describe("Pluggable win effects", function () {
+    it("reverts setNodeWinEffects from a non-editor and for a non-existent node", async function () {
+      const { deployed, other } = await loadFixture(deployFixture);
+      const { roguelikeNodeMap } = deployed;
+      const { rootNodeId } = await setupCampaignWithRoot(
+        roguelikeNodeMap,
+        deployed.maps,
+        deployed.aiEncounters,
+      );
+
+      const otherRoguelikeNodeMap = await hre.viem.getContractAt(
+        "RoguelikeNodeMap",
+        roguelikeNodeMap.address,
+        { client: { wallet: other } },
+      );
+      await expect(
+        otherRoguelikeNodeMap.write.setNodeWinEffects([
+          rootNodeId,
+          [deployed.decBonusWinEffect.address],
+        ]),
+      ).to.be.rejectedWith("NotNodeEditor");
+
+      await expect(
+        roguelikeNodeMap.write.setNodeWinEffects([
+          999n,
+          [deployed.decBonusWinEffect.address],
+        ]),
+      ).to.be.rejectedWith("NodeNotFound");
+    });
+
+    it("mints the configured DEC bonus to the player on a combat-node win", async function () {
+      const {
+        deployed,
+        owner,
+        human,
+        humanRoguelikeMatch,
+        otherRoguelikeMatch,
+        humanGame,
+      } = await loadFixture(deployFixture);
+      const { ships, maps, aiEncounters, roguelikeNodeMap, randomManager, game, droneEnergyCores } =
+        deployed;
+      const { campaignId, rootNodeId } = await setupCampaignWithRoot(
+        roguelikeNodeMap,
+        maps,
+        aiEncounters,
+      );
+      await roguelikeNodeMap.write.setNodeWinEffects([
+        rootNodeId,
+        [deployed.decBonusWinEffect.address],
+      ]);
+
+      await purchaseAndConstructHumanShips(ships, randomManager, human);
+      const decBefore = await droneEnergyCores.read.balanceOf([
+        human.account.address,
+      ]);
+
+      await humanRoguelikeMatch.write.startRun([campaignId, [1n]]);
+      await humanRoguelikeMatch.write.enterCombatNode([
+        rootNodeId,
+        [{ row: 0, col: 0 }],
+      ]);
+      const gameId = ROGUELIKE_GAME_ID_OFFSET + 1n;
+      await winCombatNode(
+        game,
+        humanGame,
+        otherRoguelikeMatch,
+        owner,
+        human,
+        gameId,
+        1n,
+      );
+
+      const decAfter = await droneEnergyCores.read.balanceOf([
+        human.account.address,
+      ]);
+      const bonusAmount = await deployed.decBonusWinEffect.read.bonusAmount();
+      expect(decAfter - decBefore).to.equal(bonusAmount);
+    });
+
+    it("grants a free ship to the player on a combat-node win", async function () {
+      const {
+        deployed,
+        owner,
+        human,
+        humanRoguelikeMatch,
+        otherRoguelikeMatch,
+        humanGame,
+      } = await loadFixture(deployFixture);
+      const { ships, maps, aiEncounters, roguelikeNodeMap, randomManager, game } =
+        deployed;
+      const { campaignId, rootNodeId } = await setupCampaignWithRoot(
+        roguelikeNodeMap,
+        maps,
+        aiEncounters,
+      );
+      await roguelikeNodeMap.write.setNodeWinEffects([
+        rootNodeId,
+        [deployed.shipGrantWinEffect.address],
+      ]);
+
+      await purchaseAndConstructHumanShips(ships, randomManager, human);
+      const shipCountBefore = await ships.read.shipCount();
+
+      await humanRoguelikeMatch.write.startRun([campaignId, [1n]]);
+      await humanRoguelikeMatch.write.enterCombatNode([
+        rootNodeId,
+        [{ row: 0, col: 0 }],
+      ]);
+      const gameId = ROGUELIKE_GAME_ID_OFFSET + 1n;
+      await winCombatNode(
+        game,
+        humanGame,
+        otherRoguelikeMatch,
+        owner,
+        human,
+        gameId,
+        1n,
+      );
+
+      const shipCountAfter = await ships.read.shipCount();
+      expect(shipCountAfter - shipCountBefore).to.equal(1n);
+      const grantedShip = await ships.read.getShip([shipCountAfter]);
+      expect(grantedShip.owner.toLowerCase()).to.equal(
+        human.account.address.toLowerCase(),
+      );
+      expect(grantedShip.shipData.isFreeShip).to.equal(true);
+    });
+
+    it("heals a survivor above the campaign's ordinary auto-heal floor when configured on the node", async function () {
+      const {
+        deployed,
+        owner,
+        human,
+        humanRoguelikeMatch,
+        otherRoguelikeMatch,
+        humanGame,
+      } = await loadFixture(deployFixture);
+      const { ships, maps, aiEncounters, roguelikeNodeMap, randomManager, game } =
+        deployed;
+      const { campaignId, rootNodeId } = await setupCampaignWithRoot(
+        roguelikeNodeMap,
+        maps,
+        aiEncounters,
+      );
+      // Low base floor (10%) so the bonus resolver's 100% heal-to is
+      // clearly distinguishable from what the ordinary floor alone would
+      // have produced.
+      await roguelikeNodeMap.write.setCampaignAutoHealPercent([campaignId, 10]);
+      await roguelikeNodeMap.write.setNodeWinEffects([
+        rootNodeId,
+        [deployed.healAboveFloorWinEffect.address],
+      ]);
+      expect(
+        await deployed.healAboveFloorWinEffect.read.healToPercent(),
+      ).to.equal(100);
+
+      await purchaseAndConstructHumanShips(ships, randomManager, human);
+      await humanRoguelikeMatch.write.startRun([campaignId, [1n]]);
+      await humanRoguelikeMatch.write.enterCombatNode([
+        rootNodeId,
+        [{ row: 0, col: 0 }],
+      ]);
+      const gameId = ROGUELIKE_GAME_ID_OFFSET + 1n;
+      await winCombatNode(
+        game,
+        humanGame,
+        otherRoguelikeMatch,
+        owner,
+        human,
+        gameId,
+        1n,
+      );
+
+      const attrsAfterCombat = await game.read.getShipAttributes([gameId, 1n]);
+      expect(attrsAfterCombat.hullPoints).to.be.lessThan(
+        attrsAfterCombat.maxHullPoints,
+      );
+
+      const persistedHP = await deployed.roguelikeRun.read.getShipHP([
+        human.account.address,
+        1n,
+      ]);
+      expect(persistedHP).to.equal(attrsAfterCombat.maxHullPoints);
+    });
+
+    it("still completes the win when a configured win effect reverts, emitting WinEffectFailed instead of bricking the game-end tx", async function () {
+      const {
+        deployed,
+        owner,
+        human,
+        humanRoguelikeMatch,
+        otherRoguelikeMatch,
+        humanGame,
+        publicClient,
+      } = await loadFixture(deployFixture);
+      const { ships, maps, aiEncounters, roguelikeNodeMap, randomManager, game } =
+        deployed;
+      const { campaignId, rootNodeId } = await setupCampaignWithRoot(
+        roguelikeNodeMap,
+        maps,
+        aiEncounters,
+      );
+
+      const brokenEffect = await hre.viem.deployContract(
+        "MockAlwaysRevertsWinEffect",
+        [],
+      );
+      // Sandwiched between two working effects so the test also proves the
+      // loop doesn't stop early — both the DEC bonus (before) and the ship
+      // grant (after) must still fire despite the broken one in between.
+      await roguelikeNodeMap.write.setNodeWinEffects([
+        rootNodeId,
+        [
+          deployed.decBonusWinEffect.address,
+          brokenEffect.address,
+          deployed.shipGrantWinEffect.address,
+        ],
+      ]);
+
+      await purchaseAndConstructHumanShips(ships, randomManager, human);
+      const decBefore = await deployed.droneEnergyCores.read.balanceOf([
+        human.account.address,
+      ]);
+      const shipCountBefore = await ships.read.shipCount();
+
+      await humanRoguelikeMatch.write.startRun([campaignId, [1n]]);
+      await humanRoguelikeMatch.write.enterCombatNode([
+        rootNodeId,
+        [{ row: 0, col: 0 }],
+      ]);
+      const gameId = ROGUELIKE_GAME_ID_OFFSET + 1n;
+
+      // The critical assertion: winCombatNode's final takeAITurn call
+      // triggers onGameEnded -> the win-effect dispatch loop. Before the
+      // fix this would have reverted the whole game-ending transaction.
+      const blockBeforeWin = await publicClient.getBlockNumber();
+      await winCombatNode(
+        game,
+        humanGame,
+        otherRoguelikeMatch,
+        owner,
+        human,
+        gameId,
+        1n,
+      );
+
+      const run = await deployed.roguelikeRun.read.getRun([
+        human.account.address,
+      ]);
+      expect(run.status).to.equal(2); // Won — game-end wasn't bricked
+
+      const decAfter = await deployed.droneEnergyCores.read.balanceOf([
+        human.account.address,
+      ]);
+      const bonusAmount = await deployed.decBonusWinEffect.read.bonusAmount();
+      expect(decAfter - decBefore).to.equal(bonusAmount); // effect before the broken one still ran
+
+      const shipCountAfter = await ships.read.shipCount();
+      expect(shipCountAfter - shipCountBefore).to.equal(1n); // effect after the broken one still ran
+
+      const events = await deployed.roguelikeMatch.getEvents.WinEffectFailed(
+        undefined,
+        { fromBlock: blockBeforeWin, toBlock: "latest" },
+      );
+      expect(events).to.have.length(1);
+      expect(events[0].args.resolver?.toLowerCase()).to.equal(
+        brokenEffect.address.toLowerCase(),
+      );
+      expect(events[0].args.player?.toLowerCase()).to.equal(
+        human.account.address.toLowerCase(),
+      );
+    });
+  });
+
   describe("Run-ending retreat", function () {
     it("ends the run and releases the roster on a between-node retreat", async function () {
       const { deployed, human, humanRoguelikeMatch } = await loadFixture(

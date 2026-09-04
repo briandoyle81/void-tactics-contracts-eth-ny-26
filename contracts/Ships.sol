@@ -6,9 +6,7 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-// TODO: CRITICAL Confirm which reentrancy guard to use
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-// import "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
 import "./Types.sol";
 import "./IRenderer.sol";
@@ -141,8 +139,6 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
             }
         }
 
-        // TODO: CRITICAL -> Evaluate side effects of this
-
         // Free-ship claims don't count as purchases (referral/tier stats key
         // off actual paid volume).
         if (!_isFreeShip) {
@@ -194,11 +190,17 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         }
     }
 
-    // Used for bonuses, special ships, events, etc.
-    // TODO CRITICAL:
-    // This allows players to predict which ships to overwrite
-    // with special ships.
-    // I don't think I care, but should I?
+    // Used for bonuses, special ships, events, etc. Overwrites _id's traits
+    // regardless of current owner — no ownership check by design (matches
+    // customizeShip's other authorized-caller-only callers). This makes any
+    // "mint now, customize a predicted future id later" flow genuinely
+    // exploitable: shipCount is public and sequential, so an outside
+    // address could predict the target id and acquire it before the
+    // customize call lands, diverting the special ship's value to itself.
+    // Never build a feature that mints then customizes by id in a later,
+    // separate call — use createSpecificShip below instead, which mints
+    // and customizes atomically to a caller-specified recipient in one
+    // transaction, closing that window entirely.
     function customizeShip(uint _id, Ship calldata _ship) external {
         if (!isAllowedToCreateShips[msg.sender]) {
             revert NotAuthorized(msg.sender);
@@ -710,16 +712,6 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
     ) external view returns (uint) {
         return shipsOwned[_owner].at(_index);
     }
-
-    // // TODO CRITICAL: This almost certainly needs to be paginated
-    // function getShipsOwned(address _owner) public view returns (Ship[] memory) {
-    //     uint[] memory ids = getShipIdsOwned(_owner);
-    //     Ship[] memory shipsFetched = new Ship[](ids.length);
-    //     for (uint i = 0; i < ids.length; i++) {
-    //         shipsFetched[i] = ships[ids[i]];
-    //     }
-    //     return shipsFetched;
-    // }
 
     function getShipsByIds(
         uint[] calldata _ids

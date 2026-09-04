@@ -20,7 +20,7 @@ import roguelikeStarterContent from "../data/roguelikeStarterContent.json";
 // is false — this is a plain build-time boolean (not an Ignition
 // parameter) so gated m.call(...) invocations are simply never added to the
 // deployment graph when false, rather than being skipped at execution time.
-const PRODUCTION = true;
+const PRODUCTION = false;
 
 // Address allowed to mint ships from the Firebase Flow backend, with the same
 // rights as ShipPurchaser.
@@ -397,6 +397,28 @@ const DeployModule = buildModule("DeployModule", (m) => {
     roguelikeRun,
   ]);
 
+  // Pluggable roguelike win effects (see IRoguelikeWinEffect.sol) — none
+  // are assigned to any node by default (RoguelikeNodeMap.setNodeWinEffects
+  // is opt-in, empty until an editor configures it, same as
+  // campaignAutoHealPercent defaulting to 0/unset). Deployed + granted here
+  // so they're ready to be wired onto specific nodes later without a
+  // redeploy. Default config values (bonus amount, heal-to percent, ship
+  // variant/tier) are placeholders — tune via each contract's own setters.
+  const decBonusWinEffect = m.contract("DECBonusWinEffect", [
+    droneEnergyCores,
+    20, // bonusAmount placeholder — tune via setBonusAmount
+  ]);
+  const healAboveFloorWinEffect = m.contract("HealAboveFloorWinEffect", [
+    roguelikeRun,
+    shipAttributes,
+    100, // healToPercent placeholder (full heal) — tune via setHealToPercent
+  ]);
+  const shipGrantWinEffect = m.contract("ShipGrantWinEffect", [
+    ships,
+    1, // shipVariant placeholder (0 is invalid — Ships.createShips requires >= 1) — tune via setShipConfig
+    0, // shipTier placeholder — tune via setShipConfig
+  ]);
+
   // ShipsRouter.lobbyAddress used to point straight at SinglePlayerMatch,
   // whose isSinglePlayerOrchestrator is a hardcoded `== address(this)`
   // check — a second AI-owning orchestrator (RoguelikeMatch) wouldn't be
@@ -456,6 +478,69 @@ const DeployModule = buildModule("DeployModule", (m) => {
     [roguelikeResupply, true],
     { id: "AllowRoguelikeResupplyToModifyRuns" },
   );
+
+  // Win-effect wiring: each resolver needs (1) RoguelikeMatch authorized
+  // to actually trigger it, and (2) whatever grant lets it perform its own
+  // effect on the contract it targets.
+  const allowRoguelikeMatchToTriggerDecBonusCall = m.call(
+    decBonusWinEffect,
+    "setIsAllowedToTrigger",
+    [roguelikeMatch, true],
+    { id: "AllowRoguelikeMatchToTriggerDecBonus" },
+  );
+  const authorizeDecBonusWinEffectToMintDecCall = m.call(
+    droneEnergyCores,
+    "setAuthorizedToMint",
+    [decBonusWinEffect, true],
+    { id: "AuthorizeDecBonusWinEffectToMintDec" },
+  );
+  const allowRoguelikeMatchToTriggerHealAboveFloorCall = m.call(
+    healAboveFloorWinEffect,
+    "setIsAllowedToTrigger",
+    [roguelikeMatch, true],
+    { id: "AllowRoguelikeMatchToTriggerHealAboveFloor" },
+  );
+  const allowHealAboveFloorWinEffectToModifyRunsCall = m.call(
+    roguelikeRun,
+    "setIsAllowedToModifyRuns",
+    [healAboveFloorWinEffect, true],
+    { id: "AllowHealAboveFloorWinEffectToModifyRuns" },
+  );
+  const allowRoguelikeMatchToTriggerShipGrantCall = m.call(
+    shipGrantWinEffect,
+    "setIsAllowedToTrigger",
+    [roguelikeMatch, true],
+    { id: "AllowRoguelikeMatchToTriggerShipGrant" },
+  );
+  const allowShipGrantWinEffectToCreateShipsCall = m.call(
+    ships,
+    "setIsAllowedToCreateShips",
+    [shipGrantWinEffect, true],
+    { id: "AllowShipGrantWinEffectToCreateShips" },
+  );
+
+  // Same three resolvers, now also independently authorized to be
+  // triggered by PvPMatch — its own winEffects list defaults to empty
+  // (opt-in), same as a roguelike node with nothing configured.
+  const allowPvpMatchToTriggerDecBonusCall = m.call(
+    decBonusWinEffect,
+    "setIsAllowedToTrigger",
+    [pvpMatch, true],
+    { id: "AllowPvpMatchToTriggerDecBonus" },
+  );
+  const allowPvpMatchToTriggerHealAboveFloorCall = m.call(
+    healAboveFloorWinEffect,
+    "setIsAllowedToTrigger",
+    [pvpMatch, true],
+    { id: "AllowPvpMatchToTriggerHealAboveFloor" },
+  );
+  const allowPvpMatchToTriggerShipGrantCall = m.call(
+    shipGrantWinEffect,
+    "setIsAllowedToTrigger",
+    [pvpMatch, true],
+    { id: "AllowPvpMatchToTriggerShipGrant" },
+  );
+
   const allowRoguelikeNodeEditorCall = m.call(
     roguelikeNodeMap,
     "setNodeEditor",
@@ -1397,6 +1482,18 @@ const DeployModule = buildModule("DeployModule", (m) => {
     { after: [nodeCalls["f06"]] },
   );
 
+  // On-chain art for the medal, referenced via an owner-settable address
+  // (not a constructor param) so it can be swapped later without
+  // redeploying ShatteredHiveMedal itself — see ShatteredHiveMedal.sol's
+  // `art` field / setArtAddress.
+  const shatteredHiveMedalArt = m.contract("ShatteredHiveMedalArt");
+  const setShatteredHiveMedalArtCall = m.call(
+    shatteredHiveMedal,
+    "setArtAddress",
+    [shatteredHiveMedalArt],
+    { id: "SetShatteredHiveMedalArt" },
+  );
+
   // Gate variant-2 purchases on holding the medal.
   const setVariant2GateCall = m.call(variantPurchaseGate, "setRequiredNft", [
     2,
@@ -1670,7 +1767,31 @@ const DeployModule = buildModule("DeployModule", (m) => {
     gameResults,
     game,
     m.getAccount(0), // feeRecipient (protocol fee sink) == deployer
+    randomManager, // backs the round-1 pairing shuffle in buildBracket()
   ]);
+
+  // Same three win-effect resolvers, now also independently authorized to
+  // be triggered by Tournament — its own winEffects list defaults to
+  // empty (opt-in), same as PvPMatch/a roguelike node with nothing
+  // configured.
+  const allowTournamentToTriggerDecBonusCall = m.call(
+    decBonusWinEffect,
+    "setIsAllowedToTrigger",
+    [tournament, true],
+    { id: "AllowTournamentToTriggerDecBonus" },
+  );
+  const allowTournamentToTriggerHealAboveFloorCall = m.call(
+    healAboveFloorWinEffect,
+    "setIsAllowedToTrigger",
+    [tournament, true],
+    { id: "AllowTournamentToTriggerHealAboveFloor" },
+  );
+  const allowTournamentToTriggerShipGrantCall = m.call(
+    shipGrantWinEffect,
+    "setIsAllowedToTrigger",
+    [tournament, true],
+    { id: "AllowTournamentToTriggerShipGrant" },
+  );
 
   // Deploy GameBlobRegistry — stores Walrus blobId per player per completed game
   const gameBlobRegistry = m.contract("GameBlobRegistry", [
@@ -1704,6 +1825,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
         allowFirebaseFlowMinterToCreateShipsCall,
         setMaxVariantForTutorialShipsCall,
         allowFreeShipClaimToCreateShipsCall,
+        allowShipGrantWinEffectToCreateShipsCall,
       ],
     });
 
@@ -1878,6 +2000,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
       after: [
         allowRoguelikeMatchToModifyRunsCall,
         allowRoguelikeResupplyToModifyRunsCall,
+        allowHealAboveFloorWinEffectToModifyRunsCall,
       ],
     });
 
@@ -1892,6 +2015,33 @@ const DeployModule = buildModule("DeployModule", (m) => {
 
     m.call(roguelikeResupply, "transferOwnership", [MAP_EDITOR], {
       id: "TransferRoguelikeResupplyOwnership",
+    });
+
+    m.call(decBonusWinEffect, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferDecBonusWinEffectOwnership",
+      after: [
+        allowRoguelikeMatchToTriggerDecBonusCall,
+        allowPvpMatchToTriggerDecBonusCall,
+        allowTournamentToTriggerDecBonusCall,
+      ],
+    });
+
+    m.call(healAboveFloorWinEffect, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferHealAboveFloorWinEffectOwnership",
+      after: [
+        allowRoguelikeMatchToTriggerHealAboveFloorCall,
+        allowPvpMatchToTriggerHealAboveFloorCall,
+        allowTournamentToTriggerHealAboveFloorCall,
+      ],
+    });
+
+    m.call(shipGrantWinEffect, "transferOwnership", [MAP_EDITOR], {
+      id: "TransferShipGrantWinEffectOwnership",
+      after: [
+        allowRoguelikeMatchToTriggerShipGrantCall,
+        allowPvpMatchToTriggerShipGrantCall,
+        allowTournamentToTriggerShipGrantCall,
+      ],
     });
 
     m.call(
@@ -1914,6 +2064,7 @@ const DeployModule = buildModule("DeployModule", (m) => {
 
     m.call(shatteredHiveMedal, "transferOwnership", [MAP_EDITOR], {
       id: "TransferShatteredHiveMedalOwnership",
+      after: [setShatteredHiveMedalArtCall],
     });
 
     m.call(universalCredits, "transferOwnership", [MAP_EDITOR], {
@@ -1928,7 +2079,11 @@ const DeployModule = buildModule("DeployModule", (m) => {
 
     m.call(droneEnergyCores, "transferOwnership", [MAP_EDITOR], {
       id: "TransferDroneEnergyCoresOwnership",
-      after: [setDecMintIsActiveCall, authorizeShipsRouterToMintDecCall],
+      after: [
+        setDecMintIsActiveCall,
+        authorizeShipsRouterToMintDecCall,
+        authorizeDecBonusWinEffectToMintDecCall,
+      ],
     });
 
     m.call(droneStorefront, "transferOwnership", [MAP_EDITOR], {
@@ -2027,9 +2182,13 @@ const DeployModule = buildModule("DeployModule", (m) => {
     roguelikeAIController,
     roguelikeMatch,
     roguelikeResupply,
+    decBonusWinEffect,
+    healAboveFloorWinEffect,
+    shipGrantWinEffect,
     singlePlayerOrchestratorRegistry,
     variantPurchaseGate,
     shatteredHiveMedal,
+    shatteredHiveMedalArt,
     tutorialClaim,
     freeShipClaim,
     worldId,

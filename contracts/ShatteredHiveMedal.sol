@@ -3,7 +3,10 @@ pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/utils/Base64.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 import "./INodeMapView.sol";
+import "./IShatteredHiveMedalArt.sol";
 
 // Soulbound (non-transferable) one-per-address campaign completion medal.
 // Awarded via a player-initiated claimMedal() — mirrors TutorialClaim.sol's
@@ -13,7 +16,14 @@ import "./INodeMapView.sol";
 // match completion. Holding this medal is what VariantPurchaseGate.sol
 // requires for variant-2 ship purchases (configured there, not here).
 contract ShatteredHiveMedal is ERC721, Ownable {
+    using Strings for uint256;
+
     INodeMapView public nodeMap;
+    // Owner-settable (not a constructor param) so the art can be swapped
+    // later — e.g. a rendering fix — without redeploying this contract and
+    // losing every holder's token id/ownership history. See
+    // ShatteredHiveMedalArt.sol.
+    IShatteredHiveMedalArt public art;
     // The campaign's true final node — deliberately an explicit,
     // owner-configurable value rather than inferred from NodeMap's graph
     // structure (the campaign graph can have multiple leaf nodes, e.g. a
@@ -40,6 +50,43 @@ contract ShatteredHiveMedal is ERC721, Ownable {
 
     function setFinalNodeId(uint _finalNodeId) external onlyOwner {
         finalNodeId = _finalNodeId;
+    }
+
+    function setArtAddress(address _art) external onlyOwner {
+        art = IShatteredHiveMedalArt(_art);
+    }
+
+    // The medal has no traits/equipment to key art off of (see
+    // ShatteredHiveMedalArt.sol) — every token renders the same image, same
+    // two-layer Base64 (SVG -> data URI -> JSON -> data URI) pattern
+    // RenderMetadata.sol/ImageRenderer.sol already use for ship art.
+    function tokenURI(
+        uint256 _tokenId
+    ) public view override returns (string memory) {
+        _requireOwned(_tokenId);
+
+        string memory image = string(
+            abi.encodePacked(
+                "data:image/svg+xml;base64,",
+                Base64.encode(bytes(art.getSVG()))
+            )
+        );
+        string memory json = string(
+            abi.encodePacked(
+                '{"name": "Shattered Hive Campaign Medal #',
+                _tokenId.toString(),
+                '","description": "Awarded for completing the Shattered Hive campaign.","image": "',
+                image,
+                '"}'
+            )
+        );
+        return
+            string(
+                abi.encodePacked(
+                    "data:application/json;base64,",
+                    Base64.encode(bytes(json))
+                )
+            );
     }
 
     // Player-initiated, self-verifying, one-shot per address.

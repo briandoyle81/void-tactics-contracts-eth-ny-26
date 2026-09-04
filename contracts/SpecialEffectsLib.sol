@@ -64,7 +64,8 @@ library SpecialEffectsLib {
         GameData storage game,
         address resolver,
         IShips ships,
-        ResolveContext memory ctx
+        ResolveContext memory ctx,
+        uint8 healCapPercent
     ) external returns (EffectResults memory results) {
         // Defense in depth: guarantee a non-zero target actually exists and
         // isn't already destroyed before any resolver ever sees it, the same
@@ -100,7 +101,12 @@ library SpecialEffectsLib {
 
         for (uint i = 0; i < effects.length; i++) {
             SpecialEffect memory effect = effects[i];
-            (bool removed, uint8 kind) = _applyEffect(game, ctx.shipId, effect);
+            (bool removed, uint8 kind) = _applyEffect(
+                game,
+                ctx.shipId,
+                effect,
+                healCapPercent
+            );
             if (removed) {
                 results.removeShipIds[removeIdx] = effect.shipId;
                 results.removeKinds[removeIdx] = kind;
@@ -134,7 +140,8 @@ library SpecialEffectsLib {
     function _applyEffect(
         GameData storage game,
         uint _actingShipId,
-        SpecialEffect memory _effect
+        SpecialEffect memory _effect,
+        uint8 _healCapPercent
     ) private returns (bool removed, uint8 kind) {
         if (_effect.removalKind != 0) {
             return (true, _effect.removalKind);
@@ -168,20 +175,28 @@ library SpecialEffectsLib {
                 attrs,
                 _effect.shipId,
                 _effect.hullDelta,
-                _actingShipId
+                _actingShipId,
+                _healCapPercent
             );
         }
 
         return (false, 0);
     }
 
-    // Capped at maxHullPoints on heal, same as RepairDrones.
+    // Heal (positive delta) is capped at _healCapPercent% of maxHullPoints —
+    // a ceiling on how high a heal can raise HP, never a floor: a ship
+    // already above that ceiling (e.g. from taking less than
+    // (100 - _healCapPercent)% damage) is left alone, not healed down to
+    // it. Damage (negative delta) is unaffected by this cap and can still
+    // bring a ship to 0 regardless. Same percent-of-max arithmetic pattern
+    // as RoguelikeMatch.sol's campaignAutoHealPercent floor.
     function _applyHullDelta(
         GameData storage game,
         Attributes storage attrs,
         uint _shipId,
         int16 _hullDelta,
-        uint _actingShipId
+        uint _actingShipId,
+        uint8 _healCapPercent
     ) private {
         if (_hullDelta < 0) {
             uint16 damage = uint16(uint32(-int32(_hullDelta)));
@@ -194,11 +209,20 @@ library SpecialEffectsLib {
                 attrs.hullPoints -= uint8(damage);
             }
         } else {
-            uint16 newHullPoints = uint16(attrs.hullPoints) +
+            uint8 currentHullPoints = attrs.hullPoints;
+            uint16 newHullPoints = uint16(currentHullPoints) +
                 uint16(uint16(_hullDelta));
-            attrs.hullPoints = newHullPoints > attrs.maxHullPoints
-                ? attrs.maxHullPoints
-                : uint8(newHullPoints);
+            uint16 healCap = (uint16(attrs.maxHullPoints) * _healCapPercent) /
+                100;
+            uint16 cappedHullPoints = newHullPoints > healCap
+                ? healCap
+                : newHullPoints;
+            // A ship already above healCap (e.g. _healCapPercent was lowered
+            // mid-game while it sat above the new ceiling) must not be
+            // healed down to it — clamp only ever raises HP.
+            attrs.hullPoints = cappedHullPoints > currentHullPoints
+                ? uint8(cappedHullPoints)
+                : currentHullPoints;
             EnumerableSet.remove(game.shipsWithZeroHP, _shipId);
         }
     }

@@ -50,6 +50,10 @@ When designing, reviewing, or reasoning about any smart contract operation — e
 
 Any document or set of instructions written for another agent to consume (e.g. a frontend-integration handoff doc, a migration guide) must include the date it was written, near the top. These documents describe contract state at a point in time and go stale as the contracts evolve — a reader needs the date to judge whether the content is still current.
 
+## Marking Completed Items in Documents
+
+When an item in a document becomes done (a checklist entry, a prioritized item in a doc like `docs/pre-audit.md`, `docs/internal-todos.md`, or a design-analysis doc), mark it complete with markdown strikethrough (`~~text~~`) rather than deleting it or rewriting it into new prose. Keep the original text intact under the strikethrough — add a brief note after it (date/what happened) if useful, but don't lose the original wording. This keeps a scannable record of what was flagged and keeps completed vs. outstanding items visually distinguishable at a glance.
+
 ## Rules Sync
 
 Rules are maintained in two places — keep them in sync:

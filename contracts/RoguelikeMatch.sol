@@ -16,6 +16,7 @@ import "./IHealFactionAbility.sol";
 import "./RoguelikeNodeMap.sol";
 import "./RoguelikeRun.sol";
 import "./RoguelikeAIController.sol";
+import "./IWinEffect.sol";
 
 // Orchestrates the roguelike campaign mode: a player commits a fleet once
 // (startRun), that roster persists — with accumulated damage — across a
@@ -76,6 +77,11 @@ contract RoguelikeMatch is Ownable, IGameOrchestrator {
     event ResupplyNodeEntered(uint indexed nodeId, address indexed player);
     event AIFleetCreated(uint indexed gameId, uint fleetId);
     event AITurnTaken(uint indexed gameId, uint shipId, ActionType actionType, uint targetShipId);
+    event WinEffectFailed(
+        address indexed player,
+        uint indexed contextId,
+        address indexed resolver
+    );
 
     constructor(
         address _aiShips,
@@ -456,6 +462,34 @@ contract RoguelikeMatch is Ownable, IGameOrchestrator {
 
         bool isFinalNode = nodeMap.getChildren(run.currentNodeId).length == 0;
         runLedger.setRoster(player, newRoster);
+
+        // Pluggable win effects (bonus currency, extra heal beyond the
+        // floor above, a granted ship, etc.) — run after the roster/HP
+        // bookkeeping above so a resolver sees final, consistent state
+        // (e.g. a heal-above-floor resolver reading survivors' HP sees the
+        // floor already applied). Fires on every combat win, including the
+        // one that completes the run — same as the floor heal itself.
+        //
+        // Each call is individually try/catch'd — onGameEnded is invoked
+        // by Game.sol as a bare external call with no try/catch of its own
+        // (see Game.sol's _endGame), so an unguarded revert here would
+        // bubble all the way up and fail the entire game-ending
+        // transaction: the win would never be recorded and fleets would
+        // never release. One misconfigured resolver must never be able to
+        // brick every future win at a node that references it — same
+        // "one bad entry shouldn't take down the whole batch" reasoning as
+        // the try/catch already used above for game.getShipAttributes.
+        address[] memory winEffects = nodeMap.getNodeWinEffects(
+            run.currentNodeId
+        );
+        for (uint i = 0; i < winEffects.length; i++) {
+            try
+                IWinEffect(winEffects[i]).onWin(player, run.currentNodeId)
+            {} catch {
+                emit WinEffectFailed(player, run.currentNodeId, winEffects[i]);
+            }
+        }
+
         if (isFinalNode) {
             runLedger.endRun(player, true);
         } else {
