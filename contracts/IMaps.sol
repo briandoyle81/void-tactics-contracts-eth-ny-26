@@ -10,27 +10,12 @@ interface IMaps {
 
     function GRID_HEIGHT() external view returns (int16);
 
-    // Blocked tiles mapping
-    function blockedTiles(
-        uint _gameId,
-        int16 _row,
-        int16 _col
-    ) external view returns (bool);
-
     // Set a tile as blocked for line of sight
     function setBlockedTile(
         uint _gameId,
         int16 _row,
         int16 _col,
         bool _blocked
-    ) external;
-
-    // Set multiple tiles as blocked for line of sight
-    function setBlockedTiles(
-        uint _gameId,
-        int16[] memory _rows,
-        int16[] memory _cols,
-        bool[] memory _blocked
     ) external;
 
     // Check if a tile is blocked
@@ -59,8 +44,6 @@ interface IMaps {
         Position[] calldata _blockedPositions
     ) external;
 
-    function deletePresetMap(uint _mapId) external;
-
     function applyPresetMapToGame(uint _gameId, uint _mapId) external;
 
     function getPresetMap(
@@ -70,6 +53,8 @@ interface IMaps {
     function mapExists(uint _mapId) external view returns (bool);
 
     function mapCount() external view returns (uint);
+
+    function mapMode(uint _mapId) external view returns (MapMode);
 
     // Scoring tile functions
     function getGameMapState(
@@ -81,6 +66,14 @@ interface IMaps {
             Position[] memory blockedPositions,
             ScoringPosition[] memory scoringPositions
         );
+
+    // Scoring positions only — for on-chain callers (round-end scoring,
+    // Turtle-archetype AI) that never need blockedPositions and shouldn't
+    // pay for computing it. See Maps.sol for why blockedPositions itself
+    // still needs a full grid scan while this is O(configured tiles).
+    function getGameScoringPositions(
+        uint _gameId
+    ) external view returns (ScoringPosition[] memory);
 
     function setScoringTile(
         uint _gameId,
@@ -116,8 +109,6 @@ interface IMaps {
         uint _mapId,
         ScoringPosition[] calldata _scoringPositions
     ) external;
-
-    function deletePresetScoringMap(uint _mapId) external;
 
     function applyPresetScoringMapToGame(uint _gameId, uint _mapId) external;
 

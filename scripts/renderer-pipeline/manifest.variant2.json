@@ -1,0 +1,56 @@
+{
+  "_comment": "Real variant-2 (faction 2) renderer pipeline manifest, wired against the actual variant-2-pixel.psd (file on disk: 'variant-2-pixel copy.psd' -- consider renaming to drop ' copy' for clarity). Layer->slot mapping confirmed with the user 2026-08-17: weapon art maps to MainWeapon by theme (medium-mining-laser=Generic/'Medium Mining Laser', linear-accelerator=Sniper/'Linear Accelerator', torpedo-launcher=Missile/'Torpedo Launcher', mining-drill=Close/'Mining Drill', matching the renamed strings in RenderMetadata.sol). MainWeapon enum members themselves were renamed 2026-08-21 from item names (Laser/Railgun/MissileLauncher/PlasmaCannon) to generic role slots (Generic/Sniper/Missile/Close) since variant 2's lineup reskins them as mining equipment, not weapons -- the old item names baked into the enum no longer matched variant 2's fiction. special art maps by matching resolver identity (lightening-field=Slot4/'Lightening Field', attack-drones=Slot5/'Attack Drones', aux-engine=Slot6/'Aux Engine', matching the renamed strings in DeployAndConfig.ts). fore-3 fills the third required fore tier (same structural slot as variant 1's fore-2); fore-special fills the optional 'perfect ship' slot (same structural slot as variant 1's fore-perfect).",
+  "psdFile": "variant-2-pixel copy.psd",
+  "canvasSize": 256,
+  "outputDir": "contracts/RenderersV2",
+  "categories": {
+    "fore": {
+      "combinerContract": "RenderForeV2",
+      "leaves": [
+        { "psdLayerName": "fore-0", "contractName": "RenderFore0V2", "required": true },
+        { "psdLayerName": "fore-1", "contractName": "RenderFore1V2", "required": true },
+        { "psdLayerName": "fore-3", "contractName": "RenderFore2V2", "required": true },
+        { "psdLayerName": "fore-special", "contractName": "RenderForePerfectV2", "required": false }
+      ]
+    },
+    "aft": {
+      "combinerContract": "RenderAftV2",
+      "leaves": [
+        { "psdLayerName": "aft-0", "contractName": "RenderAft0V2", "required": true },
+        { "psdLayerName": "aft-1", "contractName": "RenderAft1V2", "required": true },
+        { "psdLayerName": "aft-2", "contractName": "RenderAft2V2", "required": true }
+      ]
+    },
+    "weapon": {
+      "combinerContract": "RenderWeaponV2",
+      "leaves": [
+        { "psdLayerName": "medium-mining-laser", "contractName": "RenderWeapon1V2", "enumValue": "MainWeapon.Generic", "required": true },
+        { "psdLayerName": "linear-accelerator", "contractName": "RenderWeapon2V2", "enumValue": "MainWeapon.Sniper", "required": true },
+        { "psdLayerName": "torpedo-launcher", "contractName": "RenderWeapon3V2", "enumValue": "MainWeapon.Missile", "required": true },
+        { "psdLayerName": "mining-drill", "contractName": "RenderWeapon4V2", "enumValue": "MainWeapon.Close", "required": true }
+      ]
+    },
+    "body": {
+      "combinerContract": "RenderBodyV2",
+      "base": { "psdLayerName": "shield-armor-0", "contractName": "RenderBaseBodyV2", "required": true },
+      "shields": [
+        { "psdLayerName": "shield-1", "contractName": "RenderShield1V2", "enumValue": "Shields.Light", "required": true },
+        { "psdLayerName": "shield-2", "contractName": "RenderShield2V2", "enumValue": "Shields.Medium", "required": true },
+        { "psdLayerName": "shield-3", "contractName": "RenderShield3V2", "enumValue": "Shields.Heavy", "required": true }
+      ],
+      "armor": [
+        { "psdLayerName": "armor-1", "contractName": "RenderArmor1V2", "enumValue": "Armor.Light", "required": true },
+        { "psdLayerName": "armor-2", "contractName": "RenderArmor2V2", "enumValue": "Armor.Medium", "required": true },
+        { "psdLayerName": "armor-3", "contractName": "RenderArmor3V2", "enumValue": "Armor.Heavy", "required": true }
+      ]
+    },
+    "special": {
+      "combinerContract": "RenderSpecialV2",
+      "leaves": [
+        { "psdLayerName": "lightening-field", "contractName": "RenderSpecial4V2", "enumValue": "Special.Slot4", "required": true },
+        { "psdLayerName": "attack-drones", "contractName": "RenderSpecial5V2", "enumValue": "Special.Slot5", "required": true },
+        { "psdLayerName": "aux-engine", "contractName": "RenderSpecial6V2", "enumValue": "Special.Slot6", "required": true }
+      ]
+    }
+  }
+}

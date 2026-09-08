@@ -7,17 +7,20 @@ import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./Types.sol";
 import "./Ships.sol";
-import "./Game.sol";
+import "./PvPMatch.sol";
 import "./IFleets.sol";
 import "./IMaps.sol";
 
+// PvP-only: vs-AI matches now enter through SinglePlayerMatch.startNodeMatch
+// directly (see NodeMap.sol), with no lobby involved at all.
 contract Lobbies is Ownable, ReentrancyGuard {
     using EnumerableSet for EnumerableSet.UintSet;
 
     Ships public ships;
-    Game public game;
+    PvPMatch public pvpMatch;
     IFleets public fleets;
     IMaps public maps;
+
     IERC20 public universalCredits;
 
     uint public lobbyCount;
@@ -26,12 +29,22 @@ contract Lobbies is Ownable, ReentrancyGuard {
     uint public maxFleetCostLimit = 2000;
     bool public paused;
 
+    // How long an unjoined lobby can sit in openLobbyIds before anyone can
+    // permissionlessly prune it (see docs/pre-audit.md GR-03 — with no
+    // expiry, openLobbyIds/getOpenLobbies grows forever with lobbies the
+    // creator opened and simply never came back to cancel).
+    uint public staleLobbyThreshold = 7 days;
+
     mapping(uint => Lobby) public lobbies;
     mapping(address => PlayerLobbyState) public playerStates;
 
     // New mappings for lobby tracking
     mapping(address => EnumerableSet.UintSet) private playerLobbies;
     EnumerableSet.UintSet private openLobbyIds;
+    // When a lobby most recently entered openLobbyIds — distinct from
+    // lobby.basic.createdAt (set once, at creation, never updated). See
+    // _addLobbyToOpenSet/pruneStaleLobby.
+    mapping(uint => uint) public lobbyOpenedAt;
 
     event LobbyCreated(
         uint indexed lobbyId,
@@ -47,6 +60,8 @@ contract Lobbies is Ownable, ReentrancyGuard {
     event LobbyReset(uint indexed lobbyId, address indexed newCreator);
     event LobbyAbandoned(uint indexed lobbyId, address indexed player);
     event LobbyTerminated(uint indexed lobbyId);
+    event LobbyPruned(uint indexed lobbyId, address indexed pruner);
+    event StaleLobbyThresholdUpdated(uint newThreshold);
     event FleetCreated(
         uint indexed lobbyId,
         address indexed player,
@@ -84,6 +99,7 @@ contract Lobbies is Ownable, ReentrancyGuard {
     error LobbyNotReserved();
     error InsufficientUTC();
     error UTCTransferFailed();
+    error LobbyNotStaleYet();
 
     uint public constant MIN_TURN_TIME = 60; // 1 minute in seconds
     uint public constant MAX_TURN_TIME = 86400; // 24 hours in seconds
@@ -98,8 +114,8 @@ contract Lobbies is Ownable, ReentrancyGuard {
         universalCredits = IERC20(_universalCredits);
     }
 
-    function setGameAddress(address _gameAddress) public onlyOwner {
-        game = Game(_gameAddress);
+    function setPvpMatchAddress(address _pvpMatchAddress) public onlyOwner {
+        pvpMatch = PvPMatch(_pvpMatchAddress);
     }
 
     function setFleetsAddress(address _fleetsAddress) public onlyOwner {
@@ -108,6 +124,17 @@ contract Lobbies is Ownable, ReentrancyGuard {
 
     function setMapsAddress(address _mapsAddress) public onlyOwner {
         maps = IMaps(_mapsAddress);
+    }
+
+    /// @dev A PvP lobby needs a map that exists and is valid for PvP (PvP
+    /// or Both) — a PvE-only map (e.g. one curated for a specific campaign
+    /// encounter) shouldn't be selectable here. _selectedMapId == 0 means
+    /// no preset map and is valid, handled by callers before this runs.
+    function _requireMapUsableForPvP(uint _selectedMapId) internal view {
+        if (address(maps) == address(0)) revert InvalidMapId();
+        if (!maps.mapExists(_selectedMapId)) revert InvalidMapId();
+        MapMode mode = maps.mapMode(_selectedMapId);
+        if (mode != MapMode.PvP && mode != MapMode.Both) revert InvalidMapId();
     }
 
     function isLobbyOpenForJoining(uint _id) public view returns (bool) {
@@ -128,6 +155,14 @@ contract Lobbies is Ownable, ReentrancyGuard {
 
     function _addLobbyToOpenSet(uint _lobbyId) internal {
         openLobbyIds.add(_lobbyId);
+        // Stamped every time a lobby (re-)enters the open set, not just at
+        // creation — pruneStaleLobby measures staleness from here, not from
+        // lobby.basic.createdAt, which is set once at creation and never
+        // updated. Without this, a lobby that's cycled through join/leave
+        // (or timeout, or a promoted-joiner reset) days after creation would
+        // still carry its original creation timestamp and could be pruned
+        // immediately even though it just became open again.
+        lobbyOpenedAt[_lobbyId] = block.timestamp;
     }
 
     function _removeLobbyFromOpenSet(uint _lobbyId) internal {
@@ -170,12 +205,26 @@ contract Lobbies is Ownable, ReentrancyGuard {
                 lobby.players.creatorFleetId = 0;
             }
 
-            // If joiner exists, they become the new creator
+            // If a human joiner exists, they become the new creator so the
+            // lobby isn't wasted.
             if (lobby.players.joiner != address(0)) {
                 address newCreator = lobby.players.joiner;
                 lobby.basic.creator = newCreator;
                 lobby.players.joiner = address(0);
                 lobby.state.status = LobbyStatus.Open;
+
+                // Clear the promoted player's old joiner-side fleet, same
+                // as the joiner-leaves branch below does — otherwise a
+                // stale joinerFleetId survives into the reopened lobby,
+                // permanently blocking a new joiner from ever creating
+                // their own fleet (FleetAlreadyCreated) and letting the
+                // promoted creator's next fleet auto-start the game bound
+                // to that stale fleet instead of the new joiner's own (see
+                // docs/pre-audit.md SP-03).
+                if (lobby.players.joinerFleetId != 0) {
+                    fleets.clearFleet(lobby.players.joinerFleetId);
+                    lobby.players.joinerFleetId = 0;
+                }
 
                 // Update joiner's state
                 PlayerLobbyState storage joinerState = playerStates[newCreator];
@@ -189,8 +238,10 @@ contract Lobbies is Ownable, ReentrancyGuard {
 
                 emit LobbyReset(_lobbyId, newCreator);
             } else {
-                // Lobby is completely abandoned, clean up all sets
+                // Lobby is completely abandoned: no joiner.
                 _cleanupLobbyFromAllSets(_lobbyId);
+                lobby.players.joiner = address(0);
+                lobby.state.status = LobbyStatus.Open;
                 emit LobbyAbandoned(_lobbyId, msg.sender);
             }
         } else {
@@ -219,6 +270,31 @@ contract Lobbies is Ownable, ReentrancyGuard {
         }
     }
 
+    // Permissionless: removes a lobby from openLobbyIds once it's sat
+    // unjoined for longer than staleLobbyThreshold, for a creator who never
+    // came back to call leaveLobby themselves (see docs/pre-audit.md GR-03
+    // — without this, openLobbyIds/getOpenLobbies grows forever with
+    // abandoned listings). Deliberately narrow: only removes the lobby from
+    // the open set, nothing else. It does NOT touch lobby.state.status,
+    // playerLobbies, or the creator's PlayerLobbyState — the lobby record
+    // itself is untouched and still directly joinable/leaveable exactly as
+    // before; this only "delists" it from the public open-browse list. The
+    // creator can still call leaveLobby at any time afterward (before or
+    // after pruning) for their own full cleanup. Requiring the lobby to
+    // still be a member of openLobbyIds is also what guarantees it has no
+    // joiner — joinLobby removes a lobby from this set the instant someone
+    // joins (Lobbies.sol:387), so nothing reachable here has ever had one.
+    function pruneStaleLobby(uint _lobbyId) external {
+        if (!openLobbyIds.contains(_lobbyId)) revert LobbyNotOpen();
+        if (block.timestamp < lobbyOpenedAt[_lobbyId] + staleLobbyThreshold) {
+            revert LobbyNotStaleYet();
+        }
+
+        _removeLobbyFromOpenSet(_lobbyId);
+
+        emit LobbyPruned(_lobbyId, msg.sender);
+    }
+
     function createLobby(
         uint _costLimit,
         uint _turnTime,
@@ -233,10 +309,10 @@ contract Lobbies is Ownable, ReentrancyGuard {
         if (_costLimit > maxFleetCostLimit) revert MaxFleetCostExceeded();
         if (_reservedJoiner == msg.sender) revert PlayerAlreadyInLobby();
 
-        // Validate mapId: 0 means no preset map (valid), otherwise must exist
+        // Validate mapId: 0 means no preset map (valid), otherwise must
+        // exist and be valid for PvP.
         if (_selectedMapId > 0) {
-            if (address(maps) == address(0)) revert InvalidMapId();
-            if (!maps.mapExists(_selectedMapId)) revert InvalidMapId();
+            _requireMapUsableForPvP(_selectedMapId);
         }
 
         // Check if player is in timeout
@@ -247,7 +323,7 @@ contract Lobbies is Ownable, ReentrancyGuard {
             if (block.timestamp < timeoutEnd) revert PlayerInTimeout();
         }
 
-        // If reserving for a specific player, charge 1 UTC (no ETH involved)
+        // If reserving for a specific player, charge 1 UTC (no ETH involved).
         if (_reservedJoiner != address(0)) {
             if (msg.value != 0) revert InsufficientFee();
             if (address(universalCredits) == address(0)) revert UTCTransferFailed();
@@ -425,7 +501,7 @@ contract Lobbies is Ownable, ReentrancyGuard {
             block.timestamp < lobby.players.joinedAt + lobby.gameConfig.turnTime
         ) revert TimeoutNotReached();
 
-        // Update joiner's kick state
+        // Update joiner's kick state.
         PlayerLobbyState storage joinerState = playerStates[
             lobby.players.joiner
         ];
@@ -438,7 +514,15 @@ contract Lobbies is Ownable, ReentrancyGuard {
         _removePlayerFromLobby(lobby.players.joiner, _lobbyId);
         _addLobbyToOpenSet(_lobbyId);
 
-        // Reset lobby state
+        // Reset lobby state. The creator may already have committed a fleet
+        // (locking real ship NFTs via inFleet) before the joiner timed out —
+        // clear it the same way leaveLobby/quitWithPenalty do, or those
+        // ships are stuck inFleet=true forever with no remaining on-chain
+        // reference to their fleet id.
+        if (lobby.players.creatorFleetId != 0) {
+            fleets.clearFleet(lobby.players.creatorFleetId);
+        }
+
         lobby.players.joiner = address(0);
         lobby.state.status = LobbyStatus.Open;
         lobby.players.creatorFleetId = 0;
@@ -541,7 +625,7 @@ contract Lobbies is Ownable, ReentrancyGuard {
             _cleanupLobbyFromAllSets(_lobbyId);
 
             // Start the game
-            game.startGame(
+            pvpMatch.startGame(
                 _lobbyId,
                 lobby.basic.creator,
                 lobby.players.joiner,
@@ -619,10 +703,10 @@ contract Lobbies is Ownable, ReentrancyGuard {
         if (_creator == _joiner) revert PlayerAlreadyInLobby();
         if (_costLimit > maxFleetCostLimit) revert MaxFleetCostExceeded();
 
-        // Validate mapId: 0 means no preset map (valid), otherwise must exist
+        // Validate mapId: 0 means no preset map (valid), otherwise must
+        // exist and be valid for PvP.
         if (_selectedMapId > 0) {
-            if (address(maps) == address(0)) revert InvalidMapId();
-            if (!maps.mapExists(_selectedMapId)) revert InvalidMapId();
+            _requireMapUsableForPvP(_selectedMapId);
         }
 
         lobbyCount++;
@@ -688,6 +772,11 @@ contract Lobbies is Ownable, ReentrancyGuard {
         emit MaxFleetCostLimitUpdated(_maxFleetCostLimit);
     }
 
+    function setStaleLobbyThreshold(uint _threshold) public onlyOwner {
+        staleLobbyThreshold = _threshold;
+        emit StaleLobbyThresholdUpdated(_threshold);
+    }
+
     function withdraw() public onlyOwner {
         (bool success, ) = payable(owner()).call{value: address(this).balance}(
             ""
@@ -723,6 +812,27 @@ contract Lobbies is Ownable, ReentrancyGuard {
         return openLobbyIds.values();
     }
 
+    // Bounded escape hatch for getOpenLobbies (see docs/pre-audit.md GR-03)
+    // — pruneStaleLobby caps long-run growth, but a "browse open lobbies"
+    // UI should page through this rather than assume the full set is ever
+    // small. _offset is 0-indexed into the set; returns fewer than _limit
+    // entries (down to an empty array) if the range runs past the set's
+    // current size, rather than reverting.
+    function getOpenLobbiesPaginated(
+        uint _offset,
+        uint _limit
+    ) public view returns (uint[] memory) {
+        uint total = openLobbyIds.length();
+        if (_offset >= total) return new uint[](0);
+        uint end = _offset + _limit;
+        if (end > total) end = total;
+        uint[] memory result = new uint[](end - _offset);
+        for (uint i = _offset; i < end; i++) {
+            result[i - _offset] = openLobbyIds.at(i);
+        }
+        return result;
+    }
+
     function getLobbiesFromIds(
         uint[] calldata _lobbyIds
     ) public view returns (Lobby[] memory) {
@@ -752,32 +862,4 @@ contract Lobbies is Ownable, ReentrancyGuard {
         return openLobbyIds.contains(_lobbyId);
     }
 
-    // This function will have dupes that must be filtered on the client side.
-    // Why: this concatenates two independent sets — playerLobbies[_player] (lobbies
-    // this player created/joined) and openLobbyIds (every currently-open lobby,
-    // any player) — rather than taking their union. If the player's own lobby is
-    // still open (waiting for a joiner), its id is a member of both sets, so it's
-    // copied into the result twice: once from the player-lobbies loop, once from
-    // the open-lobbies loop. Each set is individually dedupe-safe (EnumerableSet
-    // guarantees that); nothing dedupes *across* the two. Deduping on-chain would
-    // cost an extra O(n*m) contains-check pass (or a temporary set) on every call;
-    // pushing that to the client (trivial there, e.g. a JS Set) was a deliberate
-    // gas/bytecode tradeoff, not an oversight.
-    function getAllLobbiesForPlayerWithDupes(
-        address _player
-    ) public view returns (Lobby[] memory) {
-        EnumerableSet.UintSet storage playerLobbyIds = playerLobbies[_player];
-        EnumerableSet.UintSet storage openLobbies = openLobbyIds;
-
-        Lobby[] memory result = new Lobby[](
-            playerLobbyIds.length() + openLobbies.length()
-        );
-        for (uint i = 0; i < playerLobbyIds.length(); i++) {
-            result[i] = lobbies[playerLobbyIds.at(i)];
-        }
-        for (uint i = 0; i < openLobbies.length(); i++) {
-            result[playerLobbyIds.length() + i] = lobbies[openLobbies.at(i)];
-        }
-        return result;
-    }
 }

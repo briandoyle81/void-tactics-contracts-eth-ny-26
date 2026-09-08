@@ -13,9 +13,11 @@ export async function deployShipsFixture() {
   const {
     ships,
     shipNames,
+    droneNames,
     metadataRenderer,
     randomManager,
     imageRenderer,
+    imageRendererV2,
     renderSpecial,
     renderAft,
     renderWeapon,
@@ -40,10 +42,15 @@ export async function deployShipsFixture() {
     renderFore1,
     renderFore2,
     universalCredits,
+    droneEnergyCores,
     shipPurchaser,
     shipAttributes,
     droneYard,
     generateNewShip,
+    variantPurchaseGate,
+    shatteredHiveMedal,
+    freeShipClaim,
+    droneStorefront,
   } = await hre.ignition.deploy(DeployModule);
 
   const user1Ships = await hre.viem.getContractAt("Ships", ships.address, {
@@ -57,6 +64,28 @@ export async function deployShipsFixture() {
   const user3Ships = await hre.viem.getContractAt("Ships", ships.address, {
     client: { wallet: user3 },
   });
+
+  const user1FreeShipClaim = await hre.viem.getContractAt(
+    "FreeShipClaim",
+    freeShipClaim.address,
+    {
+      client: { wallet: user1 },
+    },
+  );
+  const user2FreeShipClaim = await hre.viem.getContractAt(
+    "FreeShipClaim",
+    freeShipClaim.address,
+    {
+      client: { wallet: user2 },
+    },
+  );
+  const user3FreeShipClaim = await hre.viem.getContractAt(
+    "FreeShipClaim",
+    freeShipClaim.address,
+    {
+      client: { wallet: user3 },
+    },
+  );
 
   const user1UC = await hre.viem.getContractAt(
     "UniversalCredits",
@@ -156,9 +185,11 @@ export async function deployShipsFixture() {
     user2Ships,
     user3Ships,
     shipNames,
+    droneNames,
     metadataRenderer,
     randomManager,
     imageRenderer,
+    imageRendererV2,
     renderSpecial,
     renderAft,
     renderWeapon,
@@ -188,6 +219,7 @@ export async function deployShipsFixture() {
     user3,
     publicClient,
     universalCredits,
+    droneEnergyCores,
     shipPurchaser,
     shipAttributes,
     user1UC,
@@ -201,5 +233,12 @@ export async function deployShipsFixture() {
     user2DroneYard,
     user3DroneYard,
     generateNewShip,
+    variantPurchaseGate,
+    shatteredHiveMedal,
+    freeShipClaim,
+    user1FreeShipClaim,
+    user2FreeShipClaim,
+    user3FreeShipClaim,
+    droneStorefront,
   };
 }

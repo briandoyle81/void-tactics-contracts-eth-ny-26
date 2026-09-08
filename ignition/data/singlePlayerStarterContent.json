@@ -1,0 +1,8053 @@
+{
+  "aiShipColors": {
+    "h1": 0,
+    "s1": 0,
+    "l1": 0,
+    "h2": 0,
+    "s2": 0,
+    "l2": 0,
+    "h3": 0,
+    "s3": 0,
+    "l3": 0
+  },
+  "aiShipConfigs": [
+    {
+      "key": "grunt",
+      "name": "AI Grunt",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 1,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 0,
+        "hull": 0,
+        "speed": 0
+      },
+      "archetype": 0
+    },
+    {
+      "key": "grunt2",
+      "name": "AI Grunt II",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 1,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 1,
+        "hull": 1,
+        "speed": 1
+      },
+      "archetype": 0
+    },
+    {
+      "key": "grunt3",
+      "name": "AI Grunt III",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 1,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 0
+    },
+    {
+      "key": "grunt4",
+      "name": "AI Grunt IV",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 2,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 0
+    },
+    {
+      "key": "grunt5",
+      "name": "AI Grunt V",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 3,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 0
+    },
+    {
+      "key": "aggressor",
+      "name": "AI Aggressor",
+      "equipment": {
+        "mainWeapon": 2,
+        "armor": 1,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 0,
+        "hull": 1,
+        "speed": 1
+      },
+      "archetype": 1
+    },
+    {
+      "key": "aggressor2",
+      "name": "AI Aggressor II",
+      "equipment": {
+        "mainWeapon": 2,
+        "armor": 1,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 1,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 1
+    },
+    {
+      "key": "aggressor3",
+      "name": "AI Aggressor III",
+      "equipment": {
+        "mainWeapon": 2,
+        "armor": 1,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 1
+    },
+    {
+      "key": "aggressor4",
+      "name": "AI Aggressor IV",
+      "equipment": {
+        "mainWeapon": 2,
+        "armor": 2,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 1
+    },
+    {
+      "key": "aggressor5",
+      "name": "AI Aggressor V",
+      "equipment": {
+        "mainWeapon": 2,
+        "armor": 3,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 1
+    },
+    {
+      "key": "sniper",
+      "name": "AI Sniper",
+      "equipment": {
+        "mainWeapon": 1,
+        "armor": 0,
+        "shields": 1,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 1,
+        "hull": 0,
+        "speed": 0
+      },
+      "archetype": 2
+    },
+    {
+      "key": "sniper2",
+      "name": "AI Sniper II",
+      "equipment": {
+        "mainWeapon": 1,
+        "armor": 0,
+        "shields": 1,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 2,
+        "hull": 1,
+        "speed": 1
+      },
+      "archetype": 2
+    },
+    {
+      "key": "sniper3",
+      "name": "AI Sniper III",
+      "equipment": {
+        "mainWeapon": 1,
+        "armor": 0,
+        "shields": 1,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 2
+    },
+    {
+      "key": "sniper4",
+      "name": "AI Sniper IV",
+      "equipment": {
+        "mainWeapon": 1,
+        "armor": 0,
+        "shields": 2,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 2
+    },
+    {
+      "key": "sniper5",
+      "name": "AI Sniper V",
+      "equipment": {
+        "mainWeapon": 1,
+        "armor": 0,
+        "shields": 3,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 2
+    },
+    {
+      "key": "support",
+      "name": "AI Support",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 0,
+        "shields": 1,
+        "special": 2
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 0,
+        "hull": 0,
+        "speed": 0
+      },
+      "archetype": 3
+    },
+    {
+      "key": "support2",
+      "name": "AI Support II",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 0,
+        "shields": 1,
+        "special": 2
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 1,
+        "hull": 1,
+        "speed": 1
+      },
+      "archetype": 3
+    },
+    {
+      "key": "support3",
+      "name": "AI Support III",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 0,
+        "shields": 1,
+        "special": 2
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 3
+    },
+    {
+      "key": "support4",
+      "name": "AI Support IV",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 0,
+        "shields": 2,
+        "special": 2
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 3
+    },
+    {
+      "key": "support5",
+      "name": "AI Support V",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 0,
+        "shields": 3,
+        "special": 2
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 3
+    },
+    {
+      "key": "turtle",
+      "name": "AI Turtle",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 1,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 0,
+        "hull": 1,
+        "speed": 0
+      },
+      "archetype": 4
+    },
+    {
+      "key": "turtle2",
+      "name": "AI Turtle II",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 1,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 1,
+        "hull": 2,
+        "speed": 1
+      },
+      "archetype": 4
+    },
+    {
+      "key": "turtle3",
+      "name": "AI Turtle III",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 1,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 4
+    },
+    {
+      "key": "turtle4",
+      "name": "AI Turtle IV",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 2,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 4
+    },
+    {
+      "key": "turtle5",
+      "name": "AI Turtle V",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 3,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 1,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 4
+    },
+    {
+      "key": "v2grunt",
+      "name": "D-051 Rime",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 1,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 0,
+        "hull": 0,
+        "speed": 0
+      },
+      "archetype": 0
+    },
+    {
+      "key": "v2grunt2",
+      "name": "F2-889 Basalt",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 1,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 1,
+        "hull": 1,
+        "speed": 1
+      },
+      "archetype": 0
+    },
+    {
+      "key": "v2grunt3",
+      "name": "MG-100 Onyx",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 1,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 0
+    },
+    {
+      "key": "v2grunt4",
+      "name": "P6-863 Basalt",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 2,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 0
+    },
+    {
+      "key": "v2grunt5",
+      "name": "L-038 Rime",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 3,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 0
+    },
+    {
+      "key": "v2aggressor",
+      "name": "5G-61 Viper",
+      "equipment": {
+        "mainWeapon": 2,
+        "armor": 1,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 0,
+        "hull": 1,
+        "speed": 1
+      },
+      "archetype": 1
+    },
+    {
+      "key": "v2aggressor2",
+      "name": "B-993 Mantis",
+      "equipment": {
+        "mainWeapon": 2,
+        "armor": 1,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 1,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 1
+    },
+    {
+      "key": "v2aggressor3",
+      "name": "M2-623 Jackal",
+      "equipment": {
+        "mainWeapon": 2,
+        "armor": 1,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 1
+    },
+    {
+      "key": "v2aggressor4",
+      "name": "RR-731 Mantis",
+      "equipment": {
+        "mainWeapon": 2,
+        "armor": 2,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 1
+    },
+    {
+      "key": "v2aggressor5",
+      "name": "ZB3-67 Rook",
+      "equipment": {
+        "mainWeapon": 2,
+        "armor": 3,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 1
+    },
+    {
+      "key": "v2sniper",
+      "name": "QC8-53 Nadir",
+      "equipment": {
+        "mainWeapon": 1,
+        "armor": 0,
+        "shields": 1,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 1,
+        "hull": 0,
+        "speed": 0
+      },
+      "archetype": 2
+    },
+    {
+      "key": "v2sniper2",
+      "name": "8D-87 Pulsar",
+      "equipment": {
+        "mainWeapon": 1,
+        "armor": 0,
+        "shields": 1,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 2,
+        "hull": 1,
+        "speed": 1
+      },
+      "archetype": 2
+    },
+    {
+      "key": "v2sniper3",
+      "name": "D9-371 Pulsar",
+      "equipment": {
+        "mainWeapon": 1,
+        "armor": 0,
+        "shields": 1,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 2
+    },
+    {
+      "key": "v2sniper4",
+      "name": "D-737 Vector",
+      "equipment": {
+        "mainWeapon": 1,
+        "armor": 0,
+        "shields": 2,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 2
+    },
+    {
+      "key": "v2sniper5",
+      "name": "FP-466 Orbit",
+      "equipment": {
+        "mainWeapon": 1,
+        "armor": 0,
+        "shields": 3,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 2
+    },
+    {
+      "key": "v2support",
+      "name": "LV-56 Shale",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 0,
+        "shields": 1,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 0,
+        "hull": 0,
+        "speed": 0
+      },
+      "archetype": 3
+    },
+    {
+      "key": "v2support2",
+      "name": "KG-00 Auger",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 0,
+        "shields": 1,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 1,
+        "hull": 1,
+        "speed": 1
+      },
+      "archetype": 3
+    },
+    {
+      "key": "v2support3",
+      "name": "LF9-95 Cinder",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 0,
+        "shields": 1,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 3
+    },
+    {
+      "key": "v2support4",
+      "name": "JR2-09 Slate",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 0,
+        "shields": 2,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 3
+    },
+    {
+      "key": "v2support5",
+      "name": "HQ-67 Ash",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 0,
+        "shields": 3,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 3
+    },
+    {
+      "key": "v2turtle",
+      "name": "J-544 Ash",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 1,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 0,
+        "hull": 1,
+        "speed": 0
+      },
+      "archetype": 4
+    },
+    {
+      "key": "v2turtle2",
+      "name": "1N-19 Ash",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 1,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 1,
+        "hull": 2,
+        "speed": 1
+      },
+      "archetype": 4
+    },
+    {
+      "key": "v2turtle3",
+      "name": "6S-34 Basalt",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 1,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 4
+    },
+    {
+      "key": "v2turtle4",
+      "name": "H-923 Onyx",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 2,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 4
+    },
+    {
+      "key": "v2turtle5",
+      "name": "VM0-11 Grit",
+      "equipment": {
+        "mainWeapon": 0,
+        "armor": 3,
+        "shields": 0,
+        "special": 0
+      },
+      "traits": {
+        "variant": 2,
+        "accuracy": 2,
+        "hull": 2,
+        "speed": 2
+      },
+      "archetype": 4
+    }
+  ],
+  "maps": [
+    {
+      "key": "m01",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 5,
+          "col": 10
+        },
+        {
+          "row": 2,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 5
+        },
+        {
+          "row": 6,
+          "col": 4
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 1,
+          "col": 3,
+          "points": 5,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "m02",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 0,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 12
+        },
+        {
+          "row": 4,
+          "col": 10
+        },
+        {
+          "row": 8,
+          "col": 4
+        },
+        {
+          "row": 3,
+          "col": 11
+        },
+        {
+          "row": 1,
+          "col": 11
+        },
+        {
+          "row": 10,
+          "col": 9
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 10,
+          "col": 3,
+          "points": 5,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "m03",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 8,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 7
+        },
+        {
+          "row": 4,
+          "col": 7
+        },
+        {
+          "row": 10,
+          "col": 9
+        },
+        {
+          "row": 7,
+          "col": 5
+        },
+        {
+          "row": 9,
+          "col": 7
+        },
+        {
+          "row": 3,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 9
+        },
+        {
+          "row": 4,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 4
+        },
+        {
+          "row": 3,
+          "col": 10
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 5,
+          "col": 4,
+          "points": 6,
+          "onlyOnce": false
+        },
+        {
+          "row": 1,
+          "col": 10,
+          "points": 6,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "m04",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 0,
+          "col": 11
+        },
+        {
+          "row": 7,
+          "col": 6
+        },
+        {
+          "row": 6,
+          "col": 8
+        },
+        {
+          "row": 7,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 8
+        },
+        {
+          "row": 8,
+          "col": 5
+        },
+        {
+          "row": 4,
+          "col": 8
+        },
+        {
+          "row": 6,
+          "col": 11
+        },
+        {
+          "row": 6,
+          "col": 5
+        },
+        {
+          "row": 1,
+          "col": 9
+        },
+        {
+          "row": 7,
+          "col": 5
+        },
+        {
+          "row": 4,
+          "col": 10
+        },
+        {
+          "row": 9,
+          "col": 8
+        },
+        {
+          "row": 5,
+          "col": 9
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 0,
+          "col": 10,
+          "points": 6,
+          "onlyOnce": false
+        },
+        {
+          "row": 1,
+          "col": 4,
+          "points": 6,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "m05",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 2,
+          "col": 6
+        },
+        {
+          "row": 0,
+          "col": 4
+        },
+        {
+          "row": 7,
+          "col": 8
+        },
+        {
+          "row": 1,
+          "col": 11
+        },
+        {
+          "row": 10,
+          "col": 4
+        },
+        {
+          "row": 0,
+          "col": 10
+        },
+        {
+          "row": 7,
+          "col": 10
+        },
+        {
+          "row": 5,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 6
+        },
+        {
+          "row": 4,
+          "col": 11
+        },
+        {
+          "row": 10,
+          "col": 12
+        },
+        {
+          "row": 2,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 7
+        },
+        {
+          "row": 8,
+          "col": 12
+        },
+        {
+          "row": 3,
+          "col": 7
+        },
+        {
+          "row": 2,
+          "col": 10
+        },
+        {
+          "row": 1,
+          "col": 4
+        },
+        {
+          "row": 3,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 7
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 0,
+          "col": 2,
+          "points": 6,
+          "onlyOnce": false
+        },
+        {
+          "row": 0,
+          "col": 3,
+          "points": 6,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "m06",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 3,
+          "col": 11
+        },
+        {
+          "row": 1,
+          "col": 9
+        },
+        {
+          "row": 0,
+          "col": 9
+        },
+        {
+          "row": 5,
+          "col": 8
+        },
+        {
+          "row": 5,
+          "col": 11
+        },
+        {
+          "row": 2,
+          "col": 10
+        },
+        {
+          "row": 4,
+          "col": 10
+        },
+        {
+          "row": 7,
+          "col": 11
+        },
+        {
+          "row": 3,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 6
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 1,
+          "col": 7
+        },
+        {
+          "row": 7,
+          "col": 9
+        },
+        {
+          "row": 6,
+          "col": 9
+        },
+        {
+          "row": 6,
+          "col": 6
+        },
+        {
+          "row": 9,
+          "col": 11
+        },
+        {
+          "row": 2,
+          "col": 8
+        },
+        {
+          "row": 8,
+          "col": 8
+        },
+        {
+          "row": 4,
+          "col": 6
+        },
+        {
+          "row": 2,
+          "col": 9
+        },
+        {
+          "row": 0,
+          "col": 8
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 10,
+          "col": 7,
+          "points": 7,
+          "onlyOnce": false
+        },
+        {
+          "row": 9,
+          "col": 3,
+          "points": 7,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "m07",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 0,
+          "col": 10
+        },
+        {
+          "row": 6,
+          "col": 9
+        },
+        {
+          "row": 6,
+          "col": 7
+        },
+        {
+          "row": 8,
+          "col": 11
+        },
+        {
+          "row": 2,
+          "col": 11
+        },
+        {
+          "row": 1,
+          "col": 12
+        },
+        {
+          "row": 5,
+          "col": 9
+        },
+        {
+          "row": 4,
+          "col": 7
+        },
+        {
+          "row": 2,
+          "col": 5
+        },
+        {
+          "row": 3,
+          "col": 12
+        },
+        {
+          "row": 1,
+          "col": 9
+        },
+        {
+          "row": 4,
+          "col": 12
+        },
+        {
+          "row": 10,
+          "col": 4
+        },
+        {
+          "row": 6,
+          "col": 12
+        },
+        {
+          "row": 6,
+          "col": 11
+        },
+        {
+          "row": 6,
+          "col": 6
+        },
+        {
+          "row": 3,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 8
+        },
+        {
+          "row": 3,
+          "col": 9
+        },
+        {
+          "row": 3,
+          "col": 6
+        },
+        {
+          "row": 5,
+          "col": 10
+        },
+        {
+          "row": 0,
+          "col": 6
+        },
+        {
+          "row": 1,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 5
+        },
+        {
+          "row": 4,
+          "col": 5
+        },
+        {
+          "row": 3,
+          "col": 7
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 0,
+          "col": 7,
+          "points": 7,
+          "onlyOnce": false
+        },
+        {
+          "row": 5,
+          "col": 7,
+          "points": 7,
+          "onlyOnce": false
+        },
+        {
+          "row": 8,
+          "col": 4,
+          "points": 7,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "m08",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 5,
+          "col": 4
+        },
+        {
+          "row": 2,
+          "col": 4
+        },
+        {
+          "row": 6,
+          "col": 4
+        },
+        {
+          "row": 8,
+          "col": 7
+        },
+        {
+          "row": 4,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 4
+        },
+        {
+          "row": 6,
+          "col": 9
+        },
+        {
+          "row": 1,
+          "col": 11
+        },
+        {
+          "row": 3,
+          "col": 7
+        },
+        {
+          "row": 6,
+          "col": 8
+        },
+        {
+          "row": 1,
+          "col": 8
+        },
+        {
+          "row": 6,
+          "col": 5
+        },
+        {
+          "row": 3,
+          "col": 12
+        },
+        {
+          "row": 5,
+          "col": 8
+        },
+        {
+          "row": 8,
+          "col": 6
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 7,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 12
+        },
+        {
+          "row": 9,
+          "col": 12
+        },
+        {
+          "row": 4,
+          "col": 6
+        },
+        {
+          "row": 8,
+          "col": 4
+        },
+        {
+          "row": 7,
+          "col": 10
+        },
+        {
+          "row": 2,
+          "col": 10
+        },
+        {
+          "row": 0,
+          "col": 9
+        },
+        {
+          "row": 8,
+          "col": 11
+        },
+        {
+          "row": 2,
+          "col": 5
+        },
+        {
+          "row": 0,
+          "col": 6
+        },
+        {
+          "row": 1,
+          "col": 9
+        },
+        {
+          "row": 7,
+          "col": 6
+        },
+        {
+          "row": 8,
+          "col": 9
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 5,
+          "col": 11,
+          "points": 8,
+          "onlyOnce": false
+        },
+        {
+          "row": 3,
+          "col": 9,
+          "points": 8,
+          "onlyOnce": false
+        },
+        {
+          "row": 9,
+          "col": 6,
+          "points": 8,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "m09",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 8,
+          "col": 5
+        },
+        {
+          "row": 0,
+          "col": 6
+        },
+        {
+          "row": 5,
+          "col": 11
+        },
+        {
+          "row": 10,
+          "col": 12
+        },
+        {
+          "row": 9,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 5
+        },
+        {
+          "row": 6,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 8
+        },
+        {
+          "row": 5,
+          "col": 10
+        },
+        {
+          "row": 2,
+          "col": 8
+        },
+        {
+          "row": 7,
+          "col": 7
+        },
+        {
+          "row": 4,
+          "col": 11
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 5,
+          "col": 6
+        },
+        {
+          "row": 3,
+          "col": 8
+        },
+        {
+          "row": 3,
+          "col": 10
+        },
+        {
+          "row": 4,
+          "col": 6
+        },
+        {
+          "row": 9,
+          "col": 7
+        },
+        {
+          "row": 9,
+          "col": 11
+        },
+        {
+          "row": 8,
+          "col": 10
+        },
+        {
+          "row": 7,
+          "col": 8
+        },
+        {
+          "row": 3,
+          "col": 4
+        },
+        {
+          "row": 9,
+          "col": 12
+        },
+        {
+          "row": 5,
+          "col": 5
+        },
+        {
+          "row": 6,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 5
+        },
+        {
+          "row": 1,
+          "col": 7
+        },
+        {
+          "row": 10,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 7
+        },
+        {
+          "row": 10,
+          "col": 4
+        },
+        {
+          "row": 1,
+          "col": 10
+        },
+        {
+          "row": 1,
+          "col": 9
+        },
+        {
+          "row": 3,
+          "col": 9
+        },
+        {
+          "row": 8,
+          "col": 9
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 6,
+          "col": 9,
+          "points": 8,
+          "onlyOnce": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "points": 8,
+          "onlyOnce": false
+        },
+        {
+          "row": 10,
+          "col": 7,
+          "points": 8,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "m10",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 8,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 11
+        },
+        {
+          "row": 10,
+          "col": 12
+        },
+        {
+          "row": 2,
+          "col": 4
+        },
+        {
+          "row": 10,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 6
+        },
+        {
+          "row": 2,
+          "col": 5
+        },
+        {
+          "row": 3,
+          "col": 9
+        },
+        {
+          "row": 4,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 8
+        },
+        {
+          "row": 6,
+          "col": 8
+        },
+        {
+          "row": 5,
+          "col": 4
+        },
+        {
+          "row": 6,
+          "col": 12
+        },
+        {
+          "row": 5,
+          "col": 9
+        },
+        {
+          "row": 9,
+          "col": 10
+        },
+        {
+          "row": 6,
+          "col": 5
+        },
+        {
+          "row": 10,
+          "col": 6
+        },
+        {
+          "row": 6,
+          "col": 11
+        },
+        {
+          "row": 8,
+          "col": 10
+        },
+        {
+          "row": 7,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 12
+        },
+        {
+          "row": 2,
+          "col": 12
+        },
+        {
+          "row": 7,
+          "col": 6
+        },
+        {
+          "row": 1,
+          "col": 11
+        },
+        {
+          "row": 7,
+          "col": 8
+        },
+        {
+          "row": 5,
+          "col": 7
+        },
+        {
+          "row": 4,
+          "col": 5
+        },
+        {
+          "row": 1,
+          "col": 8
+        },
+        {
+          "row": 9,
+          "col": 12
+        },
+        {
+          "row": 8,
+          "col": 5
+        },
+        {
+          "row": 8,
+          "col": 8
+        },
+        {
+          "row": 3,
+          "col": 10
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 10,
+          "col": 5
+        },
+        {
+          "row": 7,
+          "col": 9
+        },
+        {
+          "row": 5,
+          "col": 5
+        },
+        {
+          "row": 6,
+          "col": 10
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 0,
+          "col": 12,
+          "points": 8,
+          "onlyOnce": false
+        },
+        {
+          "row": 1,
+          "col": 7,
+          "points": 8,
+          "onlyOnce": false
+        },
+        {
+          "row": 3,
+          "col": 11,
+          "points": 8,
+          "onlyOnce": false
+        },
+        {
+          "row": 4,
+          "col": 3,
+          "points": 8,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "m11",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 3,
+          "col": 6
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 2,
+          "col": 6
+        },
+        {
+          "row": 7,
+          "col": 12
+        },
+        {
+          "row": 5,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 8
+        },
+        {
+          "row": 2,
+          "col": 5
+        },
+        {
+          "row": 1,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 8
+        },
+        {
+          "row": 6,
+          "col": 4
+        },
+        {
+          "row": 6,
+          "col": 5
+        },
+        {
+          "row": 1,
+          "col": 4
+        },
+        {
+          "row": 5,
+          "col": 6
+        },
+        {
+          "row": 8,
+          "col": 12
+        },
+        {
+          "row": 1,
+          "col": 7
+        },
+        {
+          "row": 5,
+          "col": 9
+        },
+        {
+          "row": 1,
+          "col": 12
+        },
+        {
+          "row": 2,
+          "col": 12
+        },
+        {
+          "row": 1,
+          "col": 11
+        },
+        {
+          "row": 2,
+          "col": 7
+        },
+        {
+          "row": 2,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 4
+        },
+        {
+          "row": 4,
+          "col": 12
+        },
+        {
+          "row": 8,
+          "col": 11
+        },
+        {
+          "row": 6,
+          "col": 10
+        },
+        {
+          "row": 7,
+          "col": 8
+        },
+        {
+          "row": 9,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 10
+        },
+        {
+          "row": 6,
+          "col": 9
+        },
+        {
+          "row": 3,
+          "col": 9
+        },
+        {
+          "row": 7,
+          "col": 9
+        },
+        {
+          "row": 7,
+          "col": 6
+        },
+        {
+          "row": 8,
+          "col": 9
+        },
+        {
+          "row": 1,
+          "col": 5
+        },
+        {
+          "row": 5,
+          "col": 7
+        },
+        {
+          "row": 8,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 6
+        },
+        {
+          "row": 4,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 8
+        },
+        {
+          "row": 9,
+          "col": 12
+        },
+        {
+          "row": 9,
+          "col": 5
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 10,
+          "col": 3,
+          "points": 9,
+          "onlyOnce": false
+        },
+        {
+          "row": 9,
+          "col": 11,
+          "points": 9,
+          "onlyOnce": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "points": 9,
+          "onlyOnce": false
+        },
+        {
+          "row": 3,
+          "col": 12,
+          "points": 9,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "m12",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 9,
+          "col": 10
+        },
+        {
+          "row": 8,
+          "col": 11
+        },
+        {
+          "row": 2,
+          "col": 9
+        },
+        {
+          "row": 6,
+          "col": 6
+        },
+        {
+          "row": 2,
+          "col": 8
+        },
+        {
+          "row": 7,
+          "col": 6
+        },
+        {
+          "row": 2,
+          "col": 5
+        },
+        {
+          "row": 5,
+          "col": 4
+        },
+        {
+          "row": 1,
+          "col": 8
+        },
+        {
+          "row": 4,
+          "col": 7
+        },
+        {
+          "row": 9,
+          "col": 6
+        },
+        {
+          "row": 1,
+          "col": 9
+        },
+        {
+          "row": 10,
+          "col": 9
+        },
+        {
+          "row": 6,
+          "col": 4
+        },
+        {
+          "row": 4,
+          "col": 5
+        },
+        {
+          "row": 3,
+          "col": 10
+        },
+        {
+          "row": 4,
+          "col": 4
+        },
+        {
+          "row": 10,
+          "col": 4
+        },
+        {
+          "row": 1,
+          "col": 12
+        },
+        {
+          "row": 1,
+          "col": 10
+        },
+        {
+          "row": 0,
+          "col": 9
+        },
+        {
+          "row": 9,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 6
+        },
+        {
+          "row": 5,
+          "col": 11
+        },
+        {
+          "row": 8,
+          "col": 10
+        },
+        {
+          "row": 4,
+          "col": 9
+        },
+        {
+          "row": 6,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 5
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 9,
+          "col": 11
+        },
+        {
+          "row": 6,
+          "col": 11
+        },
+        {
+          "row": 2,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 5
+        },
+        {
+          "row": 4,
+          "col": 11
+        },
+        {
+          "row": 3,
+          "col": 4
+        },
+        {
+          "row": 8,
+          "col": 7
+        },
+        {
+          "row": 6,
+          "col": 10
+        },
+        {
+          "row": 10,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 10
+        },
+        {
+          "row": 8,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 6
+        },
+        {
+          "row": 0,
+          "col": 4
+        },
+        {
+          "row": 7,
+          "col": 9
+        },
+        {
+          "row": 7,
+          "col": 12
+        },
+        {
+          "row": 3,
+          "col": 12
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 5,
+          "col": 2,
+          "points": 9,
+          "onlyOnce": false
+        },
+        {
+          "row": 3,
+          "col": 9,
+          "points": 9,
+          "onlyOnce": false
+        },
+        {
+          "row": 0,
+          "col": 5,
+          "points": 9,
+          "onlyOnce": false
+        },
+        {
+          "row": 3,
+          "col": 6,
+          "points": 9,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "m13",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 7,
+          "col": 8
+        },
+        {
+          "row": 3,
+          "col": 4
+        },
+        {
+          "row": 7,
+          "col": 9
+        },
+        {
+          "row": 6,
+          "col": 9
+        },
+        {
+          "row": 3,
+          "col": 6
+        },
+        {
+          "row": 8,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 4
+        },
+        {
+          "row": 4,
+          "col": 12
+        },
+        {
+          "row": 0,
+          "col": 7
+        },
+        {
+          "row": 7,
+          "col": 4
+        },
+        {
+          "row": 3,
+          "col": 11
+        },
+        {
+          "row": 10,
+          "col": 12
+        },
+        {
+          "row": 7,
+          "col": 6
+        },
+        {
+          "row": 2,
+          "col": 6
+        },
+        {
+          "row": 9,
+          "col": 7
+        },
+        {
+          "row": 4,
+          "col": 6
+        },
+        {
+          "row": 3,
+          "col": 10
+        },
+        {
+          "row": 2,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 11
+        },
+        {
+          "row": 1,
+          "col": 5
+        },
+        {
+          "row": 6,
+          "col": 12
+        },
+        {
+          "row": 1,
+          "col": 7
+        },
+        {
+          "row": 9,
+          "col": 4
+        },
+        {
+          "row": 4,
+          "col": 4
+        },
+        {
+          "row": 6,
+          "col": 5
+        },
+        {
+          "row": 2,
+          "col": 9
+        },
+        {
+          "row": 9,
+          "col": 5
+        },
+        {
+          "row": 6,
+          "col": 10
+        },
+        {
+          "row": 1,
+          "col": 4
+        },
+        {
+          "row": 8,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 12
+        },
+        {
+          "row": 0,
+          "col": 9
+        },
+        {
+          "row": 7,
+          "col": 10
+        },
+        {
+          "row": 8,
+          "col": 12
+        },
+        {
+          "row": 3,
+          "col": 5
+        },
+        {
+          "row": 0,
+          "col": 6
+        },
+        {
+          "row": 9,
+          "col": 10
+        },
+        {
+          "row": 1,
+          "col": 9
+        },
+        {
+          "row": 10,
+          "col": 9
+        },
+        {
+          "row": 3,
+          "col": 12
+        },
+        {
+          "row": 6,
+          "col": 11
+        },
+        {
+          "row": 10,
+          "col": 6
+        },
+        {
+          "row": 5,
+          "col": 10
+        },
+        {
+          "row": 5,
+          "col": 5
+        },
+        {
+          "row": 5,
+          "col": 9
+        },
+        {
+          "row": 7,
+          "col": 7
+        },
+        {
+          "row": 8,
+          "col": 9
+        },
+        {
+          "row": 3,
+          "col": 7
+        },
+        {
+          "row": 8,
+          "col": 6
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 1,
+          "col": 8,
+          "points": 9,
+          "onlyOnce": false
+        },
+        {
+          "row": 10,
+          "col": 8,
+          "points": 9,
+          "onlyOnce": false
+        },
+        {
+          "row": 4,
+          "col": 2,
+          "points": 9,
+          "onlyOnce": false
+        },
+        {
+          "row": 6,
+          "col": 6,
+          "points": 9,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "m14",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 3,
+          "col": 6
+        },
+        {
+          "row": 7,
+          "col": 10
+        },
+        {
+          "row": 4,
+          "col": 10
+        },
+        {
+          "row": 0,
+          "col": 4
+        },
+        {
+          "row": 6,
+          "col": 7
+        },
+        {
+          "row": 2,
+          "col": 10
+        },
+        {
+          "row": 5,
+          "col": 8
+        },
+        {
+          "row": 5,
+          "col": 12
+        },
+        {
+          "row": 3,
+          "col": 11
+        },
+        {
+          "row": 7,
+          "col": 12
+        },
+        {
+          "row": 0,
+          "col": 9
+        },
+        {
+          "row": 1,
+          "col": 6
+        },
+        {
+          "row": 0,
+          "col": 8
+        },
+        {
+          "row": 7,
+          "col": 6
+        },
+        {
+          "row": 6,
+          "col": 5
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 10,
+          "col": 5
+        },
+        {
+          "row": 2,
+          "col": 4
+        },
+        {
+          "row": 3,
+          "col": 5
+        },
+        {
+          "row": 5,
+          "col": 6
+        },
+        {
+          "row": 9,
+          "col": 11
+        },
+        {
+          "row": 4,
+          "col": 4
+        },
+        {
+          "row": 3,
+          "col": 9
+        },
+        {
+          "row": 9,
+          "col": 10
+        },
+        {
+          "row": 5,
+          "col": 4
+        },
+        {
+          "row": 2,
+          "col": 9
+        },
+        {
+          "row": 10,
+          "col": 9
+        },
+        {
+          "row": 4,
+          "col": 11
+        },
+        {
+          "row": 4,
+          "col": 8
+        },
+        {
+          "row": 7,
+          "col": 5
+        },
+        {
+          "row": 2,
+          "col": 5
+        },
+        {
+          "row": 2,
+          "col": 11
+        },
+        {
+          "row": 8,
+          "col": 8
+        },
+        {
+          "row": 7,
+          "col": 8
+        },
+        {
+          "row": 8,
+          "col": 12
+        },
+        {
+          "row": 4,
+          "col": 12
+        },
+        {
+          "row": 9,
+          "col": 7
+        },
+        {
+          "row": 8,
+          "col": 10
+        },
+        {
+          "row": 1,
+          "col": 12
+        },
+        {
+          "row": 8,
+          "col": 5
+        },
+        {
+          "row": 9,
+          "col": 12
+        },
+        {
+          "row": 6,
+          "col": 10
+        },
+        {
+          "row": 7,
+          "col": 11
+        },
+        {
+          "row": 8,
+          "col": 4
+        },
+        {
+          "row": 5,
+          "col": 9
+        },
+        {
+          "row": 9,
+          "col": 4
+        },
+        {
+          "row": 1,
+          "col": 9
+        },
+        {
+          "row": 1,
+          "col": 4
+        },
+        {
+          "row": 10,
+          "col": 4
+        },
+        {
+          "row": 2,
+          "col": 7
+        },
+        {
+          "row": 6,
+          "col": 12
+        },
+        {
+          "row": 4,
+          "col": 6
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 0,
+          "col": 11,
+          "points": 10,
+          "onlyOnce": false
+        },
+        {
+          "row": 1,
+          "col": 7,
+          "points": 10,
+          "onlyOnce": false
+        },
+        {
+          "row": 3,
+          "col": 12,
+          "points": 10,
+          "onlyOnce": false
+        },
+        {
+          "row": 8,
+          "col": 11,
+          "points": 10,
+          "onlyOnce": false
+        },
+        {
+          "row": 0,
+          "col": 3,
+          "points": 10,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "m15",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 0,
+          "col": 11
+        },
+        {
+          "row": 0,
+          "col": 6
+        },
+        {
+          "row": 3,
+          "col": 4
+        },
+        {
+          "row": 10,
+          "col": 4
+        },
+        {
+          "row": 7,
+          "col": 12
+        },
+        {
+          "row": 8,
+          "col": 11
+        },
+        {
+          "row": 1,
+          "col": 5
+        },
+        {
+          "row": 7,
+          "col": 4
+        },
+        {
+          "row": 1,
+          "col": 8
+        },
+        {
+          "row": 4,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 7
+        },
+        {
+          "row": 10,
+          "col": 9
+        },
+        {
+          "row": 8,
+          "col": 8
+        },
+        {
+          "row": 5,
+          "col": 5
+        },
+        {
+          "row": 1,
+          "col": 11
+        },
+        {
+          "row": 8,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 5
+        },
+        {
+          "row": 1,
+          "col": 12
+        },
+        {
+          "row": 0,
+          "col": 10
+        },
+        {
+          "row": 1,
+          "col": 9
+        },
+        {
+          "row": 5,
+          "col": 11
+        },
+        {
+          "row": 9,
+          "col": 7
+        },
+        {
+          "row": 3,
+          "col": 8
+        },
+        {
+          "row": 8,
+          "col": 12
+        },
+        {
+          "row": 2,
+          "col": 7
+        },
+        {
+          "row": 8,
+          "col": 4
+        },
+        {
+          "row": 6,
+          "col": 5
+        },
+        {
+          "row": 5,
+          "col": 7
+        },
+        {
+          "row": 9,
+          "col": 6
+        },
+        {
+          "row": 2,
+          "col": 6
+        },
+        {
+          "row": 7,
+          "col": 5
+        },
+        {
+          "row": 10,
+          "col": 6
+        },
+        {
+          "row": 10,
+          "col": 12
+        },
+        {
+          "row": 9,
+          "col": 4
+        },
+        {
+          "row": 10,
+          "col": 8
+        },
+        {
+          "row": 1,
+          "col": 7
+        },
+        {
+          "row": 5,
+          "col": 4
+        },
+        {
+          "row": 6,
+          "col": 7
+        },
+        {
+          "row": 6,
+          "col": 4
+        },
+        {
+          "row": 8,
+          "col": 5
+        },
+        {
+          "row": 9,
+          "col": 12
+        },
+        {
+          "row": 1,
+          "col": 4
+        },
+        {
+          "row": 7,
+          "col": 8
+        },
+        {
+          "row": 5,
+          "col": 10
+        },
+        {
+          "row": 8,
+          "col": 6
+        },
+        {
+          "row": 8,
+          "col": 9
+        },
+        {
+          "row": 2,
+          "col": 9
+        },
+        {
+          "row": 6,
+          "col": 10
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 9,
+          "col": 10
+        },
+        {
+          "row": 7,
+          "col": 6
+        },
+        {
+          "row": 3,
+          "col": 9
+        },
+        {
+          "row": 2,
+          "col": 4
+        },
+        {
+          "row": 9,
+          "col": 8
+        },
+        {
+          "row": 5,
+          "col": 9
+        },
+        {
+          "row": 5,
+          "col": 12
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 4,
+          "col": 4,
+          "points": 10,
+          "onlyOnce": false
+        },
+        {
+          "row": 7,
+          "col": 11,
+          "points": 10,
+          "onlyOnce": false
+        },
+        {
+          "row": 9,
+          "col": 3,
+          "points": 10,
+          "onlyOnce": false
+        },
+        {
+          "row": 10,
+          "col": 7,
+          "points": 10,
+          "onlyOnce": false
+        },
+        {
+          "row": 6,
+          "col": 8,
+          "points": 10,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "d01",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 8,
+          "col": 6
+        },
+        {
+          "row": 0,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 7
+        },
+        {
+          "row": 10,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 6
+        },
+        {
+          "row": 7,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 4
+        },
+        {
+          "row": 2,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 10
+        },
+        {
+          "row": 8,
+          "col": 10
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 10,
+          "col": 12,
+          "points": 6,
+          "onlyOnce": false
+        },
+        {
+          "row": 8,
+          "col": 8,
+          "points": 6,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "d02",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 10,
+          "col": 7
+        },
+        {
+          "row": 9,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 4
+        },
+        {
+          "row": 5,
+          "col": 5
+        },
+        {
+          "row": 9,
+          "col": 6
+        },
+        {
+          "row": 2,
+          "col": 9
+        },
+        {
+          "row": 0,
+          "col": 8
+        },
+        {
+          "row": 4,
+          "col": 5
+        },
+        {
+          "row": 1,
+          "col": 4
+        },
+        {
+          "row": 9,
+          "col": 7
+        },
+        {
+          "row": 5,
+          "col": 4
+        },
+        {
+          "row": 10,
+          "col": 6
+        },
+        {
+          "row": 2,
+          "col": 10
+        },
+        {
+          "row": 10,
+          "col": 4
+        },
+        {
+          "row": 0,
+          "col": 7
+        },
+        {
+          "row": 6,
+          "col": 6
+        },
+        {
+          "row": 4,
+          "col": 9
+        },
+        {
+          "row": 8,
+          "col": 9
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 9,
+          "col": 9,
+          "points": 6,
+          "onlyOnce": false
+        },
+        {
+          "row": 2,
+          "col": 4,
+          "points": 6,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "d03",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 6,
+          "col": 5
+        },
+        {
+          "row": 6,
+          "col": 6
+        },
+        {
+          "row": 2,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 10
+        },
+        {
+          "row": 0,
+          "col": 4
+        },
+        {
+          "row": 3,
+          "col": 12
+        },
+        {
+          "row": 5,
+          "col": 10
+        },
+        {
+          "row": 9,
+          "col": 12
+        },
+        {
+          "row": 9,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 7
+        },
+        {
+          "row": 10,
+          "col": 6
+        },
+        {
+          "row": 6,
+          "col": 9
+        },
+        {
+          "row": 5,
+          "col": 4
+        },
+        {
+          "row": 1,
+          "col": 9
+        },
+        {
+          "row": 3,
+          "col": 11
+        },
+        {
+          "row": 1,
+          "col": 4
+        },
+        {
+          "row": 8,
+          "col": 11
+        },
+        {
+          "row": 6,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 6
+        },
+        {
+          "row": 7,
+          "col": 12
+        },
+        {
+          "row": 7,
+          "col": 11
+        },
+        {
+          "row": 4,
+          "col": 5
+        },
+        {
+          "row": 2,
+          "col": 11
+        },
+        {
+          "row": 3,
+          "col": 7
+        },
+        {
+          "row": 9,
+          "col": 6
+        },
+        {
+          "row": 2,
+          "col": 9
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 10,
+          "col": 4,
+          "points": 7,
+          "onlyOnce": false
+        },
+        {
+          "row": 7,
+          "col": 5,
+          "points": 7,
+          "onlyOnce": false
+        },
+        {
+          "row": 1,
+          "col": 8,
+          "points": 7,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "d04",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 3,
+          "col": 5
+        },
+        {
+          "row": 0,
+          "col": 11
+        },
+        {
+          "row": 7,
+          "col": 11
+        },
+        {
+          "row": 4,
+          "col": 9
+        },
+        {
+          "row": 4,
+          "col": 8
+        },
+        {
+          "row": 3,
+          "col": 12
+        },
+        {
+          "row": 7,
+          "col": 5
+        },
+        {
+          "row": 10,
+          "col": 6
+        },
+        {
+          "row": 6,
+          "col": 8
+        },
+        {
+          "row": 8,
+          "col": 5
+        },
+        {
+          "row": 2,
+          "col": 7
+        },
+        {
+          "row": 10,
+          "col": 8
+        },
+        {
+          "row": 8,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 6
+        },
+        {
+          "row": 2,
+          "col": 9
+        },
+        {
+          "row": 0,
+          "col": 8
+        },
+        {
+          "row": 5,
+          "col": 7
+        },
+        {
+          "row": 10,
+          "col": 7
+        },
+        {
+          "row": 6,
+          "col": 7
+        },
+        {
+          "row": 5,
+          "col": 9
+        },
+        {
+          "row": 0,
+          "col": 10
+        },
+        {
+          "row": 10,
+          "col": 11
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 7,
+          "col": 6
+        },
+        {
+          "row": 7,
+          "col": 9
+        },
+        {
+          "row": 4,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 6
+        },
+        {
+          "row": 5,
+          "col": 10
+        },
+        {
+          "row": 6,
+          "col": 4
+        },
+        {
+          "row": 2,
+          "col": 4
+        },
+        {
+          "row": 1,
+          "col": 10
+        },
+        {
+          "row": 7,
+          "col": 4
+        },
+        {
+          "row": 4,
+          "col": 12
+        },
+        {
+          "row": 6,
+          "col": 12
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 7,
+          "col": 12,
+          "points": 8,
+          "onlyOnce": false
+        },
+        {
+          "row": 1,
+          "col": 8,
+          "points": 8,
+          "onlyOnce": false
+        },
+        {
+          "row": 9,
+          "col": 5,
+          "points": 8,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "d05",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 1,
+          "col": 12
+        },
+        {
+          "row": 9,
+          "col": 11
+        },
+        {
+          "row": 4,
+          "col": 10
+        },
+        {
+          "row": 10,
+          "col": 11
+        },
+        {
+          "row": 10,
+          "col": 12
+        },
+        {
+          "row": 0,
+          "col": 4
+        },
+        {
+          "row": 0,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 9
+        },
+        {
+          "row": 3,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 10
+        },
+        {
+          "row": 5,
+          "col": 4
+        },
+        {
+          "row": 3,
+          "col": 7
+        },
+        {
+          "row": 2,
+          "col": 11
+        },
+        {
+          "row": 2,
+          "col": 5
+        },
+        {
+          "row": 10,
+          "col": 4
+        },
+        {
+          "row": 5,
+          "col": 8
+        },
+        {
+          "row": 9,
+          "col": 6
+        },
+        {
+          "row": 2,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 11
+        },
+        {
+          "row": 1,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 9
+        },
+        {
+          "row": 1,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 10
+        },
+        {
+          "row": 0,
+          "col": 6
+        },
+        {
+          "row": 7,
+          "col": 7
+        },
+        {
+          "row": 6,
+          "col": 10
+        },
+        {
+          "row": 3,
+          "col": 12
+        },
+        {
+          "row": 10,
+          "col": 5
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 8,
+          "col": 12
+        },
+        {
+          "row": 2,
+          "col": 6
+        },
+        {
+          "row": 10,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 5
+        },
+        {
+          "row": 9,
+          "col": 4
+        },
+        {
+          "row": 5,
+          "col": 12
+        },
+        {
+          "row": 9,
+          "col": 8
+        },
+        {
+          "row": 4,
+          "col": 8
+        },
+        {
+          "row": 9,
+          "col": 10
+        },
+        {
+          "row": 6,
+          "col": 8
+        },
+        {
+          "row": 6,
+          "col": 9
+        },
+        {
+          "row": 10,
+          "col": 8
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 5,
+          "col": 6,
+          "points": 9,
+          "onlyOnce": false
+        },
+        {
+          "row": 5,
+          "col": 2,
+          "points": 9,
+          "onlyOnce": false
+        },
+        {
+          "row": 1,
+          "col": 10,
+          "points": 9,
+          "onlyOnce": false
+        },
+        {
+          "row": 4,
+          "col": 2,
+          "points": 9,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "d06",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 9,
+          "col": 5
+        },
+        {
+          "row": 10,
+          "col": 11
+        },
+        {
+          "row": 2,
+          "col": 9
+        },
+        {
+          "row": 1,
+          "col": 9
+        },
+        {
+          "row": 10,
+          "col": 10
+        },
+        {
+          "row": 8,
+          "col": 6
+        },
+        {
+          "row": 0,
+          "col": 5
+        },
+        {
+          "row": 3,
+          "col": 8
+        },
+        {
+          "row": 9,
+          "col": 4
+        },
+        {
+          "row": 4,
+          "col": 5
+        },
+        {
+          "row": 8,
+          "col": 12
+        },
+        {
+          "row": 8,
+          "col": 7
+        },
+        {
+          "row": 6,
+          "col": 8
+        },
+        {
+          "row": 7,
+          "col": 8
+        },
+        {
+          "row": 4,
+          "col": 7
+        },
+        {
+          "row": 4,
+          "col": 9
+        },
+        {
+          "row": 2,
+          "col": 10
+        },
+        {
+          "row": 7,
+          "col": 7
+        },
+        {
+          "row": 2,
+          "col": 12
+        },
+        {
+          "row": 1,
+          "col": 6
+        },
+        {
+          "row": 10,
+          "col": 8
+        },
+        {
+          "row": 6,
+          "col": 6
+        },
+        {
+          "row": 3,
+          "col": 12
+        },
+        {
+          "row": 7,
+          "col": 4
+        },
+        {
+          "row": 9,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 12
+        },
+        {
+          "row": 2,
+          "col": 11
+        },
+        {
+          "row": 8,
+          "col": 10
+        },
+        {
+          "row": 4,
+          "col": 6
+        },
+        {
+          "row": 1,
+          "col": 12
+        },
+        {
+          "row": 3,
+          "col": 4
+        },
+        {
+          "row": 10,
+          "col": 5
+        },
+        {
+          "row": 6,
+          "col": 12
+        },
+        {
+          "row": 9,
+          "col": 6
+        },
+        {
+          "row": 5,
+          "col": 8
+        },
+        {
+          "row": 9,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 6
+        },
+        {
+          "row": 0,
+          "col": 4
+        },
+        {
+          "row": 1,
+          "col": 5
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 0,
+          "col": 9
+        },
+        {
+          "row": 7,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 6
+        },
+        {
+          "row": 10,
+          "col": 4
+        },
+        {
+          "row": 3,
+          "col": 6
+        },
+        {
+          "row": 4,
+          "col": 11
+        },
+        {
+          "row": 7,
+          "col": 9
+        },
+        {
+          "row": 7,
+          "col": 12
+        },
+        {
+          "row": 8,
+          "col": 5
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 1,
+          "col": 3,
+          "points": 9,
+          "onlyOnce": false
+        },
+        {
+          "row": 1,
+          "col": 7,
+          "points": 9,
+          "onlyOnce": false
+        },
+        {
+          "row": 7,
+          "col": 5,
+          "points": 9,
+          "onlyOnce": false
+        },
+        {
+          "row": 10,
+          "col": 6,
+          "points": 9,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "s01",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 9,
+          "col": 6
+        },
+        {
+          "row": 0,
+          "col": 9
+        },
+        {
+          "row": 4,
+          "col": 4
+        },
+        {
+          "row": 0,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 4
+        },
+        {
+          "row": 5,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 5
+        },
+        {
+          "row": 2,
+          "col": 11
+        },
+        {
+          "row": 1,
+          "col": 12
+        },
+        {
+          "row": 3,
+          "col": 4
+        },
+        {
+          "row": 10,
+          "col": 12
+        },
+        {
+          "row": 9,
+          "col": 8
+        },
+        {
+          "row": 7,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 8
+        },
+        {
+          "row": 4,
+          "col": 9
+        },
+        {
+          "row": 6,
+          "col": 4
+        },
+        {
+          "row": 5,
+          "col": 4
+        },
+        {
+          "row": 0,
+          "col": 11
+        },
+        {
+          "row": 3,
+          "col": 5
+        },
+        {
+          "row": 2,
+          "col": 5
+        },
+        {
+          "row": 9,
+          "col": 7
+        },
+        {
+          "row": 3,
+          "col": 10
+        },
+        {
+          "row": 4,
+          "col": 11
+        },
+        {
+          "row": 0,
+          "col": 7
+        },
+        {
+          "row": 8,
+          "col": 7
+        },
+        {
+          "row": 10,
+          "col": 6
+        },
+        {
+          "row": 1,
+          "col": 7
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 7,
+          "col": 8
+        },
+        {
+          "row": 1,
+          "col": 6
+        },
+        {
+          "row": 7,
+          "col": 9
+        },
+        {
+          "row": 4,
+          "col": 10
+        },
+        {
+          "row": 7,
+          "col": 6
+        },
+        {
+          "row": 0,
+          "col": 6
+        },
+        {
+          "row": 0,
+          "col": 10
+        },
+        {
+          "row": 4,
+          "col": 12
+        },
+        {
+          "row": 7,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 9
+        },
+        {
+          "row": 9,
+          "col": 11
+        },
+        {
+          "row": 6,
+          "col": 6
+        },
+        {
+          "row": 2,
+          "col": 7
+        },
+        {
+          "row": 10,
+          "col": 10
+        },
+        {
+          "row": 10,
+          "col": 11
+        },
+        {
+          "row": 2,
+          "col": 6
+        },
+        {
+          "row": 7,
+          "col": 4
+        },
+        {
+          "row": 7,
+          "col": 10
+        },
+        {
+          "row": 1,
+          "col": 4
+        },
+        {
+          "row": 6,
+          "col": 8
+        },
+        {
+          "row": 5,
+          "col": 6
+        },
+        {
+          "row": 10,
+          "col": 5
+        },
+        {
+          "row": 8,
+          "col": 10
+        },
+        {
+          "row": 2,
+          "col": 10
+        },
+        {
+          "row": 6,
+          "col": 12
+        },
+        {
+          "row": 6,
+          "col": 10
+        },
+        {
+          "row": 2,
+          "col": 4
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 8,
+          "col": 6,
+          "points": 10,
+          "onlyOnce": false
+        },
+        {
+          "row": 8,
+          "col": 2,
+          "points": 10,
+          "onlyOnce": false
+        },
+        {
+          "row": 1,
+          "col": 3,
+          "points": 10,
+          "onlyOnce": false
+        },
+        {
+          "row": 9,
+          "col": 3,
+          "points": 10,
+          "onlyOnce": false
+        },
+        {
+          "row": 9,
+          "col": 10,
+          "points": 10,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "s02",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 0,
+          "col": 4
+        },
+        {
+          "row": 1,
+          "col": 11
+        },
+        {
+          "row": 7,
+          "col": 6
+        },
+        {
+          "row": 10,
+          "col": 4
+        },
+        {
+          "row": 2,
+          "col": 9
+        },
+        {
+          "row": 2,
+          "col": 12
+        },
+        {
+          "row": 8,
+          "col": 12
+        },
+        {
+          "row": 9,
+          "col": 11
+        },
+        {
+          "row": 6,
+          "col": 8
+        },
+        {
+          "row": 7,
+          "col": 9
+        },
+        {
+          "row": 0,
+          "col": 12
+        },
+        {
+          "row": 10,
+          "col": 6
+        },
+        {
+          "row": 10,
+          "col": 8
+        },
+        {
+          "row": 8,
+          "col": 9
+        },
+        {
+          "row": 8,
+          "col": 8
+        },
+        {
+          "row": 6,
+          "col": 9
+        },
+        {
+          "row": 5,
+          "col": 7
+        },
+        {
+          "row": 6,
+          "col": 6
+        },
+        {
+          "row": 7,
+          "col": 12
+        },
+        {
+          "row": 6,
+          "col": 5
+        },
+        {
+          "row": 6,
+          "col": 10
+        },
+        {
+          "row": 4,
+          "col": 9
+        },
+        {
+          "row": 1,
+          "col": 7
+        },
+        {
+          "row": 3,
+          "col": 6
+        },
+        {
+          "row": 6,
+          "col": 11
+        },
+        {
+          "row": 3,
+          "col": 7
+        },
+        {
+          "row": 3,
+          "col": 9
+        },
+        {
+          "row": 10,
+          "col": 12
+        },
+        {
+          "row": 5,
+          "col": 6
+        },
+        {
+          "row": 4,
+          "col": 6
+        },
+        {
+          "row": 10,
+          "col": 9
+        },
+        {
+          "row": 4,
+          "col": 10
+        },
+        {
+          "row": 5,
+          "col": 4
+        },
+        {
+          "row": 9,
+          "col": 4
+        },
+        {
+          "row": 4,
+          "col": 5
+        },
+        {
+          "row": 3,
+          "col": 4
+        },
+        {
+          "row": 5,
+          "col": 10
+        },
+        {
+          "row": 0,
+          "col": 10
+        },
+        {
+          "row": 9,
+          "col": 10
+        },
+        {
+          "row": 10,
+          "col": 5
+        },
+        {
+          "row": 1,
+          "col": 9
+        },
+        {
+          "row": 9,
+          "col": 8
+        },
+        {
+          "row": 7,
+          "col": 4
+        },
+        {
+          "row": 4,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 5
+        },
+        {
+          "row": 3,
+          "col": 10
+        },
+        {
+          "row": 5,
+          "col": 11
+        },
+        {
+          "row": 7,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 11
+        },
+        {
+          "row": 2,
+          "col": 6
+        },
+        {
+          "row": 1,
+          "col": 5
+        },
+        {
+          "row": 7,
+          "col": 10
+        },
+        {
+          "row": 3,
+          "col": 5
+        },
+        {
+          "row": 1,
+          "col": 8
+        },
+        {
+          "row": 6,
+          "col": 7
+        },
+        {
+          "row": 2,
+          "col": 4
+        },
+        {
+          "row": 9,
+          "col": 9
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 0,
+          "col": 8,
+          "points": 11,
+          "onlyOnce": false
+        },
+        {
+          "row": 6,
+          "col": 3,
+          "points": 11,
+          "onlyOnce": false
+        },
+        {
+          "row": 5,
+          "col": 12,
+          "points": 11,
+          "onlyOnce": false
+        },
+        {
+          "row": 3,
+          "col": 2,
+          "points": 11,
+          "onlyOnce": false
+        },
+        {
+          "row": 8,
+          "col": 6,
+          "points": 11,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "s03",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 7,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 10
+        },
+        {
+          "row": 4,
+          "col": 12
+        },
+        {
+          "row": 7,
+          "col": 4
+        },
+        {
+          "row": 9,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 5
+        },
+        {
+          "row": 8,
+          "col": 6
+        },
+        {
+          "row": 10,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 7
+        },
+        {
+          "row": 2,
+          "col": 10
+        },
+        {
+          "row": 9,
+          "col": 4
+        },
+        {
+          "row": 3,
+          "col": 4
+        },
+        {
+          "row": 0,
+          "col": 5
+        },
+        {
+          "row": 9,
+          "col": 8
+        },
+        {
+          "row": 7,
+          "col": 9
+        },
+        {
+          "row": 4,
+          "col": 11
+        },
+        {
+          "row": 7,
+          "col": 8
+        },
+        {
+          "row": 1,
+          "col": 7
+        },
+        {
+          "row": 8,
+          "col": 5
+        },
+        {
+          "row": 7,
+          "col": 12
+        },
+        {
+          "row": 1,
+          "col": 12
+        },
+        {
+          "row": 3,
+          "col": 12
+        },
+        {
+          "row": 9,
+          "col": 5
+        },
+        {
+          "row": 6,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 4
+        },
+        {
+          "row": 1,
+          "col": 6
+        },
+        {
+          "row": 3,
+          "col": 10
+        },
+        {
+          "row": 6,
+          "col": 4
+        },
+        {
+          "row": 0,
+          "col": 8
+        },
+        {
+          "row": 4,
+          "col": 4
+        },
+        {
+          "row": 7,
+          "col": 6
+        },
+        {
+          "row": 10,
+          "col": 12
+        },
+        {
+          "row": 6,
+          "col": 11
+        },
+        {
+          "row": 4,
+          "col": 8
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 9,
+          "col": 10
+        },
+        {
+          "row": 0,
+          "col": 11
+        },
+        {
+          "row": 3,
+          "col": 5
+        },
+        {
+          "row": 8,
+          "col": 4
+        },
+        {
+          "row": 10,
+          "col": 9
+        },
+        {
+          "row": 6,
+          "col": 10
+        },
+        {
+          "row": 6,
+          "col": 12
+        },
+        {
+          "row": 5,
+          "col": 12
+        },
+        {
+          "row": 5,
+          "col": 11
+        },
+        {
+          "row": 2,
+          "col": 11
+        },
+        {
+          "row": 8,
+          "col": 11
+        },
+        {
+          "row": 3,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 7
+        },
+        {
+          "row": 7,
+          "col": 11
+        },
+        {
+          "row": 8,
+          "col": 8
+        },
+        {
+          "row": 2,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 4
+        },
+        {
+          "row": 4,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 12
+        },
+        {
+          "row": 6,
+          "col": 5
+        },
+        {
+          "row": 2,
+          "col": 4
+        },
+        {
+          "row": 2,
+          "col": 5
+        },
+        {
+          "row": 1,
+          "col": 9
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 2,
+          "col": 6,
+          "points": 11,
+          "onlyOnce": false
+        },
+        {
+          "row": 4,
+          "col": 2,
+          "points": 11,
+          "onlyOnce": false
+        },
+        {
+          "row": 7,
+          "col": 2,
+          "points": 11,
+          "onlyOnce": false
+        },
+        {
+          "row": 3,
+          "col": 7,
+          "points": 11,
+          "onlyOnce": false
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "points": 11,
+          "onlyOnce": false
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "points": 11,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "f01",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 7,
+          "col": 11
+        },
+        {
+          "row": 4,
+          "col": 11
+        },
+        {
+          "row": 1,
+          "col": 4
+        },
+        {
+          "row": 2,
+          "col": 11
+        },
+        {
+          "row": 7,
+          "col": 10
+        },
+        {
+          "row": 2,
+          "col": 8
+        },
+        {
+          "row": 5,
+          "col": 7
+        },
+        {
+          "row": 5,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 5
+        },
+        {
+          "row": 8,
+          "col": 5
+        },
+        {
+          "row": 4,
+          "col": 6
+        },
+        {
+          "row": 2,
+          "col": 4
+        },
+        {
+          "row": 9,
+          "col": 5
+        },
+        {
+          "row": 0,
+          "col": 11
+        },
+        {
+          "row": 7,
+          "col": 7
+        },
+        {
+          "row": 6,
+          "col": 5
+        },
+        {
+          "row": 6,
+          "col": 7
+        },
+        {
+          "row": 2,
+          "col": 6
+        },
+        {
+          "row": 5,
+          "col": 10
+        },
+        {
+          "row": 0,
+          "col": 10
+        },
+        {
+          "row": 10,
+          "col": 7
+        },
+        {
+          "row": 4,
+          "col": 12
+        },
+        {
+          "row": 6,
+          "col": 10
+        },
+        {
+          "row": 4,
+          "col": 4
+        },
+        {
+          "row": 7,
+          "col": 9
+        },
+        {
+          "row": 5,
+          "col": 9
+        },
+        {
+          "row": 0,
+          "col": 4
+        },
+        {
+          "row": 6,
+          "col": 4
+        },
+        {
+          "row": 4,
+          "col": 7
+        },
+        {
+          "row": 3,
+          "col": 8
+        },
+        {
+          "row": 5,
+          "col": 6
+        },
+        {
+          "row": 1,
+          "col": 7
+        },
+        {
+          "row": 10,
+          "col": 10
+        },
+        {
+          "row": 4,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 7
+        },
+        {
+          "row": 7,
+          "col": 6
+        },
+        {
+          "row": 5,
+          "col": 4
+        },
+        {
+          "row": 1,
+          "col": 10
+        },
+        {
+          "row": 3,
+          "col": 5
+        },
+        {
+          "row": 2,
+          "col": 9
+        },
+        {
+          "row": 5,
+          "col": 12
+        },
+        {
+          "row": 5,
+          "col": 11
+        },
+        {
+          "row": 8,
+          "col": 12
+        },
+        {
+          "row": 3,
+          "col": 6
+        },
+        {
+          "row": 3,
+          "col": 11
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 10,
+          "col": 4
+        },
+        {
+          "row": 6,
+          "col": 11
+        },
+        {
+          "row": 8,
+          "col": 8
+        },
+        {
+          "row": 2,
+          "col": 10
+        },
+        {
+          "row": 10,
+          "col": 9
+        },
+        {
+          "row": 4,
+          "col": 9
+        },
+        {
+          "row": 0,
+          "col": 12
+        },
+        {
+          "row": 9,
+          "col": 12
+        },
+        {
+          "row": 0,
+          "col": 9
+        },
+        {
+          "row": 1,
+          "col": 9
+        },
+        {
+          "row": 2,
+          "col": 7
+        },
+        {
+          "row": 10,
+          "col": 12
+        },
+        {
+          "row": 6,
+          "col": 12
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 9,
+          "col": 6,
+          "points": 12,
+          "onlyOnce": false
+        },
+        {
+          "row": 7,
+          "col": 5,
+          "points": 12,
+          "onlyOnce": false
+        },
+        {
+          "row": 7,
+          "col": 8,
+          "points": 12,
+          "onlyOnce": false
+        },
+        {
+          "row": 3,
+          "col": 3,
+          "points": 12,
+          "onlyOnce": false
+        },
+        {
+          "row": 5,
+          "col": 3,
+          "points": 12,
+          "onlyOnce": false
+        },
+        {
+          "row": 6,
+          "col": 6,
+          "points": 12,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "f02",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 2,
+          "col": 8
+        },
+        {
+          "row": 7,
+          "col": 5
+        },
+        {
+          "row": 5,
+          "col": 5
+        },
+        {
+          "row": 2,
+          "col": 5
+        },
+        {
+          "row": 3,
+          "col": 12
+        },
+        {
+          "row": 7,
+          "col": 6
+        },
+        {
+          "row": 9,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 6
+        },
+        {
+          "row": 8,
+          "col": 9
+        },
+        {
+          "row": 3,
+          "col": 8
+        },
+        {
+          "row": 6,
+          "col": 6
+        },
+        {
+          "row": 2,
+          "col": 7
+        },
+        {
+          "row": 2,
+          "col": 10
+        },
+        {
+          "row": 10,
+          "col": 4
+        },
+        {
+          "row": 4,
+          "col": 10
+        },
+        {
+          "row": 0,
+          "col": 4
+        },
+        {
+          "row": 2,
+          "col": 6
+        },
+        {
+          "row": 6,
+          "col": 10
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 2,
+          "col": 11
+        },
+        {
+          "row": 3,
+          "col": 10
+        },
+        {
+          "row": 5,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 9
+        },
+        {
+          "row": 3,
+          "col": 11
+        },
+        {
+          "row": 6,
+          "col": 9
+        },
+        {
+          "row": 10,
+          "col": 9
+        },
+        {
+          "row": 4,
+          "col": 6
+        },
+        {
+          "row": 7,
+          "col": 12
+        },
+        {
+          "row": 3,
+          "col": 6
+        },
+        {
+          "row": 10,
+          "col": 7
+        },
+        {
+          "row": 9,
+          "col": 6
+        },
+        {
+          "row": 8,
+          "col": 12
+        },
+        {
+          "row": 8,
+          "col": 6
+        },
+        {
+          "row": 0,
+          "col": 5
+        },
+        {
+          "row": 4,
+          "col": 5
+        },
+        {
+          "row": 6,
+          "col": 5
+        },
+        {
+          "row": 7,
+          "col": 4
+        },
+        {
+          "row": 0,
+          "col": 8
+        },
+        {
+          "row": 7,
+          "col": 8
+        },
+        {
+          "row": 9,
+          "col": 4
+        },
+        {
+          "row": 1,
+          "col": 6
+        },
+        {
+          "row": 7,
+          "col": 10
+        },
+        {
+          "row": 0,
+          "col": 11
+        },
+        {
+          "row": 7,
+          "col": 9
+        },
+        {
+          "row": 5,
+          "col": 12
+        },
+        {
+          "row": 10,
+          "col": 11
+        },
+        {
+          "row": 10,
+          "col": 8
+        },
+        {
+          "row": 2,
+          "col": 9
+        },
+        {
+          "row": 9,
+          "col": 12
+        },
+        {
+          "row": 8,
+          "col": 10
+        },
+        {
+          "row": 1,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 9
+        },
+        {
+          "row": 8,
+          "col": 5
+        },
+        {
+          "row": 5,
+          "col": 4
+        },
+        {
+          "row": 3,
+          "col": 4
+        },
+        {
+          "row": 2,
+          "col": 4
+        },
+        {
+          "row": 8,
+          "col": 4
+        },
+        {
+          "row": 9,
+          "col": 10
+        },
+        {
+          "row": 4,
+          "col": 9
+        },
+        {
+          "row": 7,
+          "col": 7
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 7,
+          "col": 3,
+          "points": 12,
+          "onlyOnce": false
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "points": 12,
+          "onlyOnce": false
+        },
+        {
+          "row": 4,
+          "col": 8,
+          "points": 12,
+          "onlyOnce": false
+        },
+        {
+          "row": 2,
+          "col": 3,
+          "points": 12,
+          "onlyOnce": false
+        },
+        {
+          "row": 0,
+          "col": 6,
+          "points": 12,
+          "onlyOnce": false
+        },
+        {
+          "row": 1,
+          "col": 11,
+          "points": 12,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "f03",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 6,
+          "col": 5
+        },
+        {
+          "row": 9,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 8
+        },
+        {
+          "row": 1,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 11
+        },
+        {
+          "row": 0,
+          "col": 10
+        },
+        {
+          "row": 4,
+          "col": 4
+        },
+        {
+          "row": 4,
+          "col": 8
+        },
+        {
+          "row": 2,
+          "col": 9
+        },
+        {
+          "row": 5,
+          "col": 4
+        },
+        {
+          "row": 5,
+          "col": 12
+        },
+        {
+          "row": 8,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 8
+        },
+        {
+          "row": 5,
+          "col": 5
+        },
+        {
+          "row": 1,
+          "col": 12
+        },
+        {
+          "row": 0,
+          "col": 6
+        },
+        {
+          "row": 10,
+          "col": 8
+        },
+        {
+          "row": 8,
+          "col": 10
+        },
+        {
+          "row": 0,
+          "col": 11
+        },
+        {
+          "row": 1,
+          "col": 4
+        },
+        {
+          "row": 10,
+          "col": 6
+        },
+        {
+          "row": 4,
+          "col": 5
+        },
+        {
+          "row": 3,
+          "col": 5
+        },
+        {
+          "row": 6,
+          "col": 9
+        },
+        {
+          "row": 3,
+          "col": 12
+        },
+        {
+          "row": 7,
+          "col": 4
+        },
+        {
+          "row": 3,
+          "col": 10
+        },
+        {
+          "row": 2,
+          "col": 10
+        },
+        {
+          "row": 7,
+          "col": 5
+        },
+        {
+          "row": 9,
+          "col": 12
+        },
+        {
+          "row": 2,
+          "col": 4
+        },
+        {
+          "row": 2,
+          "col": 12
+        },
+        {
+          "row": 0,
+          "col": 5
+        },
+        {
+          "row": 4,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 9
+        },
+        {
+          "row": 10,
+          "col": 9
+        },
+        {
+          "row": 8,
+          "col": 5
+        },
+        {
+          "row": 3,
+          "col": 11
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 7,
+          "col": 7
+        },
+        {
+          "row": 5,
+          "col": 7
+        },
+        {
+          "row": 10,
+          "col": 12
+        },
+        {
+          "row": 3,
+          "col": 4
+        },
+        {
+          "row": 5,
+          "col": 6
+        },
+        {
+          "row": 3,
+          "col": 9
+        },
+        {
+          "row": 2,
+          "col": 5
+        },
+        {
+          "row": 5,
+          "col": 9
+        },
+        {
+          "row": 0,
+          "col": 8
+        },
+        {
+          "row": 8,
+          "col": 9
+        },
+        {
+          "row": 7,
+          "col": 12
+        },
+        {
+          "row": 3,
+          "col": 7
+        },
+        {
+          "row": 2,
+          "col": 6
+        },
+        {
+          "row": 2,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 7
+        },
+        {
+          "row": 4,
+          "col": 11
+        },
+        {
+          "row": 1,
+          "col": 6
+        },
+        {
+          "row": 4,
+          "col": 10
+        },
+        {
+          "row": 5,
+          "col": 10
+        },
+        {
+          "row": 9,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 4
+        },
+        {
+          "row": 10,
+          "col": 5
+        },
+        {
+          "row": 8,
+          "col": 11
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 3,
+          "col": 2,
+          "points": 13,
+          "onlyOnce": false
+        },
+        {
+          "row": 3,
+          "col": 8,
+          "points": 13,
+          "onlyOnce": false
+        },
+        {
+          "row": 7,
+          "col": 11,
+          "points": 13,
+          "onlyOnce": false
+        },
+        {
+          "row": 10,
+          "col": 4,
+          "points": 13,
+          "onlyOnce": false
+        },
+        {
+          "row": 6,
+          "col": 6,
+          "points": 13,
+          "onlyOnce": false
+        },
+        {
+          "row": 4,
+          "col": 6,
+          "points": 13,
+          "onlyOnce": false
+        },
+        {
+          "row": 10,
+          "col": 7,
+          "points": 13,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "f04",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 0,
+          "col": 4
+        },
+        {
+          "row": 2,
+          "col": 5
+        },
+        {
+          "row": 3,
+          "col": 11
+        },
+        {
+          "row": 6,
+          "col": 6
+        },
+        {
+          "row": 8,
+          "col": 5
+        },
+        {
+          "row": 0,
+          "col": 8
+        },
+        {
+          "row": 3,
+          "col": 4
+        },
+        {
+          "row": 1,
+          "col": 10
+        },
+        {
+          "row": 9,
+          "col": 6
+        },
+        {
+          "row": 4,
+          "col": 7
+        },
+        {
+          "row": 4,
+          "col": 9
+        },
+        {
+          "row": 6,
+          "col": 7
+        },
+        {
+          "row": 3,
+          "col": 12
+        },
+        {
+          "row": 0,
+          "col": 5
+        },
+        {
+          "row": 8,
+          "col": 10
+        },
+        {
+          "row": 6,
+          "col": 5
+        },
+        {
+          "row": 7,
+          "col": 6
+        },
+        {
+          "row": 1,
+          "col": 6
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 5,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 9
+        },
+        {
+          "row": 6,
+          "col": 8
+        },
+        {
+          "row": 2,
+          "col": 11
+        },
+        {
+          "row": 7,
+          "col": 8
+        },
+        {
+          "row": 3,
+          "col": 9
+        },
+        {
+          "row": 6,
+          "col": 12
+        },
+        {
+          "row": 7,
+          "col": 5
+        },
+        {
+          "row": 10,
+          "col": 10
+        },
+        {
+          "row": 1,
+          "col": 8
+        },
+        {
+          "row": 3,
+          "col": 5
+        },
+        {
+          "row": 9,
+          "col": 10
+        },
+        {
+          "row": 9,
+          "col": 4
+        },
+        {
+          "row": 2,
+          "col": 8
+        },
+        {
+          "row": 9,
+          "col": 7
+        },
+        {
+          "row": 9,
+          "col": 5
+        },
+        {
+          "row": 5,
+          "col": 5
+        },
+        {
+          "row": 5,
+          "col": 10
+        },
+        {
+          "row": 10,
+          "col": 11
+        },
+        {
+          "row": 8,
+          "col": 11
+        },
+        {
+          "row": 0,
+          "col": 9
+        },
+        {
+          "row": 1,
+          "col": 5
+        },
+        {
+          "row": 0,
+          "col": 6
+        },
+        {
+          "row": 4,
+          "col": 10
+        },
+        {
+          "row": 4,
+          "col": 8
+        },
+        {
+          "row": 2,
+          "col": 4
+        },
+        {
+          "row": 0,
+          "col": 12
+        },
+        {
+          "row": 10,
+          "col": 9
+        },
+        {
+          "row": 5,
+          "col": 4
+        },
+        {
+          "row": 10,
+          "col": 4
+        },
+        {
+          "row": 9,
+          "col": 11
+        },
+        {
+          "row": 0,
+          "col": 7
+        },
+        {
+          "row": 8,
+          "col": 7
+        },
+        {
+          "row": 7,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 11
+        },
+        {
+          "row": 3,
+          "col": 6
+        },
+        {
+          "row": 1,
+          "col": 11
+        },
+        {
+          "row": 9,
+          "col": 12
+        },
+        {
+          "row": 5,
+          "col": 6
+        },
+        {
+          "row": 2,
+          "col": 10
+        },
+        {
+          "row": 1,
+          "col": 12
+        },
+        {
+          "row": 10,
+          "col": 8
+        },
+        {
+          "row": 8,
+          "col": 9
+        },
+        {
+          "row": 3,
+          "col": 10
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 2,
+          "col": 7,
+          "points": 14,
+          "onlyOnce": false
+        },
+        {
+          "row": 8,
+          "col": 3,
+          "points": 14,
+          "onlyOnce": false
+        },
+        {
+          "row": 8,
+          "col": 12,
+          "points": 14,
+          "onlyOnce": false
+        },
+        {
+          "row": 8,
+          "col": 6,
+          "points": 14,
+          "onlyOnce": false
+        },
+        {
+          "row": 6,
+          "col": 4,
+          "points": 14,
+          "onlyOnce": false
+        },
+        {
+          "row": 2,
+          "col": 6,
+          "points": 14,
+          "onlyOnce": false
+        },
+        {
+          "row": 5,
+          "col": 3,
+          "points": 14,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "f05",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 3,
+          "col": 9
+        },
+        {
+          "row": 9,
+          "col": 11
+        },
+        {
+          "row": 0,
+          "col": 4
+        },
+        {
+          "row": 9,
+          "col": 8
+        },
+        {
+          "row": 1,
+          "col": 12
+        },
+        {
+          "row": 4,
+          "col": 8
+        },
+        {
+          "row": 8,
+          "col": 10
+        },
+        {
+          "row": 2,
+          "col": 12
+        },
+        {
+          "row": 6,
+          "col": 12
+        },
+        {
+          "row": 2,
+          "col": 11
+        },
+        {
+          "row": 1,
+          "col": 11
+        },
+        {
+          "row": 0,
+          "col": 7
+        },
+        {
+          "row": 9,
+          "col": 12
+        },
+        {
+          "row": 9,
+          "col": 4
+        },
+        {
+          "row": 7,
+          "col": 9
+        },
+        {
+          "row": 10,
+          "col": 12
+        },
+        {
+          "row": 10,
+          "col": 4
+        },
+        {
+          "row": 5,
+          "col": 10
+        },
+        {
+          "row": 8,
+          "col": 12
+        },
+        {
+          "row": 9,
+          "col": 5
+        },
+        {
+          "row": 2,
+          "col": 4
+        },
+        {
+          "row": 5,
+          "col": 5
+        },
+        {
+          "row": 4,
+          "col": 6
+        },
+        {
+          "row": 4,
+          "col": 7
+        },
+        {
+          "row": 4,
+          "col": 10
+        },
+        {
+          "row": 9,
+          "col": 7
+        },
+        {
+          "row": 8,
+          "col": 5
+        },
+        {
+          "row": 2,
+          "col": 6
+        },
+        {
+          "row": 6,
+          "col": 7
+        },
+        {
+          "row": 4,
+          "col": 4
+        },
+        {
+          "row": 6,
+          "col": 10
+        },
+        {
+          "row": 1,
+          "col": 6
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 10,
+          "col": 5
+        },
+        {
+          "row": 10,
+          "col": 7
+        },
+        {
+          "row": 3,
+          "col": 12
+        },
+        {
+          "row": 8,
+          "col": 8
+        },
+        {
+          "row": 3,
+          "col": 11
+        },
+        {
+          "row": 10,
+          "col": 11
+        },
+        {
+          "row": 7,
+          "col": 11
+        },
+        {
+          "row": 7,
+          "col": 12
+        },
+        {
+          "row": 0,
+          "col": 12
+        },
+        {
+          "row": 1,
+          "col": 4
+        },
+        {
+          "row": 6,
+          "col": 4
+        },
+        {
+          "row": 6,
+          "col": 8
+        },
+        {
+          "row": 3,
+          "col": 5
+        },
+        {
+          "row": 1,
+          "col": 9
+        },
+        {
+          "row": 5,
+          "col": 4
+        },
+        {
+          "row": 5,
+          "col": 6
+        },
+        {
+          "row": 2,
+          "col": 10
+        },
+        {
+          "row": 3,
+          "col": 4
+        },
+        {
+          "row": 6,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 12
+        },
+        {
+          "row": 7,
+          "col": 4
+        },
+        {
+          "row": 1,
+          "col": 8
+        },
+        {
+          "row": 6,
+          "col": 9
+        },
+        {
+          "row": 2,
+          "col": 7
+        },
+        {
+          "row": 8,
+          "col": 7
+        },
+        {
+          "row": 2,
+          "col": 9
+        },
+        {
+          "row": 8,
+          "col": 9
+        },
+        {
+          "row": 1,
+          "col": 7
+        },
+        {
+          "row": 7,
+          "col": 8
+        },
+        {
+          "row": 5,
+          "col": 11
+        },
+        {
+          "row": 6,
+          "col": 6
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 9,
+          "col": 2,
+          "points": 14,
+          "onlyOnce": false
+        },
+        {
+          "row": 3,
+          "col": 10,
+          "points": 14,
+          "onlyOnce": false
+        },
+        {
+          "row": 7,
+          "col": 7,
+          "points": 14,
+          "onlyOnce": false
+        },
+        {
+          "row": 2,
+          "col": 3,
+          "points": 14,
+          "onlyOnce": false
+        },
+        {
+          "row": 10,
+          "col": 2,
+          "points": 14,
+          "onlyOnce": false
+        },
+        {
+          "row": 8,
+          "col": 11,
+          "points": 14,
+          "onlyOnce": false
+        },
+        {
+          "row": 10,
+          "col": 9,
+          "points": 14,
+          "onlyOnce": false
+        },
+        {
+          "row": 9,
+          "col": 3,
+          "points": 14,
+          "onlyOnce": false
+        }
+      ]
+    },
+    {
+      "key": "f06",
+      "mode": "PvE",
+      "type": "full",
+      "blockedTiles": [
+        {
+          "row": 9,
+          "col": 6
+        },
+        {
+          "row": 10,
+          "col": 7
+        },
+        {
+          "row": 3,
+          "col": 12
+        },
+        {
+          "row": 2,
+          "col": 7
+        },
+        {
+          "row": 7,
+          "col": 5
+        },
+        {
+          "row": 7,
+          "col": 10
+        },
+        {
+          "row": 7,
+          "col": 9
+        },
+        {
+          "row": 9,
+          "col": 11
+        },
+        {
+          "row": 6,
+          "col": 4
+        },
+        {
+          "row": 9,
+          "col": 9
+        },
+        {
+          "row": 8,
+          "col": 9
+        },
+        {
+          "row": 2,
+          "col": 4
+        },
+        {
+          "row": 4,
+          "col": 12
+        },
+        {
+          "row": 0,
+          "col": 4
+        },
+        {
+          "row": 2,
+          "col": 6
+        },
+        {
+          "row": 0,
+          "col": 5
+        },
+        {
+          "row": 9,
+          "col": 10
+        },
+        {
+          "row": 8,
+          "col": 5
+        },
+        {
+          "row": 6,
+          "col": 8
+        },
+        {
+          "row": 0,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 4
+        },
+        {
+          "row": 3,
+          "col": 11
+        },
+        {
+          "row": 9,
+          "col": 8
+        },
+        {
+          "row": 9,
+          "col": 12
+        },
+        {
+          "row": 0,
+          "col": 6
+        },
+        {
+          "row": 6,
+          "col": 6
+        },
+        {
+          "row": 7,
+          "col": 7
+        },
+        {
+          "row": 0,
+          "col": 12
+        },
+        {
+          "row": 2,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 6
+        },
+        {
+          "row": 6,
+          "col": 9
+        },
+        {
+          "row": 0,
+          "col": 11
+        },
+        {
+          "row": 1,
+          "col": 4
+        },
+        {
+          "row": 8,
+          "col": 11
+        },
+        {
+          "row": 4,
+          "col": 11
+        },
+        {
+          "row": 8,
+          "col": 6
+        },
+        {
+          "row": 0,
+          "col": 10
+        },
+        {
+          "row": 2,
+          "col": 9
+        },
+        {
+          "row": 3,
+          "col": 8
+        },
+        {
+          "row": 4,
+          "col": 9
+        },
+        {
+          "row": 3,
+          "col": 6
+        },
+        {
+          "row": 10,
+          "col": 8
+        },
+        {
+          "row": 10,
+          "col": 12
+        },
+        {
+          "row": 0,
+          "col": 7
+        },
+        {
+          "row": 7,
+          "col": 4
+        },
+        {
+          "row": 2,
+          "col": 12
+        },
+        {
+          "row": 7,
+          "col": 12
+        },
+        {
+          "row": 4,
+          "col": 5
+        },
+        {
+          "row": 5,
+          "col": 11
+        },
+        {
+          "row": 3,
+          "col": 7
+        },
+        {
+          "row": 10,
+          "col": 11
+        },
+        {
+          "row": 5,
+          "col": 10
+        },
+        {
+          "row": 6,
+          "col": 5
+        },
+        {
+          "row": 3,
+          "col": 4
+        },
+        {
+          "row": 4,
+          "col": 6
+        },
+        {
+          "row": 6,
+          "col": 11
+        },
+        {
+          "row": 1,
+          "col": 9
+        },
+        {
+          "row": 10,
+          "col": 10
+        },
+        {
+          "row": 8,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 7
+        },
+        {
+          "row": 1,
+          "col": 10
+        },
+        {
+          "row": 5,
+          "col": 7
+        },
+        {
+          "row": 5,
+          "col": 6
+        },
+        {
+          "row": 5,
+          "col": 9
+        },
+        {
+          "row": 9,
+          "col": 5
+        }
+      ],
+      "scoringTiles": [
+        {
+          "row": 2,
+          "col": 10,
+          "points": 15,
+          "onlyOnce": false
+        },
+        {
+          "row": 9,
+          "col": 2,
+          "points": 15,
+          "onlyOnce": false
+        },
+        {
+          "row": 4,
+          "col": 10,
+          "points": 15,
+          "onlyOnce": false
+        },
+        {
+          "row": 5,
+          "col": 2,
+          "points": 15,
+          "onlyOnce": false
+        },
+        {
+          "row": 9,
+          "col": 3,
+          "points": 15,
+          "onlyOnce": false
+        },
+        {
+          "row": 4,
+          "col": 8,
+          "points": 15,
+          "onlyOnce": false
+        },
+        {
+          "row": 4,
+          "col": 2,
+          "points": 15,
+          "onlyOnce": false
+        },
+        {
+          "row": 5,
+          "col": 12,
+          "points": 15,
+          "onlyOnce": false
+        }
+      ]
+    }
+  ],
+  "mapPlacements": [
+    {
+      "mapKey": "m01",
+      "positions": [
+        {
+          "row": 1,
+          "col": 13
+        },
+        {
+          "row": 10,
+          "col": 16
+        },
+        {
+          "row": 0,
+          "col": 16
+        }
+      ],
+      "configKeys": [
+        "v2grunt",
+        "v2aggressor3",
+        "v2sniper"
+      ]
+    },
+    {
+      "mapKey": "m02",
+      "positions": [
+        {
+          "row": 0,
+          "col": 15
+        },
+        {
+          "row": 5,
+          "col": 13
+        },
+        {
+          "row": 4,
+          "col": 14
+        }
+      ],
+      "configKeys": [
+        "v2grunt2",
+        "v2aggressor2",
+        "v2sniper2"
+      ]
+    },
+    {
+      "mapKey": "m03",
+      "positions": [
+        {
+          "row": 6,
+          "col": 13
+        },
+        {
+          "row": 4,
+          "col": 16
+        },
+        {
+          "row": 10,
+          "col": 15
+        },
+        {
+          "row": 3,
+          "col": 13
+        }
+      ],
+      "configKeys": [
+        "v2grunt",
+        "v2aggressor2",
+        "v2sniper",
+        "v2support"
+      ]
+    },
+    {
+      "mapKey": "m04",
+      "positions": [
+        {
+          "row": 2,
+          "col": 13
+        },
+        {
+          "row": 9,
+          "col": 14
+        },
+        {
+          "row": 7,
+          "col": 16
+        }
+      ],
+      "configKeys": [
+        "v2grunt3",
+        "v2aggressor3",
+        "v2sniper3"
+      ]
+    },
+    {
+      "mapKey": "m05",
+      "positions": [
+        {
+          "row": 5,
+          "col": 14
+        },
+        {
+          "row": 0,
+          "col": 15
+        },
+        {
+          "row": 5,
+          "col": 15
+        },
+        {
+          "row": 10,
+          "col": 13
+        }
+      ],
+      "configKeys": [
+        "v2grunt2",
+        "v2aggressor2",
+        "v2sniper3",
+        "v2support"
+      ]
+    },
+    {
+      "mapKey": "m06",
+      "positions": [
+        {
+          "row": 2,
+          "col": 14
+        },
+        {
+          "row": 6,
+          "col": 14
+        },
+        {
+          "row": 6,
+          "col": 16
+        },
+        {
+          "row": 6,
+          "col": 15
+        }
+      ],
+      "configKeys": [
+        "v2grunt3",
+        "v2aggressor2",
+        "v2sniper3",
+        "v2support"
+      ]
+    },
+    {
+      "mapKey": "m07",
+      "positions": [
+        {
+          "row": 3,
+          "col": 15
+        },
+        {
+          "row": 1,
+          "col": 13
+        },
+        {
+          "row": 0,
+          "col": 16
+        },
+        {
+          "row": 1,
+          "col": 14
+        }
+      ],
+      "configKeys": [
+        "v2grunt4",
+        "v2aggressor3",
+        "v2sniper3",
+        "v2support2"
+      ]
+    },
+    {
+      "mapKey": "m08",
+      "positions": [
+        {
+          "row": 3,
+          "col": 16
+        },
+        {
+          "row": 6,
+          "col": 14
+        },
+        {
+          "row": 7,
+          "col": 13
+        },
+        {
+          "row": 1,
+          "col": 13
+        }
+      ],
+      "configKeys": [
+        "v2grunt3",
+        "v2aggressor3",
+        "v2sniper4",
+        "v2support3"
+      ]
+    },
+    {
+      "mapKey": "m09",
+      "positions": [
+        {
+          "row": 2,
+          "col": 15
+        },
+        {
+          "row": 7,
+          "col": 13
+        },
+        {
+          "row": 9,
+          "col": 13
+        },
+        {
+          "row": 4,
+          "col": 15
+        }
+      ],
+      "configKeys": [
+        "v2grunt5",
+        "v2aggressor3",
+        "v2sniper5",
+        "v2support5"
+      ]
+    },
+    {
+      "mapKey": "m10",
+      "positions": [
+        {
+          "row": 5,
+          "col": 15
+        },
+        {
+          "row": 7,
+          "col": 13
+        },
+        {
+          "row": 3,
+          "col": 15
+        },
+        {
+          "row": 2,
+          "col": 14
+        },
+        {
+          "row": 1,
+          "col": 14
+        }
+      ],
+      "configKeys": [
+        "v2grunt4",
+        "v2aggressor2",
+        "v2sniper3",
+        "v2support2",
+        "v2turtle3"
+      ]
+    },
+    {
+      "mapKey": "m11",
+      "positions": [
+        {
+          "row": 3,
+          "col": 16
+        },
+        {
+          "row": 1,
+          "col": 15
+        },
+        {
+          "row": 0,
+          "col": 14
+        },
+        {
+          "row": 2,
+          "col": 15
+        },
+        {
+          "row": 9,
+          "col": 15
+        }
+      ],
+      "configKeys": [
+        "v2grunt3",
+        "v2aggressor2",
+        "v2sniper3",
+        "v2support3",
+        "v2turtle3"
+      ]
+    },
+    {
+      "mapKey": "m12",
+      "positions": [
+        {
+          "row": 1,
+          "col": 13
+        },
+        {
+          "row": 9,
+          "col": 16
+        },
+        {
+          "row": 7,
+          "col": 15
+        },
+        {
+          "row": 3,
+          "col": 15
+        },
+        {
+          "row": 10,
+          "col": 14
+        }
+      ],
+      "configKeys": [
+        "v2grunt4",
+        "v2aggressor3",
+        "v2sniper5",
+        "v2support4",
+        "v2turtle3"
+      ]
+    },
+    {
+      "mapKey": "m13",
+      "positions": [
+        {
+          "row": 8,
+          "col": 16
+        },
+        {
+          "row": 5,
+          "col": 14
+        },
+        {
+          "row": 6,
+          "col": 14
+        },
+        {
+          "row": 10,
+          "col": 16
+        },
+        {
+          "row": 6,
+          "col": 15
+        },
+        {
+          "row": 3,
+          "col": 16
+        }
+      ],
+      "configKeys": [
+        "v2grunt4",
+        "v2aggressor3",
+        "v2sniper3",
+        "v2support3",
+        "v2turtle3",
+        "v2grunt"
+      ]
+    },
+    {
+      "mapKey": "m14",
+      "positions": [
+        {
+          "row": 5,
+          "col": 13
+        },
+        {
+          "row": 9,
+          "col": 15
+        },
+        {
+          "row": 7,
+          "col": 16
+        },
+        {
+          "row": 10,
+          "col": 13
+        },
+        {
+          "row": 9,
+          "col": 16
+        },
+        {
+          "row": 4,
+          "col": 13
+        }
+      ],
+      "configKeys": [
+        "v2grunt4",
+        "v2aggressor3",
+        "v2sniper4",
+        "v2support3",
+        "v2turtle3",
+        "v2grunt2"
+      ]
+    },
+    {
+      "mapKey": "m15",
+      "positions": [
+        {
+          "row": 7,
+          "col": 13
+        },
+        {
+          "row": 3,
+          "col": 14
+        },
+        {
+          "row": 0,
+          "col": 16
+        },
+        {
+          "row": 10,
+          "col": 15
+        },
+        {
+          "row": 2,
+          "col": 15
+        },
+        {
+          "row": 9,
+          "col": 14
+        }
+      ],
+      "configKeys": [
+        "v2grunt3",
+        "v2aggressor3",
+        "v2sniper5",
+        "v2support3",
+        "v2turtle3",
+        "v2grunt3"
+      ]
+    },
+    {
+      "mapKey": "d01",
+      "positions": [
+        {
+          "row": 1,
+          "col": 16
+        },
+        {
+          "row": 1,
+          "col": 15
+        },
+        {
+          "row": 0,
+          "col": 15
+        },
+        {
+          "row": 9,
+          "col": 15
+        }
+      ],
+      "configKeys": [
+        "v2grunt",
+        "v2aggressor2",
+        "v2sniper",
+        "v2support"
+      ]
+    },
+    {
+      "mapKey": "d02",
+      "positions": [
+        {
+          "row": 10,
+          "col": 13
+        },
+        {
+          "row": 7,
+          "col": 13
+        },
+        {
+          "row": 4,
+          "col": 13
+        },
+        {
+          "row": 3,
+          "col": 14
+        }
+      ],
+      "configKeys": [
+        "v2grunt2",
+        "v2aggressor2",
+        "v2sniper3",
+        "v2support"
+      ]
+    },
+    {
+      "mapKey": "d03",
+      "positions": [
+        {
+          "row": 4,
+          "col": 15
+        },
+        {
+          "row": 3,
+          "col": 14
+        },
+        {
+          "row": 0,
+          "col": 15
+        },
+        {
+          "row": 10,
+          "col": 14
+        }
+      ],
+      "configKeys": [
+        "v2grunt4",
+        "v2aggressor3",
+        "v2sniper3",
+        "v2support2"
+      ]
+    },
+    {
+      "mapKey": "d04",
+      "positions": [
+        {
+          "row": 9,
+          "col": 16
+        },
+        {
+          "row": 10,
+          "col": 13
+        },
+        {
+          "row": 10,
+          "col": 14
+        },
+        {
+          "row": 2,
+          "col": 15
+        }
+      ],
+      "configKeys": [
+        "v2grunt5",
+        "v2aggressor3",
+        "v2sniper5",
+        "v2support5"
+      ]
+    },
+    {
+      "mapKey": "d05",
+      "positions": [
+        {
+          "row": 2,
+          "col": 14
+        },
+        {
+          "row": 2,
+          "col": 16
+        },
+        {
+          "row": 2,
+          "col": 13
+        },
+        {
+          "row": 10,
+          "col": 16
+        },
+        {
+          "row": 8,
+          "col": 16
+        }
+      ],
+      "configKeys": [
+        "v2grunt3",
+        "v2aggressor2",
+        "v2sniper3",
+        "v2support3",
+        "v2turtle3"
+      ]
+    },
+    {
+      "mapKey": "d06",
+      "positions": [
+        {
+          "row": 9,
+          "col": 15
+        },
+        {
+          "row": 5,
+          "col": 16
+        },
+        {
+          "row": 8,
+          "col": 13
+        },
+        {
+          "row": 5,
+          "col": 15
+        },
+        {
+          "row": 3,
+          "col": 15
+        },
+        {
+          "row": 7,
+          "col": 15
+        }
+      ],
+      "configKeys": [
+        "v2grunt4",
+        "v2aggressor3",
+        "v2sniper3",
+        "v2support3",
+        "v2turtle3",
+        "v2grunt"
+      ]
+    },
+    {
+      "mapKey": "s01",
+      "positions": [
+        {
+          "row": 8,
+          "col": 13
+        },
+        {
+          "row": 7,
+          "col": 16
+        },
+        {
+          "row": 2,
+          "col": 15
+        },
+        {
+          "row": 0,
+          "col": 13
+        },
+        {
+          "row": 1,
+          "col": 14
+        },
+        {
+          "row": 3,
+          "col": 13
+        },
+        {
+          "row": 9,
+          "col": 15
+        }
+      ],
+      "configKeys": [
+        "v2grunt3",
+        "v2aggressor3",
+        "v2sniper4",
+        "v2support3",
+        "v2turtle3",
+        "v2grunt2",
+        "v2aggressor2"
+      ]
+    },
+    {
+      "mapKey": "s02",
+      "positions": [
+        {
+          "row": 10,
+          "col": 14
+        },
+        {
+          "row": 3,
+          "col": 14
+        },
+        {
+          "row": 10,
+          "col": 15
+        },
+        {
+          "row": 4,
+          "col": 15
+        },
+        {
+          "row": 10,
+          "col": 16
+        },
+        {
+          "row": 8,
+          "col": 15
+        },
+        {
+          "row": 9,
+          "col": 16
+        }
+      ],
+      "configKeys": [
+        "v2grunt5",
+        "v2aggressor3",
+        "v2sniper5",
+        "v2support5",
+        "v2turtle3",
+        "v2grunt3",
+        "v2aggressor3"
+      ]
+    },
+    {
+      "mapKey": "s03",
+      "positions": [
+        {
+          "row": 8,
+          "col": 14
+        },
+        {
+          "row": 10,
+          "col": 15
+        },
+        {
+          "row": 0,
+          "col": 14
+        },
+        {
+          "row": 4,
+          "col": 14
+        },
+        {
+          "row": 7,
+          "col": 13
+        },
+        {
+          "row": 3,
+          "col": 13
+        },
+        {
+          "row": 9,
+          "col": 16
+        },
+        {
+          "row": 2,
+          "col": 16
+        }
+      ],
+      "configKeys": [
+        "v2grunt3",
+        "v2aggressor3",
+        "v2sniper3",
+        "v2support3",
+        "v2turtle3",
+        "v2grunt3",
+        "v2aggressor2",
+        "v2sniper3"
+      ]
+    },
+    {
+      "mapKey": "f01",
+      "positions": [
+        {
+          "row": 8,
+          "col": 16
+        },
+        {
+          "row": 6,
+          "col": 15
+        },
+        {
+          "row": 8,
+          "col": 14
+        },
+        {
+          "row": 9,
+          "col": 14
+        },
+        {
+          "row": 9,
+          "col": 13
+        },
+        {
+          "row": 8,
+          "col": 13
+        },
+        {
+          "row": 9,
+          "col": 16
+        },
+        {
+          "row": 10,
+          "col": 13
+        },
+        {
+          "row": 1,
+          "col": 16
+        }
+      ],
+      "configKeys": [
+        "v2grunt4",
+        "v2aggressor3",
+        "v2sniper3",
+        "v2support3",
+        "v2turtle3",
+        "v2grunt3",
+        "v2aggressor3",
+        "v2sniper3",
+        "v2support3"
+      ]
+    },
+    {
+      "mapKey": "f02",
+      "positions": [
+        {
+          "row": 5,
+          "col": 13
+        },
+        {
+          "row": 10,
+          "col": 15
+        },
+        {
+          "row": 8,
+          "col": 14
+        },
+        {
+          "row": 3,
+          "col": 14
+        },
+        {
+          "row": 1,
+          "col": 16
+        },
+        {
+          "row": 9,
+          "col": 15
+        },
+        {
+          "row": 6,
+          "col": 16
+        },
+        {
+          "row": 9,
+          "col": 16
+        },
+        {
+          "row": 10,
+          "col": 14
+        },
+        {
+          "row": 1,
+          "col": 13
+        }
+      ],
+      "configKeys": [
+        "v2grunt3",
+        "v2aggressor3",
+        "v2sniper5",
+        "v2support5",
+        "v2turtle3",
+        "v2grunt3",
+        "v2aggressor3",
+        "v2sniper4",
+        "v2support3",
+        "v2turtle3"
+      ]
+    },
+    {
+      "mapKey": "f03",
+      "positions": [
+        {
+          "row": 3,
+          "col": 15
+        },
+        {
+          "row": 5,
+          "col": 15
+        },
+        {
+          "row": 6,
+          "col": 15
+        },
+        {
+          "row": 3,
+          "col": 13
+        },
+        {
+          "row": 2,
+          "col": 15
+        },
+        {
+          "row": 0,
+          "col": 14
+        },
+        {
+          "row": 10,
+          "col": 16
+        },
+        {
+          "row": 3,
+          "col": 14
+        },
+        {
+          "row": 9,
+          "col": 15
+        },
+        {
+          "row": 5,
+          "col": 13
+        },
+        {
+          "row": 10,
+          "col": 15
+        }
+      ],
+      "configKeys": [
+        "v2grunt5",
+        "v2aggressor4",
+        "v2sniper5",
+        "v2support5",
+        "v2turtle3",
+        "v2grunt3",
+        "v2aggressor3",
+        "v2sniper5",
+        "v2support5",
+        "v2turtle3",
+        "v2grunt3"
+      ]
+    },
+    {
+      "mapKey": "f04",
+      "positions": [
+        {
+          "row": 0,
+          "col": 14
+        },
+        {
+          "row": 0,
+          "col": 15
+        },
+        {
+          "row": 4,
+          "col": 13
+        },
+        {
+          "row": 1,
+          "col": 14
+        },
+        {
+          "row": 0,
+          "col": 13
+        },
+        {
+          "row": 2,
+          "col": 16
+        },
+        {
+          "row": 8,
+          "col": 13
+        },
+        {
+          "row": 2,
+          "col": 13
+        },
+        {
+          "row": 0,
+          "col": 16
+        },
+        {
+          "row": 5,
+          "col": 15
+        },
+        {
+          "row": 5,
+          "col": 16
+        },
+        {
+          "row": 6,
+          "col": 13
+        }
+      ],
+      "configKeys": [
+        "v2grunt5",
+        "v2aggressor5",
+        "v2sniper5",
+        "v2support5",
+        "v2turtle5",
+        "v2grunt5",
+        "v2aggressor4",
+        "v2sniper5",
+        "v2support5",
+        "v2turtle3",
+        "v2grunt3",
+        "v2aggressor3"
+      ]
+    },
+    {
+      "mapKey": "f05",
+      "positions": [
+        {
+          "row": 0,
+          "col": 16
+        },
+        {
+          "row": 8,
+          "col": 13
+        },
+        {
+          "row": 3,
+          "col": 13
+        },
+        {
+          "row": 3,
+          "col": 14
+        },
+        {
+          "row": 1,
+          "col": 13
+        },
+        {
+          "row": 7,
+          "col": 15
+        },
+        {
+          "row": 0,
+          "col": 14
+        },
+        {
+          "row": 7,
+          "col": 14
+        },
+        {
+          "row": 6,
+          "col": 15
+        },
+        {
+          "row": 0,
+          "col": 15
+        },
+        {
+          "row": 10,
+          "col": 16
+        },
+        {
+          "row": 4,
+          "col": 15
+        },
+        {
+          "row": 5,
+          "col": 16
+        }
+      ],
+      "configKeys": [
+        "v2grunt5",
+        "v2aggressor5",
+        "v2sniper5",
+        "v2support5",
+        "v2turtle5",
+        "v2grunt5",
+        "v2aggressor5",
+        "v2sniper5",
+        "v2support5",
+        "v2turtle5",
+        "v2grunt3",
+        "v2aggressor3",
+        "v2sniper5"
+      ]
+    },
+    {
+      "mapKey": "f06",
+      "positions": [
+        {
+          "row": 1,
+          "col": 16
+        },
+        {
+          "row": 5,
+          "col": 16
+        },
+        {
+          "row": 6,
+          "col": 16
+        },
+        {
+          "row": 3,
+          "col": 16
+        },
+        {
+          "row": 9,
+          "col": 15
+        },
+        {
+          "row": 0,
+          "col": 15
+        },
+        {
+          "row": 2,
+          "col": 14
+        },
+        {
+          "row": 0,
+          "col": 14
+        },
+        {
+          "row": 9,
+          "col": 14
+        },
+        {
+          "row": 1,
+          "col": 14
+        },
+        {
+          "row": 5,
+          "col": 15
+        },
+        {
+          "row": 2,
+          "col": 13
+        },
+        {
+          "row": 9,
+          "col": 16
+        },
+        {
+          "row": 7,
+          "col": 16
+        }
+      ],
+      "configKeys": [
+        "v2grunt5",
+        "v2aggressor5",
+        "v2sniper5",
+        "v2support5",
+        "v2turtle5",
+        "v2grunt5",
+        "v2aggressor5",
+        "v2sniper5",
+        "v2support5",
+        "v2turtle5",
+        "v2grunt3",
+        "v2aggressor3",
+        "v2sniper5",
+        "v2support5"
+      ]
+    }
+  ],
+  "campaigns": [
+    {
+      "key": "mainCampaign"
+    }
+  ],
+  "campaignNodes": [
+    {
+      "key": "m01",
+      "campaignKey": "mainCampaign",
+      "mapKey": "m01",
+      "prerequisites": [],
+      "costLimit": 500,
+      "turnTime": 600,
+      "maxScore": 15,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "m02",
+      "campaignKey": "mainCampaign",
+      "mapKey": "m02",
+      "prerequisites": [
+        "m01"
+      ],
+      "costLimit": 540,
+      "turnTime": 600,
+      "maxScore": 21,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "m03",
+      "campaignKey": "mainCampaign",
+      "mapKey": "m03",
+      "prerequisites": [
+        "m02"
+      ],
+      "costLimit": 570,
+      "turnTime": 600,
+      "maxScore": 27,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "m04",
+      "campaignKey": "mainCampaign",
+      "mapKey": "m04",
+      "prerequisites": [
+        "m03"
+      ],
+      "costLimit": 610,
+      "turnTime": 600,
+      "maxScore": 33,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "m05",
+      "campaignKey": "mainCampaign",
+      "mapKey": "m05",
+      "prerequisites": [
+        "m04"
+      ],
+      "costLimit": 640,
+      "turnTime": 600,
+      "maxScore": 39,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "m06",
+      "campaignKey": "mainCampaign",
+      "mapKey": "m06",
+      "prerequisites": [
+        "m05"
+      ],
+      "costLimit": 680,
+      "turnTime": 600,
+      "maxScore": 45,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "m07",
+      "campaignKey": "mainCampaign",
+      "mapKey": "m07",
+      "prerequisites": [
+        "m06"
+      ],
+      "costLimit": 710,
+      "turnTime": 600,
+      "maxScore": 51,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "m08",
+      "campaignKey": "mainCampaign",
+      "mapKey": "m08",
+      "prerequisites": [
+        "m07"
+      ],
+      "costLimit": 750,
+      "turnTime": 600,
+      "maxScore": 58,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "m09",
+      "campaignKey": "mainCampaign",
+      "mapKey": "m09",
+      "prerequisites": [
+        "m08"
+      ],
+      "costLimit": 790,
+      "turnTime": 600,
+      "maxScore": 64,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "m10",
+      "campaignKey": "mainCampaign",
+      "mapKey": "m10",
+      "prerequisites": [
+        "m09"
+      ],
+      "costLimit": 820,
+      "turnTime": 600,
+      "maxScore": 70,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "m11",
+      "campaignKey": "mainCampaign",
+      "mapKey": "m11",
+      "prerequisites": [
+        "m10"
+      ],
+      "costLimit": 860,
+      "turnTime": 600,
+      "maxScore": 76,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "m12",
+      "campaignKey": "mainCampaign",
+      "mapKey": "m12",
+      "prerequisites": [
+        "m11"
+      ],
+      "costLimit": 890,
+      "turnTime": 600,
+      "maxScore": 82,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "m13",
+      "campaignKey": "mainCampaign",
+      "mapKey": "m13",
+      "prerequisites": [
+        "m12"
+      ],
+      "costLimit": 930,
+      "turnTime": 600,
+      "maxScore": 88,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "m14",
+      "campaignKey": "mainCampaign",
+      "mapKey": "m14",
+      "prerequisites": [
+        "m13"
+      ],
+      "costLimit": 960,
+      "turnTime": 600,
+      "maxScore": 94,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "m15",
+      "campaignKey": "mainCampaign",
+      "mapKey": "m15",
+      "prerequisites": [
+        "m14"
+      ],
+      "costLimit": 1000,
+      "turnTime": 600,
+      "maxScore": 100,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "d01",
+      "campaignKey": "mainCampaign",
+      "mapKey": "d01",
+      "prerequisites": [
+        "m02"
+      ],
+      "costLimit": 570,
+      "turnTime": 600,
+      "maxScore": 27,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "d02",
+      "campaignKey": "mainCampaign",
+      "mapKey": "d02",
+      "prerequisites": [
+        "d01"
+      ],
+      "costLimit": 640,
+      "turnTime": 600,
+      "maxScore": 39,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "d03",
+      "campaignKey": "mainCampaign",
+      "mapKey": "d03",
+      "prerequisites": [
+        "d02"
+      ],
+      "costLimit": 710,
+      "turnTime": 600,
+      "maxScore": 51,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "d04",
+      "campaignKey": "mainCampaign",
+      "mapKey": "d04",
+      "prerequisites": [
+        "d03"
+      ],
+      "costLimit": 790,
+      "turnTime": 600,
+      "maxScore": 64,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "d05",
+      "campaignKey": "mainCampaign",
+      "mapKey": "d05",
+      "prerequisites": [
+        "d04"
+      ],
+      "costLimit": 860,
+      "turnTime": 600,
+      "maxScore": 76,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "d06",
+      "campaignKey": "mainCampaign",
+      "mapKey": "d06",
+      "prerequisites": [
+        "d05"
+      ],
+      "costLimit": 930,
+      "turnTime": 600,
+      "maxScore": 88,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "s01",
+      "campaignKey": "mainCampaign",
+      "mapKey": "s01",
+      "prerequisites": [
+        "m02"
+      ],
+      "costLimit": 1070,
+      "turnTime": 900,
+      "maxScore": 107,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "s02",
+      "campaignKey": "mainCampaign",
+      "mapKey": "s02",
+      "prerequisites": [
+        "s01"
+      ],
+      "costLimit": 1130,
+      "turnTime": 900,
+      "maxScore": 113,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "s03",
+      "campaignKey": "mainCampaign",
+      "mapKey": "s03",
+      "prerequisites": [
+        "s02"
+      ],
+      "costLimit": 1200,
+      "turnTime": 900,
+      "maxScore": 120,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "f01",
+      "campaignKey": "mainCampaign",
+      "mapKey": "f01",
+      "prerequisites": [
+        "m15",
+        "s03"
+      ],
+      "costLimit": 1330,
+      "turnTime": 900,
+      "maxScore": 133,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "f02",
+      "campaignKey": "mainCampaign",
+      "mapKey": "f02",
+      "prerequisites": [
+        "f01"
+      ],
+      "costLimit": 1470,
+      "turnTime": 900,
+      "maxScore": 147,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "f03",
+      "campaignKey": "mainCampaign",
+      "mapKey": "f03",
+      "prerequisites": [
+        "f02"
+      ],
+      "costLimit": 1600,
+      "turnTime": 900,
+      "maxScore": 160,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "f04",
+      "campaignKey": "mainCampaign",
+      "mapKey": "f04",
+      "prerequisites": [
+        "f03"
+      ],
+      "costLimit": 1730,
+      "turnTime": 900,
+      "maxScore": 173,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "f05",
+      "campaignKey": "mainCampaign",
+      "mapKey": "f05",
+      "prerequisites": [
+        "f04"
+      ],
+      "costLimit": 1870,
+      "turnTime": 900,
+      "maxScore": 187,
+      "creatorGoesFirst": true
+    },
+    {
+      "key": "f06",
+      "campaignKey": "mainCampaign",
+      "mapKey": "f06",
+      "prerequisites": [
+        "f05"
+      ],
+      "costLimit": 2000,
+      "turnTime": 900,
+      "maxScore": 200,
+      "creatorGoesFirst": true
+    }
+  ]
+}

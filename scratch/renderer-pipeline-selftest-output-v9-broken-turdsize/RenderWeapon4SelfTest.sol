@@ -1,0 +1,96 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.28;
+
+import "../Types.sol";
+import "../Renderers/RenderUtils.sol";
+
+contract RenderWeapon4SelfTest {
+    string private constant PART_1 = '<path d="M 146.558 66.967 L 144.616 65.500 145.325 66.682 L 146.034 67.864 143.267 68.282 L 140.500 68.700 144.917 68.850 L 149.333 69 148.917 68.717 L 148.500 68.434 146.558 66.967 M 143 70.232 L 139.500 70.232 141.250 70.689 L 143 71.147 144.750 70.689 L 146.500 70.232 143 70.232 M 149 74 L 148 74 148 74.378 L 148 74.755 149.411 75.926 L 150.822 77.097 151.565 75.894 L 152.309 74.691 151.155 75.405 L 150 76.118 150 75.059 L 150 74 149 74 M 141 78.131 L 140.500 78.199 138.010 78.892 L 135.520 79.585 136.613 80.261 L 137.705 80.936 139.603 79.500 L 141.500 78.064 141 78.131 M 113.250 79.079 L 111 79 111 79.378 L 111 79.755 112.692 81.128 L 114.384 82.500 113.686 81.335 L 112.988 80.171 114.244 79.664 L 115.500 79.158 113.250 79.079 M 166.253 81.853 L 165.337 80.937 165.881 84.219 L 166.425 87.500 166.797 85.135 L 167.169 82.769 166.253 81.853 M 159.639 86 L 158.978 84.500 159.395 86.749 L 159.812 88.998 159.011 89.493 L 158.210 89.989 157.584 88.358 L 156.958 86.728 155.229 88.189 L 153.500 89.651 150.178 89.847 L 146.856 90.043 147.444 89.090 L 148.033 88.138 146.950 87.469 L 145.867 86.800 145.291 87.376 L 144.715 87.952 145.980 89.476 L 147.245 91 150.681 91 L 154.118 91 153.387 92.250 L 152.656 93.500 154.809 91.612 L 156.962 89.724 158.673 91.112 L 160.384 92.500 159.698 91.355 L 159.011 90.210 160.728 89.551 L 162.444 88.892 161.372 88.196 L 160.300 87.500 159.639 86 M 144.250 91.208 L 142.500 89.500 142.752 89.919 L 143.004 90.338 141.467 92.037 L 139.929 93.736 142.372 93.269 L 144.815 92.802 145.292 94.651 L 145.768 96.500 145.884 94.708 L 146 92.916 144.250 91.208 M 152.222 96.637 L 151.444 96.156 149.182 97.862 L 146.921 99.568 148.960 99.722 L 151 99.876 151.015 98.688 L 151.031 97.500 152 99 L 152.969 100.500 152.985 98.809 L 153 97.118 152.222 96.637 M 143.809 97.098 L 143.500 97.196 141 98.583 L 138.500 99.971 142.143 99.985 L 145.786 100 146.452 98.250 L 147.118 96.500 145.859 97.750 L 144.600 99 143.741 99 L 142.882 99 143.500 98 L 144.118 97 143.809 97.098" fill-rule="evenodd" style="fill:';
+    string private constant PART_2 = ';"/><path d="M 141.372 66.136 L 139.245 66 137.872 67.692 L 136.500 69.384 137.750 68.633 L 139 67.882 139 69 L 139 70.118 140.107 69.434 L 141.214 68.750 139.945 67.966 L 138.676 67.182 141.088 66.727 L 143.500 66.272 141.372 66.136 M 145.808 71.479 L 144.115 71.137 144.697 72.652 L 145.278 74.168 145.948 73.084 L 146.618 72 148.559 73.468 L 150.500 74.936 152 74.962 L 153.500 74.988 150.500 73.404 L 147.500 71.820 145.808 71.479 M 161.583 75.063 L 161.500 75.127 159.250 76.031 L 157 76.936 157 77.218 L 157 77.500 159.333 77.500 L 161.667 77.500 161.667 76.250 L 161.667 75 161.583 75.063 M 144 80.257 L 142.500 79.848 143.600 80.674 L 144.700 81.500 145.332 83 L 145.965 84.500 145.732 82.583 L 145.500 80.666 144 80.257 M 141.759 86.776 L 141.351 85.552 140.786 87.711 L 140.221 89.871 141.662 90.424 L 143.104 90.977 142.478 89.739 L 141.852 88.500 143.179 90 L 144.507 91.500 145.764 91.754 L 147.021 92.007 145.770 90.004 L 144.519 88 143.343 88 L 142.167 88 141.759 86.776 M 113.560 87 L 113.245 87 112.097 88.383 L 110.949 89.766 112.270 90.273 L 113.591 90.780 113.733 88.890 L 113.876 87 113.560 87 M 165.750 87.116 L 165.500 87.232 163.750 87.689 L 162 88.147 162 89.109 L 162 90.070 164 89 L 166 87.930 166 87.465 L 166 87 165.750 87.116 M 149.477 95.250 L 146.917 95.250 147.370 95.703 L 147.823 96.157 150.384 96.438 L 152.944 96.719 152.490 95.984 L 152.036 95.250 149.477 95.250 M 156.750 100.116 L 154.500 100.232 156.262 100.692 L 158.024 101.151 157.453 102.076 L 156.882 103 157.941 103 L 159 103 159 101.500 L 159 100 156.750 100.116" fill-rule="evenodd" style="fill:';
+    string private constant PART_3 = ';"/><path d="M 146 69.101 L 142.500 69.141 144.500 70 L 146.500 70.859 145.628 70.930 L 144.755 71 146 72.500 L 147.245 74 148.314 74 L 149.382 74 147.526 72.642 L 145.669 71.285 147.584 70.173 L 149.500 69.061 146 69.101 M 147.500 76.195 L 144.500 76.232 146.269 76.693 L 148.038 77.154 149.269 76.656 L 150.500 76.158 147.500 76.195 M 157.656 83.731 L 157.158 82.500 157.195 85.500 L 157.232 88.500 157.693 86.731 L 158.154 84.962 157.656 83.731 M 166.588 86.672 L 164.896 86.023 165.469 86.950 L 166.042 87.877 164.271 88.908 L 162.500 89.939 163.559 89.970 L 164.618 90 166.449 88.661 L 168.281 87.322 166.588 86.672 M 155.986 89.683 L 154.707 88.500 155.370 89.681 L 156.033 90.862 155.016 91.490 L 154 92.118 154 93.059 L 154 94 155.031 94 L 156.063 94 156.664 92.433 L 157.266 90.866 155.986 89.683 M 108.750 90.100 L 108.500 90.199 106 91 L 103.500 91.801 106.250 91.900 L 109 92 109 91 L 109 90 108.750 90.100 M 148.839 96.263 L 146.702 96.102 147.851 97.251 L 149 98.400 149.988 97.412 L 150.976 96.424 148.839 96.263 M 153.750 100.070 L 153 100 153 101 L 153 102 155.750 101.930 L 158.500 101.859 156.500 101 L 154.500 100.141 153.750 100.070 M 145.500 102.195 L 142.500 102.232 144.269 102.693 L 146.038 103.154 147.269 102.656 L 148.500 102.158 145.500 102.195" fill-rule="evenodd" style="fill:';
+    string private constant PART_4 = ';"/><path d="M 150.659 69.700 L 149.319 69.185 147.909 70.077 L 146.500 70.969 149.250 70.985 L 152 71 152 70.607 L 152 70.214 150.659 69.700 M 150 72.031 L 148.500 72.031 150 73 L 151.500 73.969 153 73.969 L 154.500 73.969 153 73 L 151.500 72.031 150 72.031 M 117.038 88.364 L 114.107 88.364 114.511 89.018 L 114.915 89.672 116.937 89.523 L 118.959 89.374 119.464 88.869 L 119.970 88.364 117.038 88.364" fill-rule="evenodd" style="fill:';
+    string private constant PART_5 = ';"/><path d="M 112 81.500 L 111 80.882 111.070 81.691 L 111.141 82.500 112 84.500 L 112.859 86.500 112.930 84.309 L 113 82.118 112 81.500 M 136.559 86 L 136.118 86 135.490 87.016 L 134.862 88.033 134.098 87.560 L 133.333 87.088 133.333 88.528 L 133.333 89.968 134.509 88.993 L 135.684 88.017 136.342 88.675 L 137 89.333 137 87.667 L 137 86 136.559 86 M 162.839 86.263 L 160.702 86.102 161.851 87.251 L 163 88.400 163.988 87.412 L 164.976 86.424 162.839 86.263 M 117.014 88.483 L 115.069 88.339 113.911 89.055 L 112.753 89.771 116.333 89.676 L 119.913 89.580 119.436 89.103 L 118.959 88.626 117.014 88.483 M 151.656 100.333 L 150.401 100.333 148.450 101.096 L 146.500 101.859 149.191 101.930 L 151.882 102 152.397 101.167 L 152.912 100.333 151.656 100.333" fill-rule="evenodd" style="fill:';
+    string private constant PART_6 = ';"/><path d="M 146.500 75.195 L 143.500 75.232 145.269 75.693 L 147.038 76.154 148.269 75.656 L 149.500 75.158 146.500 75.195 M 107.500 77.195 L 104.500 77.232 106.269 77.693 L 108.038 78.154 109.269 77.656 L 110.500 77.158 107.500 77.195 M 140.750 89.808 L 139.500 89.401 136 90.069 L 132.500 90.737 137.250 90.868 L 142 91 142 90.607 L 142 90.214 140.750 89.808" fill-rule="evenodd" style="fill:';
+    string private constant PART_7 = ';"/><path d="M 158.253 81.853 L 157.337 80.937 157.881 84.219 L 158.425 87.500 158.797 85.135 L 159.169 82.769 158.253 81.853 M 149.229 84 L 148.124 84 148.275 86 L 148.426 88 149.835 88 L 151.245 88 150.131 86.658 L 149.017 85.316 149.675 84.658 L 150.333 84 149.229 84 M 143.842 100.454 L 139.818 100.500 139.469 101.058 L 139.119 101.616 142.979 101.844 L 146.838 102.071 147.352 101.239 L 147.866 100.407 143.842 100.454" fill-rule="evenodd" style="fill:';
+    string private constant PART_8 = ';"/><path d="M 161 83 L 160 83 160 84.559 L 160 86.118 161 85.500 L 162 84.882 162 83.941 L 162 83 161 83 M 155.500 84 L 155 84 155 85 L 155 86 152.333 86 L 149.667 86 150.416 86.750 L 151.166 87.500 153.583 87.546 L 156 87.593 156 85.796 L 156 84 155.500 84" fill-rule="evenodd" style="fill:';
+    string private constant PART_9 = ';"/><path d="M 165.726 79 L 164.118 79 163.554 79.912 L 162.990 80.824 164.466 80.608 L 165.942 80.391 166.638 79.696 L 167.333 79 165.726 79 M 153.500 81 L 152 81 152 82 L 152 83 153.532 83 L 155.064 83 155.969 85.250 L 156.873 87.500 156.937 84.691 L 157 81.882 156 82.500 L 155 83.118 155 82.059 L 155 81 153.500 81" fill-rule="evenodd" style="fill:';
+    string private constant PART_10 = ';"/><path d="M 126.500 81.310 L 120.500 81.320 123.768 81.725 L 127.036 82.129 129.768 81.715 L 132.500 81.300 126.500 81.310 M 124 88.232 L 120.500 88.232 122.250 88.689 L 124 89.147 125.750 88.689 L 127.500 88.232 124 88.232" fill-rule="evenodd" style="fill:';
+    string private constant PART_11 = ';"/><path d="M 152.500 80.252 L 148.500 80.272 150.762 80.707 L 153.023 81.142 154.762 80.687 L 156.500 80.232 152.500 80.252" fill-rule="evenodd" style="fill:';
+    string private constant PART_12 = ';"/><path d="M 127.274 82 L 123.667 82 124.083 82.358 L 124.500 82.717 128.272 83.299 L 132.045 83.882 131.463 82.941 L 130.882 82 127.274 82" fill-rule="evenodd" style="fill:';
+    string private constant PART_13 = ';"/><path d="M 128 87.232 L 124.500 87.232 126.250 87.689 L 128 88.147 129.750 87.689 L 131.500 87.232 128 87.232" fill-rule="evenodd" style="fill:';
+    string private constant PART_14 = ';"/><path d="M 125.500 86.286 L 120.500 86.300 123.264 86.718 L 126.027 87.135 128.264 86.704 L 130.500 86.272 125.500 86.286" fill-rule="evenodd" style="fill:';
+    string private constant PART_15 = ';"/><path d="M 124.532 82.651 L 123.064 82.087 122.473 83.044 L 121.882 84 123.941 84 L 126 84 126 83.607 L 126 83.214 124.532 82.651" fill-rule="evenodd" style="fill:';
+    string private constant PART_16 = ';"/><path d="M 125 85.272 L 120.500 85.272 122.750 85.706 L 125 86.139 127.250 85.706 L 129.500 85.272 125 85.272" fill-rule="evenodd" style="fill:';
+    string private constant PART_17 = ';"/><path d="M 123 84.232 L 119.500 84.232 121.250 84.689 L 123 85.147 124.750 84.689 L 126.500 84.232 123 84.232" fill-rule="evenodd" style="fill:';
+    string private constant PART_18 = ';"/>';
+    string private constant COLOR_1 = 'hsl(210, 14%, 8%)';
+    string private constant COLOR_2 = 'hsl(210, 11%, 11%)';
+    string private constant COLOR_3 = 'hsl(206, 9%, 15%)';
+    string private constant COLOR_4 = 'hsl(210, 6%, 18%)';
+    string private constant COLOR_5 = 'hsl(206, 7%, 21%)';
+    string private constant COLOR_6 = 'hsl(204, 19%, 5%)';
+    string private constant COLOR_7 = 'hsl(180, 2%, 24%)';
+    string private constant COLOR_8 = 'hsl(120, 1%, 28%)';
+    string private constant COLOR_9 = 'hsl(90, 3%, 31%)';
+    string private constant COLOR_10 = 'hsl(212, 68%, 7%)';
+    string private constant COLOR_11 = 'hsl(51, 6%, 51%)';
+    string private constant COLOR_12 = 'hsl(185, 64%, 47%)';
+    string private constant COLOR_13 = 'hsl(183, 67%, 56%)';
+    string private constant COLOR_14 = 'hsl(187, 80%, 36%)';
+    string private constant COLOR_15 = 'hsl(183, 64%, 48%)';
+    string private constant COLOR_16 = 'hsl(178, 75%, 61%)';
+    string private constant COLOR_17 = 'hsl(175, 89%, 76%)';
+
+    function render(Ship memory ship) external pure returns (string memory) {
+        string memory result = string.concat(
+            PART_1,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_1) : COLOR_1,
+            PART_2,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_2) : COLOR_2,
+            PART_3,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_3) : COLOR_3,
+            PART_4
+        );
+        result = string.concat(
+            result,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_4) : COLOR_4,
+            PART_5,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_5) : COLOR_5,
+            PART_6,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_6) : COLOR_6,
+            PART_7,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_7) : COLOR_7
+        );
+        result = string.concat(
+            result,
+            PART_8,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_8) : COLOR_8,
+            PART_9,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_9) : COLOR_9,
+            PART_10,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_10) : COLOR_10,
+            PART_11
+        );
+        result = string.concat(
+            result,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_11) : COLOR_11,
+            PART_12,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_12) : COLOR_12,
+            PART_13,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_13) : COLOR_13,
+            PART_14,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_14) : COLOR_14
+        );
+        result = string.concat(
+            result,
+            PART_15,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_15) : COLOR_15,
+            PART_16,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_16) : COLOR_16,
+            PART_17,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_17) : COLOR_17,
+            PART_18
+        );
+        return result;
+    }
+}

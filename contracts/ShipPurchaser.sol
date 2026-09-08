@@ -73,7 +73,7 @@ contract ShipPurchaser is Ownable, ReentrancyGuard {
         );
 
         // Create ships for the buyer
-        ships.createShips(_to, totalShips, _variant, _tier);
+        ships.createShips(_to, totalShips, _variant, _tier, false);
 
         if (_referral != address(0)) {
             _processReferral(_referral, totalShips, price);
@@ -81,17 +81,12 @@ contract ShipPurchaser is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Direct UTC Purchase - 1:1 with tier prices
+     * @dev Direct UTC Purchase - saves the trouble of buying a ship pack
+     * and recycling it via Ships.shipBreaker.
      *
-     * This function allows players to purchase UTC directly for FLOW at a 1:1 rate.
-     * The UTC amount matches the FLOW price for each tier.
-     *
-     * For each tier:
-     * - Tier 0: 4.99 UTC for 4.99 FLOW
-     * - Tier 1: 9.99 UTC for 9.99 FLOW
-     * - Tier 2: 24.99 UTC for 24.99 FLOW
-     * - Tier 3: 49.99 UTC for 49.99 FLOW
-     * - Tier 4: 99.99 UTC for 99.99 FLOW
+     * Mints the same UTC a player would net from buying that tier's ship
+     * pack with FLOW and recycling every ship (tierShips[_tier] * recycleReward),
+     * for the same FLOW cost - just skipping the extra steps.
      */
     function purchaseUTCWithFlow(
         address _to,
@@ -106,8 +101,9 @@ contract ShipPurchaser is Ownable, ReentrancyGuard {
             revert InvalidPurchase(_tier, msg.value);
         }
 
-        // Mint UTC 1:1 with the price paid
-        universalCreditsMintable.mint(_to, price);
+        // Mint the UTC equivalent of buying + recycling this tier's ship pack
+        uint mintAmount = tierShips[_tier] * ships.recycleReward();
+        universalCreditsMintable.mint(_to, mintAmount);
     }
 
     function _processReferral(

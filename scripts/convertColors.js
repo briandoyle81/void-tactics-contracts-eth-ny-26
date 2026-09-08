@@ -153,7 +153,17 @@ function processFile(filePath) {
 
 // Main function
 function main() {
-  const renderersDir = path.join(__dirname, "../contracts/Renderers");
+  const fileArg = process.argv.find((a) => a.startsWith("--file="));
+  if (fileArg) {
+    processFile(path.resolve(fileArg.slice("--file=".length)));
+    console.log("Color conversion complete!");
+    return;
+  }
+
+  const dirArg = process.argv.find((a) => a.startsWith("--dir="));
+  const renderersDir = dirArg
+    ? path.resolve(dirArg.slice("--dir=".length))
+    : path.join(__dirname, "../contracts/Renderers");
 
   // Get all .sol files
   const files = fs

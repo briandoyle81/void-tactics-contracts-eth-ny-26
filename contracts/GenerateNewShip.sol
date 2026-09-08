@@ -3,12 +3,15 @@ pragma solidity ^0.8.28;
 
 import "./Types.sol";
 import "./IOnchainRandomShipNames.sol";
+import "./IDroneNames.sol";
 
 contract GenerateNewShip {
     IOnchainRandomShipNames public immutable shipNames;
+    IDroneNames public immutable droneNames;
 
-    constructor(address _shipNames) {
+    constructor(address _shipNames, address _droneNames) {
         shipNames = IOnchainRandomShipNames(_shipNames);
+        droneNames = IDroneNames(_droneNames);
     }
 
     function generateSpecificShip(
@@ -30,10 +33,28 @@ contract GenerateNewShip {
         Ship memory newShip;
         newShip.id = id;
         newShip.traits.serialNumber = serialNumber;
+
+        // Weapon is rolled before name (not in its original relative
+        // position further down) because variant-2 drone names are themed
+        // to the ship's equipped weapon (see DroneNames.sol) and so need to
+        // know it already.
         randomBase++;
-        newShip.name = shipNames.getRandomShipName(
-            bytes32(uint256(keccak256(abi.encodePacked(randomBase))))
+        newShip.equipment.mainWeapon = MainWeapon(
+            uint(keccak256(abi.encodePacked(randomBase))) % 4
         );
+
+        randomBase++;
+        bytes32 nameSeed = bytes32(
+            uint256(keccak256(abi.encodePacked(randomBase)))
+        );
+        if (variant == 2) {
+            newShip.name = droneNames.getRandomDroneName(
+                nameSeed,
+                newShip.equipment.mainWeapon
+            );
+        } else {
+            newShip.name = shipNames.getRandomShipName(nameSeed);
+        }
 
         // r g b 1 and 2 values are 0 to 255
         randomBase++;
@@ -84,11 +105,6 @@ contract GenerateNewShip {
         randomBase++;
         newShip.traits.variant = variant;
 
-        randomBase++;
-        newShip.equipment.mainWeapon = MainWeapon(
-            uint(keccak256(abi.encodePacked(randomBase))) % 4
-        );
-
         // Flip a coin to determine if a ship has armor or shields
         randomBase++;
         bool hasArmor = uint(keccak256(abi.encodePacked(randomBase))) % 2 == 0;
@@ -104,8 +120,12 @@ contract GenerateNewShip {
         }
 
         randomBase++;
+        // Special is a per-faction local slot 0-7 (see Types.sol) — roll
+        // across the full fixed range, not just the first 4. Still not
+        // variant-aware (a ship can randomly land on a slot that's inert
+        // for its own faction) — that's a separate, deliberate follow-up.
         newShip.equipment.special = Special(
-            uint(keccak256(abi.encodePacked(randomBase))) % 4
+            uint(keccak256(abi.encodePacked(randomBase))) % 8
         );
 
         // TODO: Should it be adjustable chance for shiny?

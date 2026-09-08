@@ -1,0 +1,169 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.28;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "./Types.sol";
+import "./IShips.sol";
+import "./IAIShips.sol";
+import "./Ships.sol";
+import "./IUniversalCredits.sol";
+import "./IDroneEnergyCores.sol";
+import "./DestroyRewardLib.sol";
+
+// Facade Game.sol/Fleets.sol/ShipAttributes.sol call instead of Ships.sol
+// directly, so a single shipId space can resolve against two different
+// backing stores: Ships.sol (real ERC-721 human ships) and AIShips.sol
+// (pooled, non-NFT AI ships). Dispatch is purely numeric — any id at or
+// above AI_SHIP_ID_OFFSET belongs to AIShips.sol, everything below belongs
+// to Ships.sol — so Game.sol needs no source changes at all, only a
+// constructor argument pointed here instead of at Ships.sol.
+//
+// setTimestampDestroyed is the one function that needs real orchestration:
+// Ships.sol used to mark the destroyed ship, credit the destroyer, and pay
+// the DEC/UTC reward all by indexing into its own storage for both ships.
+// Once AI ships can live in a different contract than their destroyer (or
+// vice versa), that combined logic has to live here instead, uniformly for
+// both the pure-PvP case (both ids human) and the cross-contract case.
+contract ShipsRouter is IShips, Ownable {
+    // Read from AIShips at construction rather than redeclared here, so
+    // there's exactly one source of truth for this value — see IAIShips's
+    // comment on why a second hardcoded copy is a drift hazard.
+    uint public immutable AI_SHIP_ID_OFFSET;
+
+    Ships public ships; // human ships (real ERC-721)
+    IAIShips public aiShips; // pooled AI ships (no ERC-721)
+    IUniversalCredits public universalCredits;
+    IDroneEnergyCores public droneEnergyCores;
+
+    address public gameAddress;
+    address public fleetsAddress;
+    address public lobbyAddress; // SinglePlayerMatch — see DestroyRewardLib
+
+    error NotAuthorized(address);
+    error NotSupported();
+
+    constructor(
+        address _ships,
+        address _aiShips,
+        address _universalCredits,
+        address _droneEnergyCores
+    ) Ownable(msg.sender) {
+        ships = Ships(_ships);
+        aiShips = IAIShips(_aiShips);
+        universalCredits = IUniversalCredits(_universalCredits);
+        droneEnergyCores = IDroneEnergyCores(_droneEnergyCores);
+        AI_SHIP_ID_OFFSET = aiShips.AI_SHIP_ID_OFFSET();
+    }
+
+    function setGameAddress(address _gameAddress) external onlyOwner {
+        gameAddress = _gameAddress;
+    }
+
+    function setFleetsAddress(address _fleetsAddress) external onlyOwner {
+        fleetsAddress = _fleetsAddress;
+    }
+
+    function setLobbyAddress(address _lobbyAddress) external onlyOwner {
+        lobbyAddress = _lobbyAddress;
+    }
+
+    function _isAI(uint _id) internal view returns (bool) {
+        return _id >= AI_SHIP_ID_OFFSET;
+    }
+
+    function getShip(uint _id) external view returns (Ship memory) {
+        return _isAI(_id) ? aiShips.getShip(_id) : ships.getShip(_id);
+    }
+
+    function isShipDestroyed(uint _id) external view returns (bool) {
+        return _isAI(_id) ? aiShips.isShipDestroyed(_id) : ships.isShipDestroyed(_id);
+    }
+
+    // Ships.sol/AIShips.sol both whitelist this router as a caller, so this
+    // router must enforce the same caller check Ships.sol used to apply
+    // directly — otherwise any account could call through the router and
+    // silently unlock/lock a ship it doesn't control, since the backing
+    // contracts see the trusted router as msg.sender regardless of who
+    // called the router itself.
+    function setInFleet(uint _id, bool _inFleet) external {
+        if (msg.sender != owner() && msg.sender != fleetsAddress) {
+            revert NotAuthorized(msg.sender);
+        }
+        if (_isAI(_id)) {
+            aiShips.setInFleet(_id, _inFleet);
+        } else {
+            ships.setInFleet(_id, _inFleet);
+        }
+    }
+
+    function setTimestampDestroyed(uint _id, uint _destroyerId) external {
+        if (msg.sender != owner() && msg.sender != gameAddress) {
+            revert NotAuthorized(msg.sender);
+        }
+
+        address destroyedOwner = _isAI(_id)
+            ? aiShips.markDestroyed(_id)
+            : ships.markDestroyed(_id);
+
+        address destroyerOwner = _isAI(_destroyerId)
+            ? aiShips.recordKill(_destroyerId)
+            : ships.recordKill(_destroyerId);
+
+        if (destroyerOwner != address(0)) {
+            DestroyRewardLib.payDestroyReward(
+                lobbyAddress,
+                destroyedOwner,
+                destroyerOwner,
+                ships.recycleReward() >> 2, // Division by 4
+                universalCredits,
+                droneEnergyCores
+            );
+        }
+    }
+
+    // The three functions below exist purely so this contract satisfies the
+    // IShips interface Game.sol's constructor expects — nothing legitimately
+    // calls them through this router (DroneYard/ShipPurchaser/TutorialClaim/
+    // FreeShipClaim all stay wired directly to Ships.sol). Unlike
+    // setInFleet/setTimestampDestroyed above, they deliberately do NOT
+    // forward to Ships.sol at all, not even behind a caller check: Ships.sol
+    // only gates createShips/createSpecificShip/customizeShip on
+    // isAllowedToCreateShips[msg.sender], and from Ships.sol's perspective
+    // msg.sender would be this router regardless of who called the router
+    // itself. If this router were ever added to that allowlist for a
+    // legitimate reason, a forwarding version of these functions — even a
+    // "correctly" caller-checked one — would still be a live, unlimited,
+    // free ship-minting/customization backdoor for anyone the moment that
+    // allowlist entry existed (see docs/pre-audit.md HA-01). Reverting
+    // unconditionally closes that off regardless of future allowlist
+    // changes, since satisfying IShips only requires these to exist with
+    // the right signature, not to do anything.
+    function createShips(
+        address /* _to */,
+        uint /* _amount */,
+        uint16 /* _variant */,
+        uint8 /* _tier */,
+        bool /* _isFreeShip */
+    ) external pure {
+        revert NotSupported();
+    }
+
+    function createSpecificShip(
+        address /* _to */,
+        Ship calldata /* _ship */
+    ) external pure returns (uint) {
+        revert NotSupported();
+    }
+
+    function customizeShip(uint /* _id */, Ship memory /* _ship */) external pure {
+        revert NotSupported();
+    }
+
+    function maxVariant() external view returns (uint16) {
+        return ships.maxVariant();
+    }
+
+    function recycleReward() external view returns (uint) {
+        return ships.recycleReward();
+    }
+}

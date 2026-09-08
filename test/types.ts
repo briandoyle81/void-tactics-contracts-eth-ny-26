@@ -172,6 +172,7 @@ export interface GameMetadata {
   creatorGoesFirst: boolean;
   startedAt: bigint;
   winner: Address;
+  orchestrator: Address;
 }
 
 export interface GameTurnState {
@@ -345,4 +346,11 @@ export enum ActionType {
   Retreat,
   Assist,
   Special,
+  FactionAbility,
+}
+
+export enum MapMode {
+  PvP,
+  PvE,
+  Both,
 }

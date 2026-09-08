@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-function processFile(filePath) {
+function processFile(filePath, utilsImport, blendFn) {
   console.log(`Processing ${filePath}...`);
 
   const content = fs.readFileSync(filePath, "utf8");
@@ -43,7 +43,7 @@ function processFile(filePath) {
   }
 
   // Add RenderUtils import
-  newContent += 'import "./RenderUtils.sol";\n\n';
+  newContent += `import "${utilsImport}";\n\n`;
 
   // Add the contract declaration
   newContent += `contract ${contractName} {\n`;
@@ -73,42 +73,34 @@ function processFile(filePath) {
     if (i < colors.length) {
       // Add color with shiny check
       allParts.push(
-        `ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_${
+        `ship.shipData.shiny ? ${blendFn}(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_${
           i + 1
         }) : COLOR_${i + 1}`
       );
     }
   }
 
-  // Split into chunks of 8
-  const chunks = [];
-  for (let i = 0; i < allParts.length; i += 8) {
-    chunks.push(allParts.slice(i, i + 8));
+  // Fold allParts into a single running `result` accumulator, 7 new items
+  // per string.concat call (plus `result` itself as the 8th argument once
+  // it exists). Reusing one named local -- rather than a distinct variable
+  // per chunk -- keeps this correct no matter how many parts a piece needs:
+  // a fixed top-level string.concat(chunk1..chunkN) over many chunk
+  // variables (or many simultaneously-live named locals from any chunking
+  // scheme) blows Solidity's stack once N gets large, which a piece with
+  // 100+ traced path fragments hits in practice. A single reassigned
+  // accumulator only ever has one named local alive.
+  const GROUP_SIZE = 7;
+  let started = false;
+  for (let i = 0; i < allParts.length; i += GROUP_SIZE) {
+    const group = allParts.slice(i, i + GROUP_SIZE);
+    const args = started ? ["result", ...group] : group;
+    newContent += `        ${started ? "result" : "string memory result"} = string.concat(\n`;
+    newContent += args.map((part) => `            ${part}`).join(",\n");
+    newContent += "\n        );\n";
+    started = true;
   }
 
-  // Generate intermediate concatenation functions if needed
-  if (chunks.length > 1) {
-    chunks.forEach((chunk, index) => {
-      newContent += `        string memory chunk${
-        index + 1
-      } = string.concat(\n`;
-      newContent += chunk.map((part) => `            ${part}`).join(",\n");
-      newContent += "\n        );\n";
-    });
-
-    // Combine all chunks
-    newContent += "        return string.concat(\n";
-    newContent += chunks
-      .map((_, index) => `            chunk${index + 1}`)
-      .join(",\n");
-    newContent += "\n        );\n";
-  } else {
-    // If only one chunk, just return it directly
-    newContent += "        return string.concat(\n";
-    newContent += chunks[0].map((part) => `            ${part}`).join(",\n");
-    newContent += "\n        );\n";
-  }
-
+  newContent += "        return result;\n";
   newContent += "    }\n}\n";
 
   // Write the new content back to the file
@@ -117,8 +109,32 @@ function processFile(filePath) {
 }
 
 function main() {
-  const renderersDir = path.join(__dirname, "../contracts/Renderers");
-  const backupDir = path.join(__dirname, "/../Renderers_original");
+  const utilsImportArg = process.argv.find((a) => a.startsWith("--utilsImport="));
+  const utilsImport = utilsImportArg
+    ? utilsImportArg.slice("--utilsImport=".length)
+    : "./RenderUtils.sol";
+
+  const blendFnArg = process.argv.find((a) => a.startsWith("--blendFn="));
+  const blendFn = blendFnArg ? blendFnArg.slice("--blendFn=".length) : "blendHSL";
+
+  const fileArg = process.argv.find((a) => a.startsWith("--file="));
+  if (fileArg) {
+    const filePath = path.resolve(fileArg.slice("--file=".length));
+    const backupPath = `${filePath}.original`;
+    fs.copyFileSync(filePath, backupPath);
+    console.log(`Created backup at ${backupPath}`);
+    processFile(filePath, utilsImport, blendFn);
+    console.log("SVG string splitting complete!");
+    return;
+  }
+
+  const dirArg = process.argv.find((a) => a.startsWith("--dir="));
+  const renderersDir = dirArg
+    ? path.resolve(dirArg.slice("--dir=".length))
+    : path.join(__dirname, "../contracts/Renderers");
+  const backupDir = dirArg
+    ? `${renderersDir}_original`
+    : path.join(__dirname, "/../Renderers_original");
 
   // Create backup directory if it doesn't exist
   if (!fs.existsSync(backupDir)) {
@@ -142,7 +158,7 @@ function main() {
     console.log(`Created backup at ${backupPath}`);
 
     // Process the file
-    processFile(filePath);
+    processFile(filePath, utilsImport, blendFn);
   });
 
   console.log("SVG string splitting complete!");

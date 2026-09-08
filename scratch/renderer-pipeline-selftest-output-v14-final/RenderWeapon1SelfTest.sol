@@ -1,0 +1,39 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.28;
+
+import "../Types.sol";
+import "../Renderers/RenderUtils.sol";
+
+contract RenderWeapon1SelfTest {
+    string private constant PART_1 = '<path d="M148 78L147 80L138 81L129 82L125 84L111 85L111 94L133 93L135 96L140 96L140 99L137 103L137 105L152 105L151 99L155 98L160 95L164 95L170 92L170 85L163 83L163 81L156 81L150 78Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_2 = ';"/><path d="M148 78L149 80L151 80L151 78ZM139 81L142 82L145 81ZM147 81L150 82L153 81ZM163 81L156 83L160 83L156 85L154 83L140 83L140 91L144 89L140 93L137 92L135 95L143 94L143 96L151 96L146 94L147 91L148 86L149 85L150 86L151 93L150 90L148 90L147 93L153 92L153 94L159 95L161 92L161 87L163 93L163 81ZM127 83L126 85L115 85L115 91L118 90L137 90L137 88L117 88L126 87L126 86L138 86L139 92L139 83ZM160 84L159 87L160 92L160 85L162 86L162 84ZM164 84L164 93L165 88ZM111 85L110 86L110 93L112 90L112 92L114 92L114 85ZM166 85L166 90L168 90L168 85ZM169 85L169 93L170 88ZM111 86L111 88L113 88L112 86ZM133 91L133 93L136 93L136 91ZM143 99L142 101L148 101L148 100ZM139 102L139 104L149 104L150 102Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_3 = ';"/><path d="M156 82L158 83L159 82ZM148 83L144 88L148 87L147 86L149 83ZM111 85L110 86L110 91L112 90L111 86L115 85ZM155 85L150 87L159 87L159 86ZM160 86L160 92L158 95L161 91ZM117 88L117 90L137 90L137 88Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_4 = ';"/><path d="M156 82L158 83L159 82ZM148 83L144 88L148 87L147 86L149 83ZM111 85L113 86L114 85ZM155 85L150 87L159 87L159 86ZM110 87L110 92L111 89ZM160 88L160 92L161 89Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_5 = ';"/><path d="M110 87L110 92L111 89ZM160 88L160 92L161 89Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_6 = ';"/>';
+    string private constant COLOR_1 = 'hsl(213, 27%, 8%)';
+    string private constant COLOR_2 = 'hsl(160, 2%, 25%)';
+    string private constant COLOR_3 = 'hsl(7, 64%, 29%)';
+    string private constant COLOR_4 = 'hsl(46, 9%, 54%)';
+    string private constant COLOR_5 = 'hsl(12, 65%, 56%)';
+
+    function render(Ship memory ship) external pure returns (string memory) {
+        string memory result = string.concat(
+            PART_1,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_1) : COLOR_1,
+            PART_2,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_2) : COLOR_2,
+            PART_3,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_3) : COLOR_3,
+            PART_4
+        );
+        result = string.concat(
+            result,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_4) : COLOR_4,
+            PART_5,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_5) : COLOR_5,
+            PART_6
+        );
+        return result;
+    }
+}

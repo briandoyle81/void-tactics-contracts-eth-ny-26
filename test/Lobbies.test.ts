@@ -8,6 +8,7 @@ import {
   ShipTuple,
   tupleToShip,
   ActionType,
+  MapMode,
 } from "./types";
 import DeployModule from "../ignition/modules/DeployAndConfig";
 
@@ -69,10 +70,13 @@ describe("Lobbies", function () {
       creatorFleets,
       joinerFleets,
       ships: deployed.ships,
+      freeShipClaim: deployed.freeShipClaim,
       game: deployed.game,
+      maps: deployed.maps,
       randomManager: deployed.randomManager,
       universalCredits: deployed.universalCredits,
       shipPurchaser: deployed.shipPurchaser,
+      singlePlayerMatch: deployed.singlePlayerMatch,
       owner,
       creator,
       joiner,
@@ -126,7 +130,7 @@ describe("Lobbies", function () {
       const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
     }
     await ships.write.constructAllMyShips({ account: creator.account });
     await ships.write.constructAllMyShips({ account: joiner.account });
@@ -235,6 +239,67 @@ describe("Lobbies", function () {
           zeroAddress, // reservedJoiner - no reservation
         ])
       ).to.be.rejectedWith("InvalidTurnTime");
+    });
+
+    it("should revert with InvalidMapId when selectedMapId is a PvE-only map", async function () {
+      const { creatorLobbies, maps, owner } = await loadFixture(
+        deployLobbiesFixture
+      );
+      const costLimit = 1000n;
+      const turnTime = 300n;
+      const creatorGoesFirst = true;
+
+      await maps.write.createPresetMap([[], MapMode.PvE], {
+        account: owner.account,
+      });
+      const pveMapId = await maps.read.mapCount();
+
+      await expect(
+        creatorLobbies.write.createLobby([
+          costLimit,
+          turnTime,
+          creatorGoesFirst,
+          pveMapId,
+          100n, // maxScore
+          zeroAddress, // reservedJoiner - no reservation
+        ])
+      ).to.be.rejectedWith("InvalidMapId");
+    });
+
+    it("should succeed when selectedMapId is a PvP or Both map", async function () {
+      const { creatorLobbies, maps, owner } = await loadFixture(
+        deployLobbiesFixture
+      );
+      const costLimit = 1000n;
+      const turnTime = 300n;
+      const creatorGoesFirst = true;
+
+      await maps.write.createPresetMap([[], MapMode.PvP], {
+        account: owner.account,
+      });
+      const pvpMapId = await maps.read.mapCount();
+      await maps.write.createPresetMap([[], MapMode.Both], {
+        account: owner.account,
+      });
+      const bothMapId = await maps.read.mapCount();
+
+      await expect(
+        creatorLobbies.write.createLobby([
+          costLimit,
+          turnTime,
+          creatorGoesFirst,
+          pvpMapId,
+          100n, // maxScore
+          zeroAddress, // reservedJoiner - no reservation
+        ])
+      ).to.not.be.rejected;
+
+      await expect(
+        creatorLobbies.write.createLobby(
+          [costLimit, turnTime, creatorGoesFirst, bothMapId, 100n, zeroAddress],
+          { value: parseEther("1") } // second lobby from this creator requires the fee
+        )
+      ).to.not.be.rejected;
     });
 
     it("should require fee for additional lobbies", async function () {
@@ -379,6 +444,7 @@ describe("Lobbies", function () {
         creatorLobbies,
         joinerLobbies,
         ships,
+        freeShipClaim,
         randomManager,
         game,
         owner,
@@ -393,15 +459,19 @@ describe("Lobbies", function () {
       );
 
       // Both players claim their free ships
-      await ships.write.claimFreeShips([1], { account: creator.account });
-      await ships.write.claimFreeShips([1], { account: joiner.account });
+      await freeShipClaim.write.claimFreeShips([1], {
+        account: creator.account,
+      });
+      await freeShipClaim.write.claimFreeShips([1], {
+        account: joiner.account,
+      });
 
       const fulfillRandomnessForPlayer = async (accountAddress: string) => {
         const shipIds = await ships.read.getShipIdsOwned([accountAddress]);
         for (const shipId of shipIds) {
           const shipTuple = (await ships.read.ships([shipId])) as ShipTuple;
           const ship = tupleToShip(shipTuple);
-          await randomManager.write.fulfillRandomRequest([
+          await randomManager.write.revealRandomness([
             ship.traits.serialNumber,
           ]);
         }
@@ -493,7 +563,7 @@ describe("Lobbies", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([ship.traits.serialNumber]);
+        await randomManager.write.revealRandomness([ship.traits.serialNumber]);
       }
       await ships.write.constructAllMyShips({ account: creator.account });
       await ships.write.constructAllMyShips({ account: joiner.account });
@@ -800,6 +870,93 @@ describe("Lobbies", function () {
       expect(lobby.state.status).to.equal(LobbyStatus.Open);
     });
 
+    it("clears the promoted creator's stale joiner fleet so a new joiner isn't bound to it (SP-03)", async function () {
+      const { lobbies, creatorLobbies, joinerLobbies, ships, randomManager } =
+        await loadFixture(deployLobbiesFixture);
+      const [, creator, joiner, other] = await hre.viem.getWalletClients();
+      const otherLobbies = await hre.viem.getContractAt(
+        "Lobbies",
+        lobbies.address,
+        { client: { wallet: other } },
+      );
+
+      // Purchase and construct ships for the joiner (Bob) and the third
+      // player (Carol) who'll join after Bob is promoted to creator.
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [other.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      const totalShipCount = Number(await ships.read.shipCount());
+      for (let i = 1; i <= totalShipCount; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.revealRandomness([ship.traits.serialNumber]);
+      }
+      await ships.write.constructAllMyShips({ account: joiner.account });
+      await ships.write.constructAllMyShips({ account: other.account });
+      // Bob's ships are 1-5 (first purchase), Carol's are 6-10 (second).
+      const bobShipId = 1n;
+      const carolShipId = 6n;
+
+      // Alice creates the lobby; Bob joins and submits a fleet.
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [bobShipId],
+        generateStartingPositions([bobShipId], false),
+      ]);
+      const staleFleetId = (await lobbies.read.getLobby([1n])).players
+        .joinerFleetId;
+      expect(staleFleetId).to.not.equal(0n);
+
+      // Alice leaves before submitting her own fleet — Bob is promoted to
+      // creator, lobby reopens.
+      await creatorLobbies.write.leaveLobby([1n]);
+      const afterPromotion = await lobbies.read.getLobby([1n]);
+      expect(afterPromotion.basic.creator.toLowerCase()).to.equal(
+        joiner.account.address.toLowerCase(),
+      );
+      // The fix: the stale joinerFleetId must be cleared, not carried over.
+      expect(afterPromotion.players.joinerFleetId).to.equal(0n);
+
+      // Carol joins as the new joiner and must be able to submit her own
+      // fleet — this is exactly what reverted FleetAlreadyCreated pre-fix.
+      await otherLobbies.write.joinLobby([1n]);
+      await otherLobbies.write.createFleet([
+        1n,
+        [carolShipId],
+        generateStartingPositions([carolShipId], false),
+      ]);
+      const carolFleetId = (await lobbies.read.getLobby([1n])).players
+        .joinerFleetId;
+      expect(carolFleetId).to.not.equal(0n);
+      expect(carolFleetId).to.not.equal(staleFleetId);
+
+      // Bob (now creator) submits his own new fleet, reusing his
+      // now-freed-by-clearFleet ship — this is what auto-starts the game,
+      // and must bind to Carol's fleet, not Bob's stale old one.
+      await joinerLobbies.write.createFleet([
+        1n,
+        [bobShipId],
+        generateStartingPositions([bobShipId], true),
+      ]);
+      const started = await lobbies.read.getLobby([1n]);
+      expect(started.state.status).to.equal(LobbyStatus.InGame);
+      expect(started.players.joinerFleetId).to.equal(carolFleetId);
+    });
+
     it("should emit correct events when creator leaves alone", async function () {
       const { creatorLobbies, creator, publicClient } = await loadFixture(
         deployLobbiesFixture
@@ -910,6 +1067,57 @@ describe("Lobbies", function () {
       expect(lobby.state.status).to.equal(LobbyStatus.Open);
     });
 
+    it("should free the creator's own ships when timing out a joiner who never created a fleet", async function () {
+      // Regression test: a creator who commits their fleet before the
+      // joiner does, then has to timeoutJoiner() because the joiner never
+      // creates one, must get their own ships back (inFleet == false).
+      // Previously timeoutJoiner wiped lobby.players.creatorFleetId to 0
+      // without ever calling fleets.clearFleet() on it, permanently
+      // trapping the creator's ships with no remaining on-chain reference
+      // to their fleet id (see docs/design-analysis ship-trap audit).
+      const { creatorLobbies, joinerLobbies, creator, ships, randomManager } =
+        await loadFixture(deployLobbiesFixture);
+      const costLimit = 1000n;
+      const turnTime = 300n;
+      const creatorGoesFirst = true;
+
+      // Give the creator a ship and construct it.
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, zeroAddress, 1],
+        { value: parseEther("4.99") }
+      );
+      const shipTuple = (await ships.read.ships([1n])) as ShipTuple;
+      const ship = tupleToShip(shipTuple);
+      await randomManager.write.revealRandomness([ship.traits.serialNumber]);
+      await ships.write.constructAllMyShips({ account: creator.account });
+
+      // Create and join a lobby; creator commits their fleet first.
+      await creatorLobbies.write.createLobby([
+        costLimit,
+        turnTime,
+        creatorGoesFirst,
+        0n, // selectedMapId - no preset map,
+        100n, // maxScore
+        zeroAddress, // reservedJoiner - no reservation
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n],
+        generateStartingPositions([1n], true),
+      ]);
+
+      // Joiner never creates a fleet. Wait for timeout and kick them.
+      await hre.network.provider.send("evm_increaseTime", [301]);
+      await creatorLobbies.write.timeoutJoiner([1n]);
+
+      // The creator's ship must be released, not trapped.
+      const shipAfter = tupleToShip(
+        (await ships.read.ships([1n])) as ShipTuple
+      );
+      expect(shipAfter.shipData.inFleet).to.equal(false);
+    });
+
     it("should emit correct events when joiner quits with penalty", async function () {
       const {
         creatorLobbies,
@@ -952,7 +1160,7 @@ describe("Lobbies", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1042,7 +1250,7 @@ describe("Lobbies", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1070,7 +1278,7 @@ describe("Lobbies", function () {
           1000n,
           true, // isCreator parameter
         ])
-      ).to.be.rejectedWith("NotLobbiesContract");
+      ).to.be.rejectedWith("NotAllowedToManageFleets");
 
       // Create a fleet through the Lobbies contract (should succeed)
       await expect(
@@ -1107,7 +1315,7 @@ describe("Lobbies", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       await ships.write.constructAllMyShips({ account: creator.account });
@@ -1152,11 +1360,15 @@ describe("Lobbies", function () {
         { value: parseEther("4.99") }
       );
 
-      // Fulfill random request
-      const shipTuple = (await ships.read.ships([BigInt(1)])) as ShipTuple;
-      const ship = tupleToShip(shipTuple);
-      const serialNumber = ship.traits.serialNumber;
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      // Fulfill random requests (tier 0 mints 5 ships per purchase — read
+      // the real count rather than assuming 1:1).
+      const totalShipCount = Number(await ships.read.shipCount());
+      for (let i = 1; i <= totalShipCount; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        const serialNumber = ship.traits.serialNumber;
+        await randomManager.write.revealRandomness([serialNumber]);
+      }
 
       await ships.write.constructAllMyShips({ account: creator.account });
 
@@ -1201,12 +1413,14 @@ describe("Lobbies", function () {
         { value: parseEther("4.99") }
       );
 
-      // Fulfill random requests
-      for (let i = 1; i <= 2; i++) {
+      // Fulfill random requests (tier 0 mints 5 ships per purchase — read
+      // the real count rather than assuming 1:1).
+      const totalShipCount = Number(await ships.read.shipCount());
+      for (let i = 1; i <= totalShipCount; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       await ships.write.constructAllMyShips({ account: creator.account });
@@ -1507,7 +1721,7 @@ describe("Lobbies", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       await ships.write.constructAllMyShips({ account: creator.account });
@@ -1581,7 +1795,7 @@ describe("Lobbies", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       await ships.write.constructAllMyShips({ account: creator.account });
@@ -1778,7 +1992,7 @@ describe("Lobbies", function () {
         universalCredits.address,
       ]);
 
-      // Give creator some UTC by purchasing directly (tier 1 = 9.99 UTC, enough for 1 UTC reservation)
+      // Give creator some UTC by purchasing directly (tier 1 = 1.1 UTC, enough for 1 UTC reservation)
       await shipPurchaser.write.purchaseUTCWithFlow(
         [creator.account.address, 1n],
         { value: parseEther("9.99"), account: creator.account }
@@ -2111,6 +2325,164 @@ describe("Lobbies", function () {
           joiner.account.address,
         ])
       ).to.be.rejected;
+    });
+  });
+
+  describe("Stale lobby pruning (GR-03)", function () {
+    async function createOpenLobby(creatorLobbies: any) {
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n, // selectedMapId - no preset map
+        100n, // maxScore
+        zeroAddress, // reservedJoiner - no reservation
+      ]);
+    }
+
+    it("defaults staleLobbyThreshold to 7 days", async function () {
+      const { lobbies } = await loadFixture(deployLobbiesFixture);
+      expect(await lobbies.read.staleLobbyThreshold()).to.equal(
+        BigInt(7 * 24 * 60 * 60),
+      );
+    });
+
+    it("reverts LobbyNotStaleYet before the threshold has elapsed", async function () {
+      const { lobbies, creatorLobbies, other } = await loadFixture(
+        deployLobbiesFixture,
+      );
+      await createOpenLobby(creatorLobbies);
+
+      await expect(
+        lobbies.write.pruneStaleLobby([1n], { account: other.account }),
+      ).to.be.rejectedWith("LobbyNotStaleYet");
+    });
+
+    it("lets anyone prune an unjoined lobby once staleLobbyThreshold has elapsed", async function () {
+      const { lobbies, creatorLobbies, other } = await loadFixture(
+        deployLobbiesFixture,
+      );
+      await createOpenLobby(creatorLobbies);
+      expect(await lobbies.read.getOpenLobbies()).to.deep.equal([1n]);
+
+      await hre.network.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
+      await hre.network.provider.send("evm_mine");
+
+      // A totally unrelated address can prune it — permissionless by design.
+      await lobbies.write.pruneStaleLobby([1n], { account: other.account });
+
+      expect(await lobbies.read.getOpenLobbies()).to.deep.equal([]);
+      // The lobby record itself is untouched — only delisted, not deleted.
+      const lobby = await lobbies.read.getLobby([1n]);
+      expect(lobby.basic.id).to.equal(1n);
+      expect(lobby.state.status).to.equal(LobbyStatus.Open);
+    });
+
+    it("reverts LobbyNotOpen if the lobby was already joined (and is therefore no longer in the open set)", async function () {
+      const { lobbies, creatorLobbies, joinerLobbies, other } =
+        await loadFixture(deployLobbiesFixture);
+      await createOpenLobby(creatorLobbies);
+      await joinerLobbies.write.joinLobby([1n]);
+
+      await hre.network.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
+      await hre.network.provider.send("evm_mine");
+
+      await expect(
+        lobbies.write.pruneStaleLobby([1n], { account: other.account }),
+      ).to.be.rejectedWith("LobbyNotOpen");
+    });
+
+    it("measures staleness from when a lobby last re-entered the open set, not from its original creation time (regression)", async function () {
+      // A lobby created long ago, then joined and left again, should get a
+      // fresh staleness clock — not be immediately pruneable just because
+      // its original createdAt is old. Catches a bug where pruneStaleLobby
+      // read lobby.basic.createdAt (set once, at creation) instead of a
+      // timestamp refreshed on every re-entry into openLobbyIds.
+      const { lobbies, creatorLobbies, joinerLobbies, other } =
+        await loadFixture(deployLobbiesFixture);
+      await createOpenLobby(creatorLobbies);
+
+      // Age the lobby well past the stale threshold while it's still
+      // unjoined.
+      await hre.network.provider.send("evm_increaseTime", [8 * 24 * 60 * 60]);
+      await hre.network.provider.send("evm_mine");
+
+      // Now a joiner arrives and leaves — the lobby re-enters openLobbyIds
+      // "fresh," even though its basic.createdAt is still 8 days old.
+      await joinerLobbies.write.joinLobby([1n]);
+      await joinerLobbies.write.leaveLobby([1n]);
+      expect(await lobbies.read.getOpenLobbies()).to.deep.equal([1n]);
+
+      // Must NOT be immediately pruneable — it just became open again.
+      await expect(
+        lobbies.write.pruneStaleLobby([1n], { account: other.account }),
+      ).to.be.rejectedWith("LobbyNotStaleYet");
+
+      // Once the threshold genuinely elapses from the re-entry, pruning
+      // works as normal.
+      await hre.network.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
+      await hre.network.provider.send("evm_mine");
+      await lobbies.write.pruneStaleLobby([1n], { account: other.account });
+      expect(await lobbies.read.getOpenLobbies()).to.deep.equal([]);
+    });
+
+    it("owner can change staleLobbyThreshold, and the new value is what gets enforced", async function () {
+      const { lobbies, creatorLobbies, other } = await loadFixture(
+        deployLobbiesFixture,
+      );
+      await lobbies.write.setStaleLobbyThreshold([60n * 60n]); // 1 hour
+      expect(await lobbies.read.staleLobbyThreshold()).to.equal(3600n);
+
+      await createOpenLobby(creatorLobbies);
+
+      // Not stale yet at 30 minutes.
+      await hre.network.provider.send("evm_increaseTime", [30 * 60]);
+      await hre.network.provider.send("evm_mine");
+      await expect(
+        lobbies.write.pruneStaleLobby([1n], { account: other.account }),
+      ).to.be.rejectedWith("LobbyNotStaleYet");
+
+      // Stale by 31 more minutes (61 total).
+      await hre.network.provider.send("evm_increaseTime", [31 * 60]);
+      await hre.network.provider.send("evm_mine");
+      await lobbies.write.pruneStaleLobby([1n], { account: other.account });
+      expect(await lobbies.read.getOpenLobbies()).to.deep.equal([]);
+    });
+
+    it("reverts when a non-owner tries to change staleLobbyThreshold", async function () {
+      const { creatorLobbies } = await loadFixture(deployLobbiesFixture);
+      await expect(
+        creatorLobbies.write.setStaleLobbyThreshold([1n]),
+      ).to.be.rejected;
+    });
+
+    it("getOpenLobbiesPaginated pages through the open set and matches getOpenLobbies when read in full", async function () {
+      const { lobbies, creatorLobbies, joinerLobbies, other } =
+        await loadFixture(deployLobbiesFixture);
+      // Three separate creators so each can have an active lobby simultaneously.
+      await createOpenLobby(creatorLobbies);
+      await createOpenLobby(joinerLobbies);
+      await createOpenLobby(
+        await hre.viem.getContractAt("Lobbies", lobbies.address, {
+          client: { wallet: other },
+        }),
+      );
+
+      const all = await lobbies.read.getOpenLobbies();
+      expect(all.length).to.equal(3);
+
+      const page1 = await lobbies.read.getOpenLobbiesPaginated([0n, 2n]);
+      const page2 = await lobbies.read.getOpenLobbiesPaginated([2n, 2n]);
+      expect(page1.length).to.equal(2);
+      // Runs past the end (offset 2, limit 2, only 1 remains) — returns
+      // fewer than _limit rather than reverting.
+      expect(page2.length).to.equal(1);
+      expect([...page1, ...page2].map(String).sort()).to.deep.equal(
+        all.map(String).sort(),
+      );
+
+      const pastEnd = await lobbies.read.getOpenLobbiesPaginated([50n, 10n]);
+      expect(pastEnd.length).to.equal(0);
     });
   });
 });

@@ -1,0 +1,12 @@
+---
+description: Confirm the PRODUCTION flag in DeployAndConfig.ts is false before running tests
+alwaysApply: true
+---
+
+# Check the PRODUCTION flag before running tests
+
+`ignition/modules/DeployAndConfig.ts` has a module-level `const PRODUCTION` flag. It must be `false` before running `npx hardhat test` — every test fixture deploys this same module via `hre.ignition.deploy(DeployModule)`, and when `PRODUCTION` is `true` the module points several contracts at hardcoded real-network addresses (instead of test mocks) and runs a real-deploy-only ownership-transfer step, neither of which exist/make sense on the ephemeral test chain.
+
+- Before running the test suite, `grep -n "^const PRODUCTION" ignition/modules/DeployAndConfig.ts` (or just read the line) and confirm it says `false`. If it's `true`, that's a real bug to flag/fix before trusting any test result, not something to work around.
+- **Found 2026-08-26:** `PRODUCTION` was left `true` after the last real deploy (the "Redeploy" commit) and stayed that way, committed, on `main`. This caused mass failures across every test file using the shared full-deploy fixture (`DroneEnergyCores`, `DroneStorefront`, `Game`, and others) — with no error pointing at the actual cause; it just looked like a huge, unrelated regression. Diagnosed by tracing a `HardhatPluginError: Expected contract future but got undefined` back to `hre.ignition.deploy` itself, then finding the flag via `grep -n "PRODUCTION = "`.
+- If you ever need to run a real deploy, flip it to `true` for that deploy only, and flip it back to `false` and confirm the test suite passes again before leaving it — do not leave `PRODUCTION = true` committed.

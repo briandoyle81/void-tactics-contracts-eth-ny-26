@@ -1,0 +1,56 @@
+{
+  "_comment": "Exploratory run against the real variant-2-pixel.psd, using its actual layer names (not yet mapped to MainWeapon/Special enum slots -- that mapping is ambiguous pending user confirmation, see chat). Output goes to contracts/RenderersV2Explore, a throwaway directory for visual review only, not wired into the game or ImageRendererV2.",
+  "psdFile": "variant-2-pixel copy.psd",
+  "canvasSize": 256,
+  "outputDir": "contracts/RenderersV2Explore",
+  "categories": {
+    "fore": {
+      "combinerContract": "RenderForeV2Explore",
+      "leaves": [
+        { "psdLayerName": "fore-0", "contractName": "RenderFore0V2Explore", "required": true },
+        { "psdLayerName": "fore-1", "contractName": "RenderFore1V2Explore", "required": true },
+        { "psdLayerName": "fore-3", "contractName": "RenderFore3V2Explore", "required": true },
+        { "psdLayerName": "fore-special", "contractName": "RenderForeSpecialV2Explore", "required": true }
+      ]
+    },
+    "aft": {
+      "combinerContract": "RenderAftV2Explore",
+      "leaves": [
+        { "psdLayerName": "aft-0", "contractName": "RenderAft0V2Explore", "required": true },
+        { "psdLayerName": "aft-1", "contractName": "RenderAft1V2Explore", "required": true },
+        { "psdLayerName": "aft-2", "contractName": "RenderAft2V2Explore", "required": true }
+      ]
+    },
+    "weapon": {
+      "combinerContract": "RenderWeaponV2Explore",
+      "leaves": [
+        { "psdLayerName": "torpedo-launcher", "contractName": "RenderTorpedoLauncherV2Explore", "required": true },
+        { "psdLayerName": "linear-accelerator", "contractName": "RenderLinearAcceleratorV2Explore", "required": true },
+        { "psdLayerName": "medium-mining-laser", "contractName": "RenderMediumMiningLaserV2Explore", "required": true },
+        { "psdLayerName": "mining-drill", "contractName": "RenderMiningDrillV2Explore", "required": true }
+      ]
+    },
+    "body": {
+      "combinerContract": "RenderBodyV2Explore",
+      "base": { "psdLayerName": "shield-armor-0", "contractName": "RenderBaseBodyV2Explore", "required": true },
+      "shields": [
+        { "psdLayerName": "shield-1", "contractName": "RenderShield1V2Explore", "required": true },
+        { "psdLayerName": "shield-2", "contractName": "RenderShield2V2Explore", "required": true },
+        { "psdLayerName": "shield-3", "contractName": "RenderShield3V2Explore", "required": true }
+      ],
+      "armor": [
+        { "psdLayerName": "armor-1", "contractName": "RenderArmor1V2Explore", "required": true },
+        { "psdLayerName": "armor-2", "contractName": "RenderArmor2V2Explore", "required": true },
+        { "psdLayerName": "armor-3", "contractName": "RenderArmor3V2Explore", "required": true }
+      ]
+    },
+    "special": {
+      "combinerContract": "RenderSpecialV2Explore",
+      "leaves": [
+        { "psdLayerName": "attack-drones", "contractName": "RenderAttackDronesV2Explore", "required": true },
+        { "psdLayerName": "aux-engine", "contractName": "RenderAuxEngineV2Explore", "required": true },
+        { "psdLayerName": "lightening-field", "contractName": "RenderLighteningFieldV2Explore", "required": true }
+      ]
+    }
+  }
+}

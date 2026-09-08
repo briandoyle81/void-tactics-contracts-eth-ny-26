@@ -95,6 +95,8 @@ describe("Ships", function () {
         "0x0000000000000000000000000000000000000000", // metadataRenderer
         "0x0000000000000000000000000000000000000000", // shipAttributes
         "0x0000000000000000000000000000000000000000", // universalCredits
+        "0x0000000000000000000000000000000000000000", // droneEnergyCores
+        "0x0000000000000000000000000000000000000000", // purchaseGate
       ]);
 
       const config = await ships.read.config();
@@ -295,6 +297,40 @@ describe("Ships", function () {
       );
     });
 
+    it("shipsOwnedCount/shipIdOwnedAt (GR-01 pagination escape hatch) match getShipIdsOwned", async function () {
+      const [owner, , user2] = await hre.viem.getWalletClients();
+      const { ships, publicClient } = await loadFixture(deployShipsFixture);
+
+      const ownerShips = await hre.viem.getContractAt("Ships", ships.address, {
+        client: { wallet: owner },
+      });
+
+      const tx = await ownerShips.write.purchaseWithFlow(
+        [owner.account.address, 0n, user2.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await publicClient.waitForTransactionReceipt({ hash: tx });
+
+      const fullList = await ships.read.getShipIdsOwned([
+        owner.account.address,
+      ]);
+      const count = await ships.read.shipsOwnedCount([owner.account.address]);
+      expect(count).to.equal(BigInt(fullList.length));
+
+      const paged: bigint[] = [];
+      for (let i = 0n; i < count; i++) {
+        paged.push(
+          await ships.read.shipIdOwnedAt([owner.account.address, i]),
+        );
+      }
+      // EnumerableSet iteration order is consistent between .values() and
+      // .at(i) for the same underlying set with no intervening writes, so
+      // paging one-at-a-time must reconstruct the exact same list.
+      expect(paged.map(String).sort()).to.deep.equal(
+        fullList.map(String).sort(),
+      );
+    });
+
     it("Should purchase 1,000 ships", async function () {
       const [owner, user1, user2] = await hre.viem.getWalletClients();
       const { ships, publicClient } = await loadFixture(deployShipsFixture);
@@ -397,6 +433,8 @@ describe("Ships", function () {
         "0x0000000000000000000000000000000000000000", // metadataRenderer
         "0x0000000000000000000000000000000000000000", // shipAttributes
         "0x0000000000000000000000000000000000000000", // universalCredits
+        "0x0000000000000000000000000000000000000000", // droneEnergyCores
+        "0x0000000000000000000000000000000000000000", // purchaseGate
       ]);
 
       const config = await ships.read.config();
@@ -513,7 +551,7 @@ describe("Ships", function () {
       const serialNumber = ship.traits.serialNumber; // traits is at index 3
 
       // Fulfill the random request
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
 
       // Construct the ship
       await ships.write.constructShip([1n], {
@@ -546,7 +584,7 @@ describe("Ships", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber; // traits is at index 3
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships at once using constructAllMyShips
@@ -580,7 +618,7 @@ describe("Ships", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber; // traits is at index 3
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships at once
@@ -616,7 +654,7 @@ describe("Ships", function () {
       const serialNumber = ship.traits.serialNumber; // traits is at index 3
 
       // Fulfill the random request
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
 
       // Try to construct as non-owner
       await expect(
@@ -642,7 +680,7 @@ describe("Ships", function () {
       const serialNumber = ship.traits.serialNumber; // traits is at index 3
 
       // Fulfill the random request
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
 
       // Construct the ship
       await ships.write.constructShip([1n], {
@@ -675,7 +713,7 @@ describe("Ships", function () {
       const serialNumber = ship.traits.serialNumber; // traits is at index 3
 
       // Fulfill the random request
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
 
       await ships.write.constructShip([1n], {
         account: user1.account,
@@ -780,6 +818,172 @@ describe("Ships", function () {
       expect(attributeMap.get("Special")).to.be.a("string");
     });
 
+    it("Should show variant 2's own weapon/special names, distinct from variant 1's", async function () {
+      const { ships, owner, user1 } = await loadFixture(deployShipsFixture);
+
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+
+      await ships.write.createShips([user1.account.address, 1, 1, 0, false], {
+        account: owner.account,
+      });
+
+      const variant2Ship = {
+        name: "Variant 2 Ship",
+        id: 1n,
+        equipment: {
+          mainWeapon: 0, // Generic -> "Medium Mining Laser" for variant 2
+          armor: 0,
+          shields: 0,
+          special: 4, // LighteningField
+        },
+        traits: {
+          serialNumber: 999n,
+          colors: {
+            h1: 0,
+            s1: 0,
+            l1: 0,
+            h2: 0,
+            s2: 0,
+            l2: 0,
+            h3: 0,
+            s3: 0,
+            l3: 0,
+          },
+          variant: 2,
+          accuracy: 0,
+          hull: 0,
+          speed: 0,
+        },
+        shipData: {
+          constructed: false,
+          inFleet: false,
+          isFreeShip: false,
+          modified: 0,
+          timestampDestroyed: 0n,
+          shiny: false,
+          shipsDestroyed: 0,
+          costsVersion: 1,
+          cost: 0,
+        },
+        owner: user1.account.address,
+      };
+
+      await ships.write.customizeShip([1n, variant2Ship], {
+        account: owner.account,
+      });
+
+      const tokenURI = await ships.read.tokenURI([1n]);
+      const base64Content = tokenURI.replace(
+        "data:application/json;base64,",
+        "",
+      );
+      const decodedContent = Buffer.from(base64Content, "base64").toString();
+      const metadata = JSON.parse(decodedContent);
+      const attributeMap = new Map(
+        metadata.attributes.map(
+          (attr: { trait_type: string; value: string | number | boolean }) => [
+            attr.trait_type,
+            attr.value,
+          ],
+        ),
+      );
+
+      expect(attributeMap.get("Main Weapon")).to.equal("Medium Mining Laser");
+      expect(attributeMap.get("Special")).to.equal("Lightening Field");
+    });
+
+    it("Should show 'Unknown' for a special name never set for that (variant, slot) pair", async function () {
+      const { ships, owner, user1 } = await loadFixture(deployShipsFixture);
+
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+
+      await ships.write.createShips([user1.account.address, 1, 1, 0, false], {
+        account: owner.account,
+      });
+
+      // Slot 4 (Electric Storm) only has a name set for variant 2 — a
+      // variant-1 ship equipped with slot 4 (inert for that faction) has
+      // no configured name for (variant 1, slot 4).
+      const variant1SlotFourShip = {
+        name: "Variant 1 Slot 4 Ship",
+        id: 1n,
+        equipment: {
+          mainWeapon: 0,
+          armor: 0,
+          shields: 0,
+          special: 4,
+        },
+        traits: {
+          serialNumber: 999n,
+          colors: {
+            h1: 0,
+            s1: 0,
+            l1: 0,
+            h2: 0,
+            s2: 0,
+            l2: 0,
+            h3: 0,
+            s3: 0,
+            l3: 0,
+          },
+          variant: 1,
+          accuracy: 0,
+          hull: 0,
+          speed: 0,
+        },
+        shipData: {
+          constructed: false,
+          inFleet: false,
+          isFreeShip: false,
+          modified: 0,
+          timestampDestroyed: 0n,
+          shiny: false,
+          shipsDestroyed: 0,
+          costsVersion: 1,
+          cost: 0,
+        },
+        owner: user1.account.address,
+      };
+
+      await ships.write.customizeShip([1n, variant1SlotFourShip], {
+        account: owner.account,
+      });
+
+      const tokenURI = await ships.read.tokenURI([1n]);
+      const base64Content = tokenURI.replace(
+        "data:application/json;base64,",
+        "",
+      );
+      const decodedContent = Buffer.from(base64Content, "base64").toString();
+      const metadata = JSON.parse(decodedContent);
+      const attributeMap = new Map(
+        metadata.attributes.map(
+          (attr: { trait_type: string; value: string | number | boolean }) => [
+            attr.trait_type,
+            attr.value,
+          ],
+        ),
+      );
+
+      expect(attributeMap.get("Special")).to.equal("Unknown");
+    });
+
+    it("Should not allow non-owner to set a special name", async function () {
+      const { metadataRenderer, user1 } = await loadFixture(deployShipsFixture);
+
+      await expect(
+        metadataRenderer.write.setSpecialName([1, 1, "Not Allowed"], {
+          account: user1.account,
+        }),
+      ).to.be.rejectedWith("OwnableUnauthorizedAccount");
+    });
+
     it("Should reflect modified flag changes in metadata", async function () {
       const { ships, owner, user1 } = await loadFixture(deployShipsFixture);
 
@@ -788,7 +992,7 @@ describe("Ships", function () {
         { account: owner.account },
       );
 
-      await ships.write.createShips([user1.account.address, 1, 1, 0], {
+      await ships.write.createShips([user1.account.address, 1, 1, 0, false], {
         account: owner.account,
       });
 
@@ -1114,7 +1318,7 @@ describe("Ships", function () {
       // Note: The first purchase already gives 11 ships, no need for a second purchase
 
       // Destroy the ship (simulate by setting timestampDestroyed)
-      await ships.write.setTimestampDestroyed([1n, 0n], {
+      await ships.write.markDestroyed([1n], {
         account: owner.account,
       });
 
@@ -1276,7 +1480,7 @@ describe("Ships", function () {
       );
 
       // Create 3 ships for user1
-      await ships.write.createShips([user1.account.address, 3n, 1, 0], {
+      await ships.write.createShips([user1.account.address, 3n, 1, 0, false], {
         account: user1.account,
       });
 
@@ -1299,7 +1503,7 @@ describe("Ships", function () {
 
       // Try to create ships without authorization
       await expect(
-        ships.write.createShips([user1.account.address, 3n, 1, 0], {
+        ships.write.createShips([user1.account.address, 3n, 1, 0, false], {
           account: user2.account,
         }),
       ).to.be.rejectedWith("NotAuthorized");
@@ -1317,7 +1521,7 @@ describe("Ships", function () {
       );
 
       // Create 10 ships for user1
-      await ships.write.createShips([user1.account.address, 10n, 1, 0], {
+      await ships.write.createShips([user1.account.address, 10n, 1, 0, false], {
         account: user1.account,
       });
 
@@ -1347,7 +1551,7 @@ describe("Ships", function () {
       );
 
       // Create 5 ships for user1 using owner account
-      await ships.write.createShips([user1.account.address, 5n, 1, 0], {
+      await ships.write.createShips([user1.account.address, 5n, 1, 0, false], {
         account: user1.account,
       });
 
@@ -1377,7 +1581,7 @@ describe("Ships", function () {
       );
 
       // Create 3 ships for user1
-      await ships.write.createShips([user1.account.address, 3n, 1, 0], {
+      await ships.write.createShips([user1.account.address, 3n, 1, 0, false], {
         account: user1.account,
       });
 
@@ -1389,6 +1593,61 @@ describe("Ships", function () {
       expect(user1Ships[0]).to.equal(1n);
       expect(user1Ships[1]).to.equal(2n);
       expect(user1Ships[2]).to.equal(3n);
+    });
+  });
+
+  describe("Variant Purchase Gate", function () {
+    it("Should reject minting a variant-2 ship without the Shattered Hive medal", async function () {
+      const { ships, user1, owner } = await loadFixture(deployShipsFixture);
+
+      await ships.write.setIsAllowedToCreateShips(
+        [user1.account.address, true],
+        { account: owner.account },
+      );
+
+      await expect(
+        ships.write.createShips([user1.account.address, 1n, 2, 0, false], {
+          account: user1.account,
+        }),
+      ).to.be.rejectedWith("GateRequirementNotMet");
+    });
+
+    it("Should allow minting a variant-2 ship once the recipient holds the medal", async function () {
+      const { ships, shatteredHiveMedal, user1, owner } =
+        await loadFixture(deployShipsFixture);
+
+      await ships.write.setIsAllowedToCreateShips(
+        [user1.account.address, true],
+        { account: owner.account },
+      );
+
+      await shatteredHiveMedal.write.ownerMint([user1.account.address], {
+        account: owner.account,
+      });
+
+      await ships.write.createShips([user1.account.address, 1n, 2, 0, false], {
+        account: user1.account,
+      });
+
+      const shipTuple = (await ships.read.ships([1n])) as ShipTuple;
+      const ship = tupleToShip(shipTuple);
+      expect(ship.traits.variant).to.equal(2);
+    });
+
+    it("Should not require the medal for variant-1 ships", async function () {
+      const { ships, user1, owner } = await loadFixture(deployShipsFixture);
+
+      await ships.write.setIsAllowedToCreateShips(
+        [user1.account.address, true],
+        { account: owner.account },
+      );
+
+      await ships.write.createShips([user1.account.address, 1n, 1, 0, false], {
+        account: user1.account,
+      });
+
+      const shipCount = await ships.read.shipCount();
+      expect(shipCount).to.equal(1n);
     });
   });
 
@@ -1405,7 +1664,7 @@ describe("Ships", function () {
       );
 
       // Create a ship first
-      await ships.write.createShips([user1.account.address, 1, 1, 0], {
+      await ships.write.createShips([user1.account.address, 1, 1, 0, false], {
         account: user1.account,
       });
 
@@ -1493,7 +1752,7 @@ describe("Ships", function () {
       );
 
       // Create a ship first
-      await ships.write.createShips([user1.account.address, 1, 1, 0], {
+      await ships.write.createShips([user1.account.address, 1, 1, 0, false], {
         account: user1.account,
       });
 
@@ -1559,7 +1818,7 @@ describe("Ships", function () {
       );
 
       // Create a ship first
-      await ships.write.createShips([user1.account.address, 1, 1, 0], {
+      await ships.write.createShips([user1.account.address, 1, 1, 0, false], {
         account: user1.account,
       });
 
@@ -1659,7 +1918,7 @@ describe("Ships", function () {
       );
 
       // Create a ship first
-      await ships.write.createShips([user1.account.address, 1, 1, 0], {
+      await ships.write.createShips([user1.account.address, 1, 1, 0, false], {
         account: user1.account,
       });
 
@@ -2017,6 +2276,8 @@ describe("Ships", function () {
           metadataRenderer.address, // metadataRenderer - use actual
           shipAttributes.address, // shipAttributes - use actual
           universalCredits.address, // universalCredits - use actual
+          "0x0000000000000000000000000000000000000000", // droneEnergyCores
+          "0x0000000000000000000000000000000000000000", // purchaseGate
         ],
         {
           account: owner.account,
@@ -2085,11 +2346,11 @@ describe("Ships", function () {
     });
 
     it("Should not allow recycling free ships", async function () {
-      const { ships, universalCredits, user1 } =
+      const { ships, universalCredits, user1, freeShipClaim } =
         await loadFixture(deployShipsFixture);
 
       // Claim free ships
-      await ships.write.claimFreeShips([1], { account: user1.account });
+      await freeShipClaim.write.claimFreeShips([1], { account: user1.account });
 
       // Get ship IDs owned by user1 (these are free ships)
       const shipIds = await ships.read.getShipIdsOwned([user1.account.address]);
@@ -2109,12 +2370,24 @@ describe("Ships", function () {
       ).to.be.rejectedWith("CannotRecycleFreeShip");
     });
 
+    it("blocks a reentrant claimFreeShips call from the ERC721 mint callback (SP-01)", async function () {
+      const { freeShipClaim } = await loadFixture(deployShipsFixture);
+
+      const attacker = await hre.viem.deployContract(
+        "MockFreeShipClaimReentrant",
+        [],
+      );
+      await attacker.write.setTarget([freeShipClaim.address]);
+
+      await expect(attacker.write.claim([1])).to.be.rejected;
+    });
+
     it("Should allow recycling purchased ships but not free ships in the same call", async function () {
-      const { ships, universalCredits, user1, user2, shipPurchaser } =
+      const { ships, universalCredits, user1, user2, shipPurchaser, freeShipClaim } =
         await loadFixture(deployShipsFixture);
 
       // Claim free ships first
-      await ships.write.claimFreeShips([1], { account: user1.account });
+      await freeShipClaim.write.claimFreeShips([1], { account: user1.account });
       const freeShipIds = await ships.read.getShipIdsOwned([
         user1.account.address,
       ]);
@@ -2185,13 +2458,14 @@ describe("Ships", function () {
 
   describe("Free Ship Claiming", function () {
     it("Should allow users to claim free ships initially", async function () {
-      const { ships, user1 } = await loadFixture(deployShipsFixture);
+      const { ships, user1, freeShipClaim } =
+        await loadFixture(deployShipsFixture);
 
       // Get initial ship count
       const initialShipCount = await ships.read.shipCount();
 
       // Claim free ships
-      await ships.write.claimFreeShips([1], { account: user1.account });
+      await freeShipClaim.write.claimFreeShips([1], { account: user1.account });
 
       // Verify ship count increased by 10
       const finalShipCount = await ships.read.shipCount();
@@ -2209,30 +2483,99 @@ describe("Ships", function () {
       }
 
       // Verify lastClaimTimestamp is set
-      const lastClaim = await ships.read.lastClaimTimestamp([
+      const lastClaim = await freeShipClaim.read.lastClaimTimestamp([
         user1.account.address,
       ]);
       expect(Number(lastClaim)).to.be.greaterThan(0);
     });
 
-    it("Should not allow claiming again before cooldown period", async function () {
-      const { ships, user1 } = await loadFixture(deployShipsFixture);
+    it("Should block claiming a gated variant without the required NFT, and allow it once held", async function () {
+      const { ships, shatteredHiveMedal, freeShipClaim, user1, owner } =
+        await loadFixture(deployShipsFixture);
 
-      // Claim free ships first time
-      await ships.write.claimFreeShips([1], { account: user1.account });
-
-      // Try to claim again immediately - should fail
+      // Variant 2 is gated to the Shattered Hive medal (see
+      // DeployAndConfig.ts's setVariant2GateCall) — claiming it without the
+      // medal should revert via VariantPurchaseGate, same as a paid mint.
       await expect(
-        ships.write.claimFreeShips([1], { account: user1.account }),
-      ).to.be.rejectedWith("ClaimCooldownNotPassed");
+        freeShipClaim.write.claimFreeShips([2], { account: user1.account }),
+      ).to.be.rejectedWith("GateRequirementNotMet");
+
+      // Once the medal is held, the same claim should succeed and mint
+      // variant-2 ships.
+      await shatteredHiveMedal.write.ownerMint([user1.account.address], {
+        account: owner.account,
+      });
+      await freeShipClaim.write.claimFreeShips([2], { account: user1.account });
+
+      const shipIds = await ships.read.getShipIdsOwned([user1.account.address]);
+      expect(shipIds.length).to.equal(10);
+      const shipTuple = (await ships.read.ships([shipIds[0]])) as ShipTuple;
+      const ship = tupleToShip(shipTuple);
+      expect(ship.traits.variant).to.equal(2);
     });
 
-    it("Should allow claiming again after cooldown period", async function () {
-      const { ships, user1, publicClient } =
+    it("Should not allow claiming again before cooldown period", async function () {
+      const { ships, user1, freeShipClaim } =
         await loadFixture(deployShipsFixture);
 
       // Claim free ships first time
-      const firstTx = await ships.write.claimFreeShips([1], {
+      await freeShipClaim.write.claimFreeShips([1], { account: user1.account });
+
+      // Try to claim again immediately - should fail
+      await expect(
+        freeShipClaim.write.claimFreeShips([1], { account: user1.account }),
+      ).to.be.rejectedWith("ClaimCooldownNotPassed");
+    });
+
+    it("Should grant 10 + droneCoreTier bonus ships once a player has turned in drone cores", async function () {
+      const { ships, droneStorefront, droneEnergyCores, freeShipClaim, owner, user1 } =
+        await loadFixture(deployShipsFixture);
+
+      // Give user1 tier 1 (10 DEC) on DroneStorefront before claiming.
+      await droneEnergyCores.write.setAuthorizedToMint(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+      await droneEnergyCores.write.mint([user1.account.address, 10n], {
+        account: owner.account,
+      });
+
+      const user1DEC = await hre.viem.getContractAt(
+        "DroneEnergyCores",
+        droneEnergyCores.address,
+        { client: { wallet: user1 } },
+      );
+      await user1DEC.write.approve([droneStorefront.address, 10n]);
+
+      const user1Storefront = await hre.viem.getContractAt(
+        "DroneStorefront",
+        droneStorefront.address,
+        { client: { wallet: user1 } },
+      );
+      await user1Storefront.write.turnInCores([10n]);
+
+      const user1FreeShipClaim = await hre.viem.getContractAt(
+        "FreeShipClaim",
+        freeShipClaim.address,
+        { client: { wallet: user1 } },
+      );
+
+      const initialShipCount = await ships.read.shipCount();
+      await user1FreeShipClaim.write.claimFreeShips([1]);
+      const finalShipCount = await ships.read.shipCount();
+
+      expect(finalShipCount - initialShipCount).to.equal(11n);
+
+      const shipIds = await ships.read.getShipIdsOwned([user1.account.address]);
+      expect(shipIds.length).to.equal(11);
+    });
+
+    it("Should allow claiming again after cooldown period", async function () {
+      const { ships, user1, publicClient, freeShipClaim } =
+        await loadFixture(deployShipsFixture);
+
+      // Claim free ships first time
+      const firstTx = await freeShipClaim.write.claimFreeShips([1], {
         account: user1.account,
       });
       const firstReceipt = await publicClient.getTransactionReceipt({
@@ -2244,7 +2587,7 @@ describe("Ships", function () {
       const firstClaimCount = await ships.read.shipCount();
 
       // Get the last claim timestamp
-      const lastClaim = await ships.read.lastClaimTimestamp([
+      const lastClaim = await freeShipClaim.read.lastClaimTimestamp([
         user1.account.address,
       ]);
       const blockTimestamp =
@@ -2254,7 +2597,7 @@ describe("Ships", function () {
       expect(lastClaim.toString()).to.equal(blockTimestamp.toString());
 
       // Get the cooldown period
-      const cooldownPeriod = await ships.read.claimCooldownPeriod();
+      const cooldownPeriod = await freeShipClaim.read.claimCooldownPeriod();
 
       // Fast forward time by cooldown period + 1 second
       await hre.network.provider.send("evm_increaseTime", [
@@ -2272,7 +2615,7 @@ describe("Ships", function () {
       );
 
       // Claim again - should succeed
-      await ships.write.claimFreeShips([1], { account: user1.account });
+      await freeShipClaim.write.claimFreeShips([1], { account: user1.account });
       const secondClaimCount = await ships.read.shipCount();
 
       // Verify ship count increased by another 10
@@ -2290,54 +2633,56 @@ describe("Ships", function () {
       }
 
       // Verify lastClaimTimestamp was updated
-      const newLastClaim = await ships.read.lastClaimTimestamp([
+      const newLastClaim = await freeShipClaim.read.lastClaimTimestamp([
         user1.account.address,
       ]);
       expect(Number(newLastClaim)).to.be.greaterThan(Number(lastClaim));
     });
 
     it("Should allow owner to modify claim cooldown period", async function () {
-      const { ships, owner } = await loadFixture(deployShipsFixture);
+      const { ships, owner, freeShipClaim } =
+        await loadFixture(deployShipsFixture);
 
       // Get initial cooldown period (should be 28 days)
-      const initialCooldown = await ships.read.claimCooldownPeriod();
+      const initialCooldown = await freeShipClaim.read.claimCooldownPeriod();
       expect(initialCooldown).to.equal(28n * 24n * 60n * 60n); // 28 days in seconds
 
       // Set new cooldown period (7 days)
       const newCooldown = 7n * 24n * 60n * 60n;
-      await ships.write.setClaimCooldownPeriod([newCooldown], {
+      await freeShipClaim.write.setClaimCooldownPeriod([newCooldown], {
         account: owner.account,
       });
 
       // Verify cooldown period was updated
-      const updatedCooldown = await ships.read.claimCooldownPeriod();
+      const updatedCooldown = await freeShipClaim.read.claimCooldownPeriod();
       expect(updatedCooldown).to.equal(newCooldown);
     });
 
     it("Should not allow non-owner to modify claim cooldown period", async function () {
-      const { ships, user1 } = await loadFixture(deployShipsFixture);
+      const { ships, user1, freeShipClaim } =
+        await loadFixture(deployShipsFixture);
 
       const newCooldown = 7n * 24n * 60n * 60n;
 
       await expect(
-        ships.write.setClaimCooldownPeriod([newCooldown], {
+        freeShipClaim.write.setClaimCooldownPeriod([newCooldown], {
           account: user1.account,
         }),
       ).to.be.rejectedWith("OwnableUnauthorizedAccount");
     });
 
     it("Should correctly track lastClaimTimestamp", async function () {
-      const { ships, user1, publicClient } =
+      const { ships, user1, publicClient, freeShipClaim } =
         await loadFixture(deployShipsFixture);
 
       // Initially, lastClaimTimestamp should be 0
-      const initialClaim = await ships.read.lastClaimTimestamp([
+      const initialClaim = await freeShipClaim.read.lastClaimTimestamp([
         user1.account.address,
       ]);
       expect(initialClaim).to.equal(0n);
 
       // Claim free ships
-      const tx = await ships.write.claimFreeShips([1], {
+      const tx = await freeShipClaim.write.claimFreeShips([1], {
         account: user1.account,
       });
       const receipt = await publicClient.getTransactionReceipt({ hash: tx });
@@ -2348,7 +2693,7 @@ describe("Ships", function () {
       });
 
       // Verify lastClaimTimestamp is set to block timestamp
-      const lastClaim = await ships.read.lastClaimTimestamp([
+      const lastClaim = await freeShipClaim.read.lastClaimTimestamp([
         user1.account.address,
       ]);
       expect(Number(lastClaim)).to.be.greaterThan(0);
@@ -2426,7 +2771,7 @@ describe("Ships", function () {
   });
 
   describe("Direct UTC Purchase with Flow", function () {
-    it("Should purchase UTC for tier 0 (4.99 UC for 4.99 FLOW)", async function () {
+    it("Should purchase UTC for tier 0 (0.5 UC for 4.99 FLOW, matching 5 ships recycled)", async function () {
       const { shipPurchaser, universalCredits, user1, publicClient } =
         await loadFixture(deployShipsFixture);
 
@@ -2449,15 +2794,15 @@ describe("Ships", function () {
         address: shipPurchaser.address,
       });
 
-      // Check that 4.99 UC was minted (1:1 with FLOW price)
-      expect(finalBalance - initialBalance).to.equal(parseEther("4.99"));
+      // Check that 0.5 UC was minted (5 ships x 0.1 recycle reward)
+      expect(finalBalance - initialBalance).to.equal(parseEther("0.5"));
       // Check that FLOW was received by contract
       expect(finalContractBalance - initialContractBalance).to.equal(
         parseEther("4.99"),
       );
     });
 
-    it("Should purchase UTC for tier 1 (9.99 UC for 9.99 FLOW)", async function () {
+    it("Should purchase UTC for tier 1 (1.1 UC for 9.99 FLOW, matching 11 ships recycled)", async function () {
       const { shipPurchaser, universalCredits, user1 } =
         await loadFixture(deployShipsFixture);
 
@@ -2474,11 +2819,11 @@ describe("Ships", function () {
         user1.account.address,
       ]);
 
-      // Check that 9.99 UC was minted (1:1 with FLOW price)
-      expect(finalBalance - initialBalance).to.equal(parseEther("9.99"));
+      // Check that 1.1 UC was minted (11 ships x 0.1 recycle reward)
+      expect(finalBalance - initialBalance).to.equal(parseEther("1.1"));
     });
 
-    it("Should purchase UTC for tier 2 (19.99 UC for 19.99 FLOW)", async function () {
+    it("Should purchase UTC for tier 2 (2.2 UC for 19.99 FLOW, matching 22 ships recycled)", async function () {
       const { shipPurchaser, universalCredits, user1 } =
         await loadFixture(deployShipsFixture);
 
@@ -2495,11 +2840,11 @@ describe("Ships", function () {
         user1.account.address,
       ]);
 
-      // Check that 19.99 UC was minted (1:1 with FLOW price)
-      expect(finalBalance - initialBalance).to.equal(parseEther("19.99"));
+      // Check that 2.2 UC was minted (22 ships x 0.1 recycle reward)
+      expect(finalBalance - initialBalance).to.equal(parseEther("2.2"));
     });
 
-    it("Should purchase UTC for tier 3 (34.99 UC for 34.99 FLOW)", async function () {
+    it("Should purchase UTC for tier 3 (4 UC for 34.99 FLOW, matching 40 ships recycled)", async function () {
       const { shipPurchaser, universalCredits, user1 } =
         await loadFixture(deployShipsFixture);
 
@@ -2516,11 +2861,11 @@ describe("Ships", function () {
         user1.account.address,
       ]);
 
-      // Check that 34.99 UC was minted (1:1 with FLOW price)
-      expect(finalBalance - initialBalance).to.equal(parseEther("34.99"));
+      // Check that 4 UC was minted (40 ships x 0.1 recycle reward)
+      expect(finalBalance - initialBalance).to.equal(parseEther("4"));
     });
 
-    it("Should purchase UTC for tier 4 (49.99 UC for 49.99 FLOW)", async function () {
+    it("Should purchase UTC for tier 4 (6 UC for 49.99 FLOW, matching 60 ships recycled)", async function () {
       const { shipPurchaser, universalCredits, user1 } =
         await loadFixture(deployShipsFixture);
 
@@ -2537,11 +2882,11 @@ describe("Ships", function () {
         user1.account.address,
       ]);
 
-      // Check that 49.99 UC was minted (1:1 with FLOW price)
-      expect(finalBalance - initialBalance).to.equal(parseEther("49.99"));
+      // Check that 6 UC was minted (60 ships x 0.1 recycle reward)
+      expect(finalBalance - initialBalance).to.equal(parseEther("6"));
     });
 
-    it("Should compare direct UTC purchase vs ship purchase + recycle (tier 4)", async function () {
+    it("Should mint the same UTC as ship purchase + recycle (tier 4)", async function () {
       const {
         ships,
         shipPurchaser,
@@ -2689,10 +3034,11 @@ describe("Ships", function () {
       ]);
       const utcReceivedRecycle = finalBalanceRecycle - initialBalanceRecycle;
 
-      // Direct purchase gives 1:1 UTC (49.99 UTC for 49.99 FLOW)
-      expect(utcReceivedDirect).to.equal(parseEther("49.99"));
-      // Recycle gives 6 UTC (60 ships × 0.1 UC recycle reward)
+      // Direct purchase mints the same UTC a player would net from buying +
+      // recycling tier 4's 60 ships (60 x 0.1 UC recycle reward)
+      expect(utcReceivedDirect).to.equal(parseEther("6"));
       expect(utcReceivedRecycle).to.equal(parseEther("6"));
+      expect(utcReceivedDirect).to.equal(utcReceivedRecycle);
 
       // Direct purchase gives owner full FLOW (49.99 FLOW)
       expect(flowReceivedDirect).to.equal(parseEther("49.99"));
@@ -2801,8 +3147,8 @@ describe("Ships", function () {
         user1.account.address,
       ]);
 
-      // Should have 9.98 UC total (4.99 + 4.99)
-      expect(finalBalance - initialBalance).to.equal(parseEther("9.98"));
+      // Should have 1 UC total (0.5 + 0.5, tier 0's 5 ships x 0.1 recycle reward, twice)
+      expect(finalBalance - initialBalance).to.equal(parseEther("1"));
     });
 
     it("Should mint UTC to correct address", async function () {
@@ -2823,9 +3169,9 @@ describe("Ships", function () {
         user2.account.address,
       ]);
 
-      // User2 should receive the UTC (49.99 UC for tier 4, 1:1 with FLOW price)
+      // User2 should receive the UTC (6 UC for tier 4, 60 ships x 0.1 recycle reward)
       expect(finalBalanceUser2 - initialBalanceUser2).to.equal(
-        parseEther("49.99"),
+        parseEther("6"),
       );
     });
   });
@@ -2871,17 +3217,27 @@ describe("Ships", function () {
       const newHull = [0, 10, 20, 30];
 
       await expect(
-        shipAttributes.write.setAllAttributes(
+        shipAttributes.write.startNewAttributesVersion({
+          account: user1.account,
+        }),
+      ).to.be.rejectedWith("OwnableUnauthorizedAccount");
+
+      await expect(
+        shipAttributes.write.setVariantAttributes(
           [
-            120, // baseHull
-            7, // baseSpeed
-            newGuns,
-            newArmors,
-            newShields,
-            newSpecials,
-            newForeAccuracy,
-            newHull,
-            newEngineSpeeds,
+            {
+              version: 1,
+              variant: 1,
+              baseHull: 120,
+              baseSpeed: 7,
+              foreAccuracy: newForeAccuracy,
+              hull: newHull,
+              engineSpeeds: newEngineSpeeds,
+              guns: newGuns,
+              armors: newArmors,
+              shields: newShields,
+              specials: newSpecials,
+            },
           ],
           { account: user1.account },
         ),
@@ -2891,9 +3247,9 @@ describe("Ships", function () {
     it("Should allow owner to update costs", async function () {
       const { shipAttributes, owner } = await loadFixture(deployShipsFixture);
 
-      // Get current costs
-      const currentCosts = await shipAttributes.read.getCosts();
-      expect(currentCosts[0]).to.equal(1n); // version should be 1
+      // Get current costs for variant 1
+      const currentCosts = await shipAttributes.read.getCosts([1]);
+      expect(currentCosts[0]).to.equal(1n); // version should be 1 (the deploy module's own setCostsVariant1Call is the only seed — nothing in the constructor pre-bumps it)
 
       // Create new costs
       const newCosts = {
@@ -2905,23 +3261,25 @@ describe("Ships", function () {
         mainWeapon: [30, 35, 45, 45],
         armor: [0, 8, 12, 18],
         shields: [0, 12, 24, 36],
-        special: [0, 12, 24, 18],
+        special: [0, 12, 24, 18, 18, 24, 12, 0],
       };
 
-      // Update costs
-      await shipAttributes.write.setCosts([newCosts], {
+      // Update costs for variant 1
+      await shipAttributes.write.setCosts([1, newCosts], {
         account: owner.account,
       });
 
       // Verify costs were updated
-      const updatedCosts = await shipAttributes.read.getCosts();
+      const updatedCosts = await shipAttributes.read.getCosts([1]);
       expect(updatedCosts[0]).to.equal(2n); // version should be 2
       expect(updatedCosts[1].baseCost).to.equal(60);
       expect(updatedCosts[1].accuracy[1]).to.equal(15); // accuracy tier 1 cost
       expect(updatedCosts[1].mainWeapon[0]).to.equal(30); // laser cost
 
       // Verify current costs version
-      const costsVersion = await shipAttributes.read.getCurrentCostsVersion();
+      const costsVersion = await shipAttributes.read.getCurrentCostsVersion([
+        1,
+      ]);
       expect(costsVersion).to.equal(2);
     });
 
@@ -2937,12 +3295,14 @@ describe("Ships", function () {
         mainWeapon: [30, 35, 45, 45],
         armor: [0, 8, 12, 18],
         shields: [0, 12, 24, 36],
-        special: [0, 12, 24, 18],
+        special: [0, 12, 24, 18, 18, 24, 12, 0],
       };
 
       // Try to update costs as non-owner
       await expect(
-        shipAttributes.write.setCosts([newCosts], { account: user1.account }),
+        shipAttributes.write.setCosts([1, newCosts], {
+          account: user1.account,
+        }),
       ).to.be.rejectedWith("OwnableUnauthorizedAccount");
     });
 
@@ -2983,32 +3343,41 @@ describe("Ships", function () {
       const newEngineSpeeds = [0, 2, 3];
       const newHull = [0, 10, 20];
 
-      // Update all attributes
-      await shipAttributes.write.setAllAttributes(
-        [
-          120, // baseHull
-          4, // baseSpeed
-          newGuns,
-          newArmors,
-          newShields,
-          newSpecials,
-          newForeAccuracy,
-          newHull,
-          newEngineSpeeds,
-        ],
-        {
-          account: owner.account,
-        },
-      );
+      // Start a new attributes version
+      await shipAttributes.write.startNewAttributesVersion({
+        account: owner.account,
+      });
 
       // Verify version incremented
       const newVersion =
         await shipAttributes.read.getCurrentAttributesVersion();
       expect(newVersion).to.equal(2);
 
+      await shipAttributes.write.setVariantAttributes(
+        [
+          {
+            version: 2,
+            variant: 1,
+            baseHull: 120,
+            baseSpeed: 4,
+            foreAccuracy: newForeAccuracy,
+            hull: newHull,
+            engineSpeeds: newEngineSpeeds,
+            guns: newGuns,
+            armors: newArmors,
+            shields: newShields,
+            specials: newSpecials,
+          },
+        ],
+        {
+          account: owner.account,
+        },
+      );
+
       // Verify new attributes are set correctly
       const versionData = await shipAttributes.read.getAttributesVersionBase([
         2,
+        1,
       ]);
       expect(versionData[0]).to.equal(2); // version
       expect(versionData[1]).to.equal(120); // baseHull
@@ -3047,17 +3416,27 @@ describe("Ships", function () {
       const newHull = [0, 10, 20];
 
       await expect(
-        shipAttributes.write.setAllAttributes(
+        shipAttributes.write.startNewAttributesVersion({
+          account: user1.account,
+        }),
+      ).to.be.rejectedWith("OwnableUnauthorizedAccount");
+
+      await expect(
+        shipAttributes.write.setVariantAttributes(
           [
-            120, // baseHull
-            4, // baseSpeed
-            newGuns,
-            newArmors,
-            newShields,
-            newSpecials,
-            newForeAccuracy,
-            newHull,
-            newEngineSpeeds,
+            {
+              version: 1,
+              variant: 1,
+              baseHull: 120,
+              baseSpeed: 4,
+              foreAccuracy: newForeAccuracy,
+              hull: newHull,
+              engineSpeeds: newEngineSpeeds,
+              guns: newGuns,
+              armors: newArmors,
+              shields: newShields,
+              specials: newSpecials,
+            },
           ],
           {
             account: user1.account,
@@ -3082,7 +3461,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       // Get current ship
@@ -3133,7 +3512,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       // Get current ship
@@ -3196,7 +3575,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       // Get current ship
@@ -3253,7 +3632,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       // Get current ship and name
@@ -3314,7 +3693,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       // Get current ship
@@ -3375,7 +3754,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       const currentShipTuple = (await ships.read.ships([1n])) as ShipTuple;
@@ -3438,7 +3817,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       const currentShipTuple = (await ships.read.ships([1n])) as ShipTuple;
@@ -3473,7 +3852,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       const currentShipTuple = (await ships.read.ships([1n])) as ShipTuple;
@@ -3496,6 +3875,42 @@ describe("Ships", function () {
       ).to.be.rejectedWith("ArmorAndShieldsBothSet");
     });
 
+    it("Should not allow modifying a ship to change its variant", async function () {
+      const { ships, user1, user2, randomManager, user1DroneYard } =
+        await loadFixture(deployShipsFixture);
+
+      await ships.write.purchaseWithFlow(
+        [user1.account.address, 0n, user2.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      const shipTuple = (await ships.read.ships([1n])) as ShipTuple;
+      const ship = tupleToShip(shipTuple);
+      const serialNumber = ship.traits.serialNumber;
+
+      await randomManager.write.revealRandomness([serialNumber]);
+      await ships.write.constructShip([1n], { account: user1.account });
+
+      const currentShipTuple = (await ships.read.ships([1n])) as ShipTuple;
+      const currentShip = tupleToShip(currentShipTuple);
+
+      // Try to convert the variant-1 ship into a variant-2 ship, bypassing
+      // the purchase-time medal gate.
+      const modifiedShip: Ship = {
+        ...currentShip,
+        traits: {
+          ...currentShip.traits,
+          variant: 2,
+        },
+      };
+
+      await expect(
+        user1DroneYard.write.modifyShip([1n, modifiedShip], {
+          account: user1.account,
+        }),
+      ).to.be.rejectedWith("InvalidVariant");
+    });
+
     it("Should preserve name and colors when modifying ship", async function () {
       const {
         ships,
@@ -3515,7 +3930,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       const currentShipTuple = (await ships.read.ships([1n])) as ShipTuple;
@@ -3581,7 +3996,7 @@ describe("Ships", function () {
       const ship = tupleToShip(shipTuple);
       const serialNumber = ship.traits.serialNumber;
 
-      await randomManager.write.fulfillRandomRequest([serialNumber]);
+      await randomManager.write.revealRandomness([serialNumber]);
       await ships.write.constructShip([1n], { account: user1.account });
 
       const currentShipTuple = (await ships.read.ships([1n])) as ShipTuple;

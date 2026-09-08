@@ -1,0 +1,11 @@
+---
+description: Hardhat Ignition does not guarantee m.call execution order beyond declared after: dependencies — don't assume id = array position without forcing it
+alwaysApply: true
+---
+
+# Hardhat Ignition execution order
+
+Hardhat Ignition does **not** guarantee `m.call(...)` invocations execute on-chain in the order they're registered in a deploy module — only `after:`-declared dependencies are honored. Independent calls (or independent branches of a dependency graph) can be interleaved/reordered by Ignition's own scheduler.
+
+- Never assume a resource's on-chain id equals its 1-indexed position in a JS array/loop unless every call that creates one of these resources is *also* explicitly chained to the previous one via `after:` (as `ignition/modules/DeployAndConfig.ts` does for maps, campaigns, and campaign nodes) — without that forced chain, a branching dependency graph (e.g. multiple independent prerequisite chains hanging off a shared node) can silently assign ids out of the order you expect, corrupting anything computed from the guessed id (e.g. a later node's prerequisites pointing at the wrong node).
+- This was found and fixed once already (30-node campaign seed, 2026-08-03): two nodes in independent branches got their ids swapped relative to array position. If you add new branching content to a deploy module that assigns ids this way, either keep the "chain every call to the previous one" pattern going, or switch to reading the real id back via `m.readEventArgument(call, "SomeCreatedEvent", "someId", {...})` (already used for `aiConfigIds` in the same file) instead of guessing it.

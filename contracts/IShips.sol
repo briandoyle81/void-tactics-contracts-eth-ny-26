@@ -4,7 +4,13 @@ pragma solidity ^0.8.28;
 import "./Types.sol";
 
 interface IShips {
-    function createShips(address _to, uint _amount, uint16 _variant, uint8 _tier) external;
+    function createShips(
+        address _to,
+        uint _amount,
+        uint16 _variant,
+        uint8 _tier,
+        bool _isFreeShip
+    ) external;
 
     function createSpecificShip(address _to, Ship calldata _ship) external returns (uint);
 
@@ -20,4 +26,8 @@ interface IShips {
         uint _id,
         Ship memory _ship
     ) external;
+
+    function maxVariant() external view returns (uint16);
+
+    function recycleReward() external view returns (uint);
 }

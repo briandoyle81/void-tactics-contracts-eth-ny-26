@@ -10,6 +10,7 @@ import {
   ActionType,
   Ship,
   GameDataView,
+  MapMode,
 } from "./types";
 import DeployModule from "../ignition/modules/DeployAndConfig";
 
@@ -159,6 +160,7 @@ describe("Game", function () {
       joinerFleets,
       ships: deployed.ships,
       game: deployed.game,
+      pvpMatch: deployed.pvpMatch,
       randomManager: deployed.randomManager,
       maps: deployed.maps,
       gameResults: deployed.gameResults,
@@ -197,7 +199,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -266,7 +268,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships
@@ -337,7 +339,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -378,7 +380,7 @@ describe("Game", function () {
       const mainWeapon = constructedShip.equipment.mainWeapon;
 
       // Expected values based on ShipAttributes contract's gun data
-      const expectedRanges = [3, 6, 4, 2]; // Laser, Railgun, MissileLauncher, PlasmaCannon
+      const expectedRanges = [3, 6, 4, 2]; // Generic, Sniper, Missile, Close
       const expectedDamages = [50, 40, 60, 80];
 
       // Get the ship's accuracy level to calculate expected range with fore accuracy bonus
@@ -424,7 +426,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships
@@ -489,7 +491,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships
@@ -561,7 +563,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships
@@ -665,7 +667,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -729,7 +731,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -802,11 +804,14 @@ describe("Game", function () {
       }
 
       // Get ships' serial numbers and fulfill random requests for all ships
-      for (let i = 1; i <= 24; i++) {
+      // (tier 0 mints 5 ships per purchase, so 24 purchases means more than
+      // 24 ships — read the real count rather than assuming 1:1).
+      const totalShipCount = Number(await ships.read.shipCount());
+      for (let i = 1; i <= totalShipCount; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -965,7 +970,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1032,7 +1037,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1103,7 +1108,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1203,7 +1208,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1274,7 +1279,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1351,7 +1356,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1428,7 +1433,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1497,7 +1502,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1533,9 +1538,23 @@ describe("Game", function () {
       const oldRow = initialPosition.row;
       const oldCol = initialPosition.col;
 
-      // Move ship to a new position
-      const newRow = 0;
-      const newCol = 2;
+      // Move ship to a new position, clamped to its actual (RNG-derived,
+      // equipment-dependent) movement stat rather than a hardcoded delta --
+      // deploy-sequence changes shift trait/equipment RNG, so a fixed delta
+      // can exceed movement.
+      const newRow = oldRow;
+      const newCol = await getValidHorizontalDestination(
+        game,
+        1n,
+        1n,
+        oldCol,
+        2,
+      );
+      if (newCol === oldCol) {
+        // Equipment RNG happened to leave this ship with 0 movement this
+        // run -- nothing to assert "actual movement" against.
+        this.skip();
+      }
       await game.write.moveShip([1n, 1n, newRow, newCol, ActionType.Pass, 0n], {
         account: creator.account,
       });
@@ -1582,7 +1601,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1669,7 +1688,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1808,7 +1827,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1921,7 +1940,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -1985,7 +2004,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2015,8 +2034,19 @@ describe("Game", function () {
         generateStartingPositions([6n], false),
       ]);
 
-      // Try diagonal movement (both row and column change) - should work now
-      await game.write.moveShip([1n, 1n, 1, 1, ActionType.Pass, 0n], {
+      // Try diagonal movement (both row and column change) - should work now.
+      // Delta is clamped to the ship's actual (RNG-derived, equipment-
+      // dependent) movement stat rather than hardcoded, since deploy-
+      // sequence changes shift trait/equipment RNG. A true diagonal step
+      // needs at least 2 movement (1 row + 1 col); if this ship's rolled
+      // equipment left it below that, there's nothing diagonal to test.
+      const attributes = await game.read.getShipAttributes([1n, 1n]);
+      const movement = Number(attributes.movement);
+      const delta = Math.floor(movement / 2);
+      if (delta < 1) {
+        this.skip();
+      }
+      await game.write.moveShip([1n, 1n, delta, delta, ActionType.Pass, 0n], {
         account: creator.account,
       });
 
@@ -2025,8 +2055,8 @@ describe("Game", function () {
         1n,
       ])) as unknown as GameDataView;
       const shipPosition = findShipPosition(gameData, 1n);
-      expect(shipPosition.row).to.equal(1);
-      expect(shipPosition.col).to.equal(1);
+      expect(shipPosition.row).to.equal(delta);
+      expect(shipPosition.col).to.equal(delta);
     });
 
     it("should handle different fleet sizes correctly", async function () {
@@ -2055,7 +2085,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2085,24 +2115,26 @@ describe("Game", function () {
         generateStartingPositions([6n, 7n, 8n, 9n, 10n], false),
       ]);
 
-      // Round 1: Creator moves first ship
-      await game.write.moveShip([1n, 1n, 0, 1, ActionType.Pass, 0n], {
+      // Round 1: Creator moves first ship (no-op: this test is about
+      // turn-passing with uneven fleet sizes, not movement, so stay in place
+      // rather than assume a specific random movement stat)
+      await game.write.moveShip([1n, 1n, 0, 0, ActionType.Pass, 0n], {
         account: creator.account,
       });
 
       // Round 1: Joiner moves first ship
       await moveShipWithinMovement(game, 1n, 6n, joiner.account);
 
-      // Round 1: Creator moves second ship
-      await game.write.moveShip([1n, 2n, 2, 1, ActionType.Pass, 0n], {
+      // Round 1: Creator moves second ship (no-op, see above)
+      await game.write.moveShip([1n, 2n, 1, 1, ActionType.Pass, 0n], {
         account: creator.account,
       });
 
       // Round 1: Joiner moves second ship
       await moveShipWithinMovement(game, 1n, 7n, joiner.account);
 
-      // Round 1: Creator moves third ship
-      await game.write.moveShip([1n, 3n, 4, 1, ActionType.Pass, 0n], {
+      // Round 1: Creator moves third ship (no-op, see above)
+      await game.write.moveShip([1n, 3n, 2, 2, ActionType.Pass, 0n], {
         account: creator.account,
       });
 
@@ -2126,7 +2158,7 @@ describe("Game", function () {
           (await game.read.getGame([1n])) as any
         ).turnState.currentTurn.toLowerCase(),
       ).to.equal(creator.account.address.toLowerCase());
-      await game.write.moveShip([1n, 1n, 0, 2, ActionType.Pass, 0n], {
+      await game.write.moveShip([1n, 1n, 0, 0, ActionType.Pass, 0n], {
         account: creator.account,
       });
     });
@@ -2158,7 +2190,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2229,7 +2261,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2316,7 +2348,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2399,7 +2431,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -2501,7 +2533,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2578,7 +2610,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2707,7 +2739,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2776,7 +2808,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -2900,7 +2932,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -3008,11 +3040,12 @@ describe("Game", function () {
       );
 
       // Get ships' serial numbers and fulfill random requests
-      for (let i = 1; i <= 2; i++) {
+      const totalShipCount = Number(await ships.read.shipCount());
+      for (let i = 1; i <= totalShipCount; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -3238,11 +3271,12 @@ describe("Game", function () {
       );
 
       // Get ships' serial numbers and fulfill random requests
-      for (let i = 1; i <= 2; i++) {
+      const totalShipCount = Number(await ships.read.shipCount());
+      for (let i = 1; i <= totalShipCount; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -3345,21 +3379,13 @@ describe("Game", function () {
         { value: parseEther("4.99") },
       );
 
-      // Get ships' serial numbers and fulfill random requests
-      for (let i = 1; i <= 2; i++) {
-        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
-        const ship = tupleToShip(shipTuple);
-        const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
-      }
-
       // Construct creator's ship with EMP using
       // Get ships' serial numbers and fulfill random requests
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Create a ship with EMP for creator's first ship (ship 1)
@@ -3367,7 +3393,7 @@ describe("Game", function () {
         name: "EMP Ship",
         id: 1n,
         equipment: {
-          mainWeapon: 0, // Laser
+          mainWeapon: 0, // Generic
           armor: 0, // None
           shields: 0, // None
           special: 1, // EMP
@@ -3385,7 +3411,7 @@ describe("Game", function () {
             s3: 0,
             l3: 0,
           },
-          variant: 0,
+          variant: 1,
           accuracy: 0,
           hull: 0,
           speed: 2, // Use valid speed value (0, 1, or 2)
@@ -3492,8 +3518,13 @@ describe("Game", function () {
         // (e.g., ship doesn't have special ability, out of range, etc.)
         const errorMessage =
           error instanceof Error ? error.message : String(error);
-        // Since we consolidated errors, InvalidMove is now acceptable
-        expect(errorMessage).to.include("InvalidMove");
+        // Resolvers revert with a descriptive error (e.g. OutOfRange,
+        // TargetNotEnemy) rather than the generic InvalidMove Game.sol uses
+        // elsewhere — a generic InvalidMove here would mean the failure
+        // came from somewhere else (e.g. a line-of-sight check leaking into
+        // the special-action path), which is exactly what this test guards
+        // against.
+        expect(errorMessage).to.not.include("InvalidMove");
         // The error should be something like "ship doesn't have special ability" not "line of sight blocked"
       }
     });
@@ -3527,7 +3558,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -3659,7 +3690,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -3721,15 +3752,19 @@ describe("Game", function () {
       const ship6Before = await game.read.getShipAttributes([1n, 6n]);
       expect(ship6Before.hullPoints).to.be.greaterThan(0);
 
-      // 1) Creator ship 2 damages joiner 6 (leaves HP > 0 so 6 still acts later)
+      // 1) Creator ship 2 passes in round 1 (no damage yet) — ship 6 must
+      // stay alive through round 1 so the "moved then reduced to 0 HP" case
+      // this test targets can land in round 2 instead. Leaving ship 6 at
+      // full HP into round 2 maximizes the damage margin for the two real
+      // shots that finish it off there (ships' gun damage/hull points are
+      // randomly generated per deploy, so relying on an exact hit count
+      // against a partially-damaged target is fragile; two full-power hits
+      // against a full-health target is not).
       const pos2 = findShipPosition(gameData, 2n);
       await game.write.moveShip(
-        [1n, 2n, pos2.row, pos2.col, ActionType.Shoot, 6n],
+        [1n, 2n, pos2.row, pos2.col, ActionType.Pass, 0n],
         { account: creator.account },
       );
-      const ship6Damaged = await game.read.getShipAttributes([1n, 6n]);
-      expect(ship6Damaged.hullPoints).to.be.greaterThan(0);
-      expect(ship6Damaged.hullPoints).to.be.lessThan(ship6Before.hullPoints);
 
       // 2) Joiner 6 passes (now in shipMovedThisRound)
       gameData = (await game.read.getGame([1n])) as GameDataView;
@@ -3739,24 +3774,13 @@ describe("Game", function () {
         { account: joiner.account },
       );
 
-      // 3) Creator ship 3 hits joiner 6 again. Combined with ship 2's shot, this
-      // isn't guaranteed to finish ship 6 off this round — how much damage two
-      // shots deal depends on the ships' randomly-generated gun damage / hull
-      // points. That's fine: the "moved then reduced to 0 HP" case this test
-      // targets doesn't have to land in round 1 specifically, so we just assert
-      // ship 6 took more damage and carry on; it gets finished off in round 2 below.
+      // 3) Creator ship 3 also passes in round 1 — ship 6 reaches round 2
+      // undamaged.
       gameData = (await game.read.getGame([1n])) as GameDataView;
       const pos3 = findShipPosition(gameData, 3n);
       await game.write.moveShip(
-        [1n, 3n, pos3.row, pos3.col, ActionType.Shoot, 6n],
+        [1n, 3n, pos3.row, pos3.col, ActionType.Pass, 0n],
         { account: creator.account },
-      );
-      const ship6AfterRound1Shots = await game.read.getShipAttributes([
-        1n,
-        6n,
-      ]);
-      expect(ship6AfterRound1Shots.hullPoints).to.be.lessThan(
-        ship6Damaged.hullPoints,
       );
 
       // 4) Joiner 7 passes
@@ -3789,78 +3813,137 @@ describe("Game", function () {
         joiner.account.address.toLowerCase(),
       );
 
-      // 6) Round 2: joiner ship 6 passes first (now in shipMovedThisRound)...
-      const pos6Round2 = findShipPosition(gameData, 6n);
-      await game.write.moveShip(
-        [1n, 6n, pos6Round2.row, pos6Round2.col, ActionType.Pass, 0n],
-        { account: joiner.account },
-      );
+      // 6) Round 2 onward: joiner ship 6 passes first (entering
+      // shipMovedThisRound), then creator ships 3 and 2 each take a real
+      // shot at it. Ships' gun damage / max hull points are randomly
+      // generated per deploy — and shift with anything that changes the
+      // number of prior on-chain operations, including unrelated test
+      // files — so the exact number of rounds needed to bring ship 6 to 0
+      // HP isn't knowable in advance. Loop, reading actual on-chain hull
+      // points after each shot, until it actually dies (bounded well above
+      // any realistic hit count), then verify round completion doesn't
+      // double-count it in the round the kill actually lands in — the
+      // case under test.
+      //
+      // Who goes first alternates each round (round 1 above was
+      // creator-first; round 2 is joiner-first; round 3 back to
+      // creator-first; ...), so which side's ships act in which slot isn't
+      // fixed — read currentTurn each round and dispatch accordingly. In a
+      // creator-first round, creator's first ship must act before ship 6
+      // has moved, so it's a harmless pass; the real shots always land only
+      // after ship 6's own pass, whichever round shape is in play.
+      async function passAction(shipId: bigint, account: any) {
+        const g = (await game.read.getGame([1n])) as GameDataView;
+        const pos = findShipPosition(g, shipId);
+        await game.write.moveShip(
+          [1n, shipId, pos.row, pos.col, ActionType.Pass, 0n],
+          { account },
+        );
+      }
 
-      // 7) ...then creator ship 3 finishes it off — ship 6 is now in
-      // moved ∩ shipsWithZeroHP, the exact case under test.
+      async function shootShip6(shipId: bigint, account: any) {
+        const g = (await game.read.getGame([1n])) as GameDataView;
+        const pos = findShipPosition(g, shipId);
+        await game.write.moveShip(
+          [1n, shipId, pos.row, pos.col, ActionType.Shoot, 6n],
+          { account },
+        );
+      }
+
+      async function ship6IsDead() {
+        return (
+          (await game.read.getShipAttributes([1n, 6n])).hullPoints === 0
+        );
+      }
+
+      // Asserts the case under test: even though ship 6 is now both
+      // moved-this-round and zero-HP, the round must not complete until
+      // every other active ship also acts.
+      async function assertRoundStillOpen(loopRound: number) {
+        const g = (await game.read.getGame([1n])) as GameDataView;
+        expect(g.turnState.currentRound).to.equal(BigInt(loopRound + 1));
+        expect(g.turnState.currentTurn.toLowerCase()).to.equal(
+          joiner.account.address.toLowerCase(),
+        );
+      }
+
+      const MAX_ROUNDS = 10;
+      let ship6Dead = false;
+      let round = 0;
+      while (!ship6Dead && round < MAX_ROUNDS) {
+        round++;
+
+        gameData = (await game.read.getGame([1n])) as GameDataView;
+        const creatorFirst =
+          gameData.turnState.currentTurn.toLowerCase() ===
+          creator.account.address.toLowerCase();
+
+        if (creatorFirst) {
+          await passAction(3n, creator.account); // ship 6 hasn't moved yet
+          await passAction(6n, joiner.account); // now moved
+          await shootShip6(2n, creator.account); // safe: ship 6 already moved
+          if (await ship6IsDead()) {
+            ship6Dead = true;
+            await assertRoundStillOpen(round);
+          }
+          await passAction(7n, joiner.account);
+          await passAction(8n, joiner.account);
+        } else {
+          await passAction(6n, joiner.account); // moved
+          await shootShip6(3n, creator.account);
+          if (await ship6IsDead()) {
+            ship6Dead = true;
+            await assertRoundStillOpen(round);
+          }
+          await passAction(7n, joiner.account);
+          if (!ship6Dead) {
+            await shootShip6(2n, creator.account);
+            if (await ship6IsDead()) {
+              ship6Dead = true;
+              await assertRoundStillOpen(round);
+            }
+          } else {
+            await passAction(2n, creator.account);
+          }
+          await passAction(8n, joiner.account);
+        }
+      }
+
+      expect(ship6Dead).to.be.true;
+      expect(await ship6IsDead()).to.be.true;
+
+      // Only now, after every remaining ship acted this round, should the
+      // round (and the already-dead ship 6 within it) roll over.
       gameData = (await game.read.getGame([1n])) as GameDataView;
-      expect(gameData.turnState.currentTurn.toLowerCase()).to.equal(
-        creator.account.address.toLowerCase(),
-      );
-      const pos3Round2 = findShipPosition(gameData, 3n);
-      await game.write.moveShip(
-        [1n, 3n, pos3Round2.row, pos3Round2.col, ActionType.Shoot, 6n],
-        { account: creator.account },
-      );
-      expect((await game.read.getShipAttributes([1n, 6n])).hullPoints).to.equal(
-        0,
-      );
-
-      // Round must not complete yet — creator ship 2 and joiner ships 7/8 still
-      // need to act this round.
-      gameData = (await game.read.getGame([1n])) as GameDataView;
-      expect(gameData.turnState.currentRound).to.equal(2n);
-      expect(gameData.turnState.currentTurn.toLowerCase()).to.equal(
-        joiner.account.address.toLowerCase(),
-      );
-
-      // 8) Joiner 7 passes — old formula would double-count dead ship 6 here
-      // (moved ∩ zeroHP) and end the round early.
-      const pos7Round2 = findShipPosition(gameData, 7n);
-      await game.write.moveShip(
-        [1n, 7n, pos7Round2.row, pos7Round2.col, ActionType.Pass, 0n],
-        { account: joiner.account },
-      );
-
-      gameData = (await game.read.getGame([1n])) as GameDataView;
-      expect(gameData.turnState.currentRound).to.equal(2n);
-      expect(gameData.turnState.currentTurn.toLowerCase()).to.equal(
-        creator.account.address.toLowerCase(),
-      );
-
-      // 9) Creator ship 2 still needs to act before the round can complete.
-      const pos2Round2 = findShipPosition(gameData, 2n);
-      await game.write.moveShip(
-        [1n, 2n, pos2Round2.row, pos2Round2.col, ActionType.Pass, 0n],
-        { account: creator.account },
-      );
-
-      gameData = (await game.read.getGame([1n])) as GameDataView;
-      expect(gameData.turnState.currentRound).to.equal(2n);
-      expect(gameData.turnState.currentTurn.toLowerCase()).to.equal(
-        joiner.account.address.toLowerCase(),
-      );
-
-      // 10) Joiner 8 is the last active ship to act — only now should the round
-      // (and the already-dead ship 6 within it) roll over to round 3.
-      const pos8Round2 = findShipPosition(gameData, 8n);
-      await game.write.moveShip(
-        [1n, 8n, pos8Round2.row, pos8Round2.col, ActionType.Pass, 0n],
-        { account: joiner.account },
-      );
-
-      gameData = (await game.read.getGame([1n])) as GameDataView;
-      expect(gameData.turnState.currentRound).to.equal(3n);
+      expect(gameData.turnState.currentRound).to.equal(BigInt(round + 2));
     });
   });
 
-  describe("Ram (0 HP enemy)", function () {
-    it("allows moving onto an enemy at 0 HP, retreats victim, and applies 1 reactor damage to rammer", async function () {
+  describe("Ram (ActionType.FactionAbility, faction 1)", function () {
+    // Ram is resolver-backed (RamResolver) and dispatched by
+    // traits.variant alone — every faction-1 ship has it regardless of
+    // loadout, so this only needs to set the ship's faction via
+    // customizeShip (owner authorized, same mechanism the
+    // EMP/RepairDrones/FlakArray tests use), not its equipped special.
+    async function setShipFaction(
+      ships: any,
+      owner: any,
+      shipId: bigint,
+      variant: number,
+    ) {
+      const shipTuple = (await ships.read.ships([shipId])) as ShipTuple;
+      const ship = tupleToShip(shipTuple);
+      ship.traits.variant = variant;
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+      await ships.write.customizeShip([shipId, ship], {
+        account: owner.account,
+      });
+    }
+
+    it("evicts a 0 HP enemy, applies 1 reactor damage to the rammer, and relocates it onto the victim's tile", async function () {
       const {
         creatorLobbies,
         joinerLobbies,
@@ -3884,10 +3967,12 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
+
+      await setShipFaction(ships, owner, 1n, 1);
 
       await ships.write.constructAllMyShips({ account: creator.account });
       await ships.write.constructAllMyShips({ account: joiner.account });
@@ -3927,9 +4012,11 @@ describe("Game", function () {
         (await game.read.getShipAttributes([1n, 1n])).reactorCriticalTimer,
       ).to.equal(0);
 
-      await game.write.moveShip([1n, 1n, 5, 6, ActionType.Pass, 0n], {
-        account: creator.account,
-      });
+      // No-op move (stay at (5,5)), then Ram ship 6 (adjacent, within range 1)
+      await game.write.moveShip(
+        [1n, 1n, 5, 5, ActionType.FactionAbility, 6n],
+        { account: creator.account },
+      );
 
       const attrsAfter = await game.read.getShipAttributes([1n, 1n]);
       expect(attrsAfter.reactorCriticalTimer).to.equal(1);
@@ -3940,7 +4027,7 @@ describe("Game", function () {
       expect(gameAfter.joinerActiveShipIds).to.not.include(6n);
     });
 
-    it("reverts when destination is occupied by a living enemy", async function () {
+    it("reverts when a non-faction-1 ship attempts a faction ability", async function () {
       const {
         creatorLobbies,
         joinerLobbies,
@@ -3964,10 +4051,21 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
+
+      // Faction 2 (variant 2) has its own real resolver now (RepairResolver),
+      // so it's no longer naturally "unconfigured" the way this test needs —
+      // explicitly unset it for just this test instead of switching to a
+      // different variant number, which would need its own full
+      // ShipAttributes setup (cost/traits config) that this fixture doesn't
+      // provide for anything beyond variants 1/2.
+      await game.write.setFactionAbilityResolver([2, zeroAddress, false], {
+        account: owner.account,
+      });
+      await setShipFaction(ships, owner, 1n, 2);
 
       await ships.write.constructAllMyShips({ account: creator.account });
       await ships.write.constructAllMyShips({ account: joiner.account });
@@ -3999,89 +4097,16 @@ describe("Game", function () {
       await game.write.debugSetShipPosition([1n, 6n, 5, 6], {
         account: owner.account,
       });
-
-      await expect(
-        game.write.moveShip([1n, 1n, 5, 6, ActionType.Pass, 0n], {
-          account: creator.account,
-        }),
-      ).to.be.rejectedWith("InvalidMove");
-    });
-
-    it("does not execute the selected action when the move is a ram", async function () {
-      const {
-        creatorLobbies,
-        joinerLobbies,
-        creator,
-        joiner,
-        ships,
-        game,
-        randomManager,
-        owner,
-      } = await loadFixture(deployGameFixture);
-
-      await ships.write.purchaseWithFlow(
-        [creator.account.address, 0n, joiner.account.address, 1],
-        { value: parseEther("4.99") },
-      );
-      await ships.write.purchaseWithFlow(
-        [joiner.account.address, 0n, creator.account.address, 1],
-        { value: parseEther("4.99") },
-      );
-
-      for (let i = 1; i <= 10; i++) {
-        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
-        const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
-          ship.traits.serialNumber,
-        ]);
-      }
-
-      await ships.write.constructAllMyShips({ account: creator.account });
-      await ships.write.constructAllMyShips({ account: joiner.account });
-
-      await creatorLobbies.write.createLobby([
-        1000n,
-        300n,
-        true,
-        0n,
-        100n,
-        zeroAddress,
-      ]);
-      await joinerLobbies.write.joinLobby([1n]);
-
-      await creatorLobbies.write.createFleet([
-        1n,
-        [1n],
-        generateStartingPositions([1n], true),
-      ]);
-      await joinerLobbies.write.createFleet([
-        1n,
-        [6n, 7n],
-        generateStartingPositions([6n, 7n], false),
-      ]);
-
-      await game.write.debugSetShipPosition([1n, 1n, 5, 5], {
-        account: owner.account,
-      });
-      await game.write.debugSetShipPosition([1n, 6n, 5, 6], {
-        account: owner.account,
-      });
-      await game.write.debugSetShipPosition([1n, 7n, 5, 7], {
-        account: owner.account,
-      });
       await (game.write as any).debugSetHullPointsToZero([1n, 6n], {
         account: owner.account,
       });
 
-      const ship7Before = await game.read.getShipAttributes([1n, 7n]);
-
-      // If action executed, ship 7 would take damage. Ram should consume the turn and skip shoot.
-      await game.write.moveShip([1n, 1n, 5, 6, ActionType.Shoot, 7n], {
-        account: creator.account,
-      });
-
-      const ship7After = await game.read.getShipAttributes([1n, 7n]);
-      expect(ship7After.hullPoints).to.equal(ship7Before.hullPoints);
+      await expect(
+        game.write.moveShip(
+          [1n, 1n, 5, 5, ActionType.FactionAbility, 6n],
+          { account: creator.account },
+        ),
+      ).to.be.rejectedWith("InvalidMove");
     });
 
     it("reverts when ramming a friendly ship at 0 HP", async function () {
@@ -4108,10 +4133,12 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
+
+      await setShipFaction(ships, owner, 1n, 1);
 
       await ships.write.constructAllMyShips({ account: creator.account });
       await ships.write.constructAllMyShips({ account: joiner.account });
@@ -4147,12 +4174,154 @@ describe("Game", function () {
         account: owner.account,
       });
 
+      // Ship 2 is friendly (same side as ship 1) — Ram can only hit the
+      // opposing side, even though ship 2 is at 0 HP.
+      await expect(
+        game.write.moveShip(
+          [1n, 1n, 5, 5, ActionType.FactionAbility, 2n],
+          { account: creator.account },
+        ),
+      ).to.be.rejectedWith("InvalidRamTarget");
+    });
+
+    it("reverts before ever reaching the resolver when the target ship doesn't exist", async function () {
+      const {
+        creatorLobbies,
+        joinerLobbies,
+        creator,
+        joiner,
+        ships,
+        game,
+        randomManager,
+        owner,
+      } = await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.revealRandomness([
+          ship.traits.serialNumber,
+        ]);
+      }
+
+      await setShipFaction(ships, owner, 1n, 1);
+
+      await ships.write.constructAllMyShips({ account: creator.account });
+      await ships.write.constructAllMyShips({ account: joiner.account });
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n],
+        generateStartingPositions([1n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n],
+        generateStartingPositions([6n], false),
+      ]);
+
+      await game.write.debugSetShipPosition([1n, 1n, 5, 5], {
+        account: owner.account,
+      });
+
+      // 9999n was never minted — Game.sol/SpecialEffectsLib must reject this
+      // before ever calling out to RamResolver (defense in depth: Game.sol
+      // guarantees a non-zero target exists, rather than trusting every
+      // resolver to check this itself).
+      await expect(
+        game.write.moveShip(
+          [1n, 1n, 5, 5, ActionType.FactionAbility, 9999n],
+          { account: creator.account },
+        ),
+      ).to.be.rejectedWith("ShipNotFound");
+    });
+
+    it("reverts when destination is occupied by a living enemy", async function () {
+      const {
+        creatorLobbies,
+        joinerLobbies,
+        creator,
+        joiner,
+        ships,
+        game,
+        randomManager,
+        owner,
+      } = await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.revealRandomness([
+          ship.traits.serialNumber,
+        ]);
+      }
+
+      await ships.write.constructAllMyShips({ account: creator.account });
+      await ships.write.constructAllMyShips({ account: joiner.account });
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n],
+        generateStartingPositions([1n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n],
+        generateStartingPositions([6n], false),
+      ]);
+
+      await game.write.debugSetShipPosition([1n, 1n, 5, 5], {
+        account: owner.account,
+      });
+      await game.write.debugSetShipPosition([1n, 6n, 5, 6], {
+        account: owner.account,
+      });
+
       await expect(
         game.write.moveShip([1n, 1n, 5, 6, ActionType.Pass, 0n], {
           account: creator.account,
         }),
       ).to.be.rejectedWith("InvalidMove");
     });
+
   });
 
   describe("Reactor Critical Timer", function () {
@@ -4183,7 +4352,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -4297,7 +4466,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -4408,7 +4577,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -4591,7 +4760,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -4697,7 +4866,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -4787,7 +4956,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Create a ship with RepairDrones for creator's first ship (ship 1)
@@ -4795,7 +4964,7 @@ describe("Game", function () {
         name: "Repair Ship",
         id: 1n,
         equipment: {
-          mainWeapon: 0, // Laser
+          mainWeapon: 0, // Generic
           armor: 0, // None
           shields: 0, // None
           special: 2, // RepairDrones
@@ -4813,7 +4982,7 @@ describe("Game", function () {
             s3: 0,
             l3: 0,
           },
-          variant: 0,
+          variant: 1,
           accuracy: 0,
           hull: 0,
           speed: 2, // Use valid speed value (0, 1, or 2)
@@ -4899,7 +5068,7 @@ describe("Game", function () {
       expect(ship2AttrsAfter.hullPoints).to.equal(40); // Should be exactly 40 since RepairDrones restores 40 HP
     });
 
-    it("should not complete round until repaired (formerly 0 HP) ship moves", async function () {
+    it("should cap a RepairDrones heal at healCapPercent of maxHullPoints instead of the full 40", async function () {
       const {
         creatorLobbies,
         joinerLobbies,
@@ -4922,7 +5091,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -4949,7 +5118,149 @@ describe("Game", function () {
             s3: 0,
             l3: 0,
           },
-          variant: 0,
+          variant: 1,
+          accuracy: 0,
+          hull: 0,
+          speed: 2,
+        },
+        shipData: {
+          shipsDestroyed: 0,
+          costsVersion: 1,
+          cost: 0,
+          shiny: false,
+          constructed: false,
+          inFleet: false,
+          isFreeShip: false,
+          modified: 0,
+          timestampDestroyed: 0n,
+        },
+        owner: creator.account.address,
+      };
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+      await ships.write.customizeShip([1n, repairShip], {
+        account: owner.account,
+      });
+      await ships.write.constructShip([2n], { account: creator.account });
+      await ships.write.constructShip([6n], { account: joiner.account });
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n, 2n],
+        generateStartingPositions([1n, 2n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n],
+        generateStartingPositions([6n], false),
+      ]);
+
+      await (game.write as any).debugSetHullPointsToZero([1n, 2n], {
+        account: owner.account,
+      });
+      const { maxHullPoints } = await game.read.getShipAttributes([1n, 2n]);
+
+      // Deliberately far below RepairDrones' fixed 40-HP strength (the
+      // baseline test above confirms maxHullPoints >= 40, since an
+      // uncapped heal there lands at exactly 40) — 1% is guaranteed to
+      // bite regardless of this ship's actual max HP.
+      const capPercent = 1;
+      const expectedCap = (Number(maxHullPoints) * capPercent) / 100; // integer division, matches _applyHullDelta's Solidity math
+      await game.write.setHealCapPercent([capPercent], {
+        account: owner.account,
+      });
+      expect(await game.read.healCapPercent()).to.equal(capPercent);
+
+      await game.write.moveShip([1n, 1n, 2, 0, ActionType.Special, 2n], {
+        account: creator.account,
+      });
+
+      const ship2AttrsAfter = await game.read.getShipAttributes([1n, 2n]);
+      expect(ship2AttrsAfter.hullPoints).to.equal(Math.floor(expectedCap));
+      expect(ship2AttrsAfter.hullPoints).to.be.lessThan(40);
+    });
+
+    it("reverts setHealCapPercent above 100 and from a non-owner address", async function () {
+      const { game, creator } = await loadFixture(deployGameFixture);
+
+      await expect(
+        game.write.setHealCapPercent([101]),
+      ).to.be.rejectedWith("InvalidHealCapPercent");
+
+      const creatorGame = await hre.viem.getContractAt(
+        "Game",
+        game.address,
+        { client: { wallet: creator } },
+      );
+      await expect(
+        creatorGame.write.setHealCapPercent([50]),
+      ).to.be.rejected;
+
+      expect(await game.read.healCapPercent()).to.equal(100);
+    });
+
+    it("should not complete round until repaired (formerly 0 HP) ship moves", async function () {
+      const {
+        creatorLobbies,
+        joinerLobbies,
+        creator,
+        joiner,
+        ships,
+        game,
+        randomManager,
+        owner,
+      } = await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.revealRandomness([
+          ship.traits.serialNumber,
+        ]);
+      }
+
+      const repairShip: Ship = {
+        name: "Repair Ship",
+        id: 1n,
+        equipment: {
+          mainWeapon: 0,
+          armor: 0,
+          shields: 0,
+          special: 2, // RepairDrones
+        },
+        traits: {
+          serialNumber: 12345n,
+          colors: {
+            h1: 0,
+            s1: 0,
+            l1: 0,
+            h2: 0,
+            s2: 0,
+            l2: 0,
+            h3: 0,
+            s3: 0,
+            l3: 0,
+          },
+          variant: 1,
           accuracy: 0,
           hull: 0,
           speed: 2,
@@ -5070,7 +5381,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Create a ship with EMP for creator's first ship (ship 1)
@@ -5078,7 +5389,7 @@ describe("Game", function () {
         name: "EMP Ship",
         id: 1n,
         equipment: {
-          mainWeapon: 0, // Laser
+          mainWeapon: 0, // Generic
           armor: 0, // None
           shields: 0, // None
           special: 1, // EMP
@@ -5096,7 +5407,7 @@ describe("Game", function () {
             s3: 0,
             l3: 0,
           },
-          variant: 0,
+          variant: 1,
           accuracy: 0,
           hull: 0,
           speed: 2, // Use valid speed value (0, 1, or 2)
@@ -5220,7 +5531,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // 2. Set the first ship as having a FlakArray
@@ -5228,7 +5539,7 @@ describe("Game", function () {
         name: "FlakArray Ship",
         id: 1n,
         equipment: {
-          mainWeapon: 0, // Laser
+          mainWeapon: 0, // Generic
           armor: 0, // None
           shields: 0, // None
           special: 3, // FlakArray
@@ -5246,7 +5557,7 @@ describe("Game", function () {
             s3: 0,
             l3: 0,
           },
-          variant: 0,
+          variant: 1,
           accuracy: 0,
           hull: 0,
           speed: 2, // Use valid speed value (0, 1, or 2)
@@ -5395,6 +5706,588 @@ describe("Game", function () {
     });
   });
 
+  describe("Variant 2 (new faction) equipped Specials", function () {
+    const baseColors = {
+      h1: 0,
+      s1: 0,
+      l1: 0,
+      h2: 0,
+      s2: 0,
+      l2: 0,
+      h3: 0,
+      s3: 0,
+      l3: 0,
+    };
+
+    function buildCustomShip(overrides: {
+      name: string;
+      id: bigint;
+      owner: `0x${string}`;
+      special: number;
+      variant: number;
+    }): Ship {
+      return {
+        name: overrides.name,
+        id: overrides.id,
+        equipment: {
+          mainWeapon: 0, // Generic
+          armor: 0, // None
+          shields: 0, // None
+          special: overrides.special,
+        },
+        traits: {
+          serialNumber: 12345n,
+          colors: baseColors,
+          variant: overrides.variant,
+          accuracy: 0,
+          hull: 0,
+          speed: 2,
+        },
+        shipData: {
+          shipsDestroyed: 0,
+          costsVersion: 1,
+          cost: 0,
+          shiny: false,
+          constructed: false,
+          inFleet: false,
+          isFreeShip: false,
+          modified: 0,
+          timestampDestroyed: 0n,
+        },
+        owner: overrides.owner,
+      };
+    }
+
+    it("should allow ships with Drone Swarm to damage an enemy ship in range", async function () {
+      const { creatorLobbies, joinerLobbies, creator, joiner, ships, game, randomManager, owner } =
+        await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.revealRandomness([ship.traits.serialNumber]);
+      }
+
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+
+      const droneSwarmShip = buildCustomShip({
+        name: "Drone Swarm Ship",
+        id: 1n,
+        owner: creator.account.address,
+        special: 5, // DroneSwarm
+        variant: 2,
+      });
+      await ships.write.customizeShip([1n, droneSwarmShip], {
+        account: owner.account,
+      });
+
+      await ships.write.constructShip([6n], { account: joiner.account });
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n],
+        generateStartingPositions([1n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n],
+        generateStartingPositions([6n], false),
+      ]);
+
+      // Drone Swarm has range 5 — place the enemy 5 squares away (still in range).
+      await game.write.debugSetShipPosition([1n, 1n, 5, 0], {
+        account: owner.account,
+      });
+      await game.write.debugSetShipPosition([1n, 6n, 5, 5], {
+        account: owner.account,
+      });
+
+      const targetAttrsBefore = await game.read.getShipAttributes([1n, 6n]);
+
+      await game.write.moveShip([1n, 1n, 5, 0, ActionType.Special, 6n], {
+        account: creator.account,
+      });
+
+      const targetAttrsAfter = await game.read.getShipAttributes([1n, 6n]);
+      const strength = 40;
+      const expectedDamage = Math.max(
+        0,
+        strength -
+          Math.floor((strength * targetAttrsBefore.damageReduction) / 100),
+      );
+      expect(targetAttrsAfter.hullPoints).to.equal(
+        Math.max(0, targetAttrsBefore.hullPoints - expectedDamage),
+      );
+    });
+
+    it("should revert OutOfRange for Drone Swarm beyond range 5", async function () {
+      const { creatorLobbies, joinerLobbies, creator, joiner, ships, game, randomManager, owner } =
+        await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.revealRandomness([ship.traits.serialNumber]);
+      }
+
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+
+      const droneSwarmShip = buildCustomShip({
+        name: "Drone Swarm Ship",
+        id: 1n,
+        owner: creator.account.address,
+        special: 5, // DroneSwarm
+        variant: 2,
+      });
+      await ships.write.customizeShip([1n, droneSwarmShip], {
+        account: owner.account,
+      });
+      await ships.write.constructShip([6n], { account: joiner.account });
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n],
+        generateStartingPositions([1n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n],
+        generateStartingPositions([6n], false),
+      ]);
+
+      // Manhattan distance 6 — one past Drone Swarm's range of 5.
+      await game.write.debugSetShipPosition([1n, 1n, 0, 0], {
+        account: owner.account,
+      });
+      await game.write.debugSetShipPosition([1n, 6n, 0, 6], {
+        account: owner.account,
+      });
+
+      await expect(
+        game.write.moveShip([1n, 1n, 0, 0, ActionType.Special, 6n], {
+          account: creator.account,
+        }),
+      ).to.be.rejectedWith("OutOfRange");
+    });
+
+    it("should revert TargetNotEnemy for Drone Swarm targeting a friendly ship", async function () {
+      const { creatorLobbies, joinerLobbies, creator, joiner, ships, game, randomManager, owner } =
+        await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.revealRandomness([ship.traits.serialNumber]);
+      }
+
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+
+      const droneSwarmShip = buildCustomShip({
+        name: "Drone Swarm Ship",
+        id: 1n,
+        owner: creator.account.address,
+        special: 5, // DroneSwarm
+        variant: 2,
+      });
+      await ships.write.customizeShip([1n, droneSwarmShip], {
+        account: owner.account,
+      });
+      // Fleets.createFleet now rejects mixing variants within one fleet, so
+      // the friendly target ship also needs to be variant 2 to sit in the
+      // same fleet as the Drone Swarm caster.
+      const friendlyShip = buildCustomShip({
+        name: "Friendly Ship",
+        id: 2n,
+        owner: creator.account.address,
+        special: 0, // None
+        variant: 2,
+      });
+      await ships.write.customizeShip([2n, friendlyShip], {
+        account: owner.account,
+      });
+      await ships.write.constructShip([6n], { account: joiner.account });
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n, 2n],
+        generateStartingPositions([1n, 2n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n],
+        generateStartingPositions([6n], false),
+      ]);
+
+      await game.write.debugSetShipPosition([1n, 1n, 5, 0], {
+        account: owner.account,
+      });
+      await game.write.debugSetShipPosition([1n, 2n, 5, 1], {
+        account: owner.account,
+      });
+
+      await expect(
+        game.write.moveShip([1n, 1n, 5, 0, ActionType.Special, 2n], {
+          account: creator.account,
+        }),
+      ).to.be.rejectedWith("TargetNotEnemy");
+    });
+
+    it("should have Electric Storm hit friendly, enemy, and the caster's own ship with reactor damage", async function () {
+      const { creatorLobbies, joinerLobbies, creator, joiner, ships, game, randomManager, owner } =
+        await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.revealRandomness([ship.traits.serialNumber]);
+      }
+
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+
+      const stormShip = buildCustomShip({
+        name: "Electric Storm Ship",
+        id: 1n,
+        owner: creator.account.address,
+        special: 4, // ElectricStorm
+        variant: 2,
+      });
+      await ships.write.customizeShip([1n, stormShip], {
+        account: owner.account,
+      });
+      // Fleets.createFleet now rejects mixing variants within one fleet, so
+      // the ally also needs to be variant 2 to sit in the same fleet as the
+      // Electric Storm caster.
+      const allyShip = buildCustomShip({
+        name: "Ally Ship",
+        id: 2n,
+        owner: creator.account.address,
+        special: 0, // None
+        variant: 2,
+      });
+      await ships.write.customizeShip([2n, allyShip], {
+        account: owner.account,
+      }); // ally
+      await ships.write.constructShip([6n], { account: joiner.account }); // enemy
+      await ships.write.constructShip([7n], { account: joiner.account }); // enemy, out of range
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n, 2n],
+        generateStartingPositions([1n, 2n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n, 7n],
+        generateStartingPositions([6n, 7n], false),
+      ]);
+
+      // Electric Storm has range 2, centered on the caster's own position.
+      await game.write.debugSetShipPosition([1n, 1n, 5, 8], {
+        account: owner.account,
+      });
+      await game.write.debugSetShipPosition([1n, 2n, 5, 9], { // ally, distance 1 (in range)
+        account: owner.account,
+      });
+      await game.write.debugSetShipPosition([1n, 6n, 6, 9], { // enemy, distance 2 (in range)
+        account: owner.account,
+      });
+      await game.write.debugSetShipPosition([1n, 7n, 0, 0], { // enemy, far away (out of range)
+        account: owner.account,
+      });
+
+      const gameData = (await game.read.getGame([
+        1n,
+      ])) as unknown as GameDataView;
+      const stormPos = findShipPosition(gameData, 1n);
+      await game.write.moveShip(
+        [1n, 1n, stormPos.row, stormPos.col, ActionType.Special, 0n],
+        { account: creator.account },
+      );
+
+      const casterAttrs = await game.read.getShipAttributes([1n, 1n]);
+      const allyAttrs = await game.read.getShipAttributes([1n, 2n]);
+      const enemyInRangeAttrs = await game.read.getShipAttributes([1n, 6n]);
+      const enemyOutOfRangeAttrs = await game.read.getShipAttributes([
+        1n,
+        7n,
+      ]);
+
+      // Electric Storm strength is 1 (same per-hit reactor damage as EMP).
+      expect(casterAttrs.reactorCriticalTimer).to.equal(1); // hits itself too
+      expect(allyAttrs.reactorCriticalTimer).to.equal(1);
+      expect(enemyInRangeAttrs.reactorCriticalTimer).to.equal(1);
+      expect(enemyOutOfRangeAttrs.reactorCriticalTimer).to.equal(0);
+    });
+
+    it("should give a ship with Additional Thruster +3 movement, but revert InvalidMove if used as an action", async function () {
+      const { creatorLobbies, joinerLobbies, creator, joiner, ships, game, randomManager, owner } =
+        await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.revealRandomness([ship.traits.serialNumber]);
+      }
+
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+
+      const thrusterShip = buildCustomShip({
+        name: "Thruster Ship",
+        id: 1n,
+        owner: creator.account.address,
+        special: 6, // AdditionalThruster
+        variant: 2,
+      });
+      await ships.write.customizeShip([1n, thrusterShip], {
+        account: owner.account,
+      });
+
+      const noSpecialShip = buildCustomShip({
+        name: "No Special Ship",
+        id: 2n,
+        owner: creator.account.address,
+        special: 0, // None
+        variant: 2,
+      });
+      await ships.write.customizeShip([2n, noSpecialShip], {
+        account: owner.account,
+      });
+
+      await ships.write.constructShip([6n], { account: joiner.account });
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n, 2n],
+        generateStartingPositions([1n, 2n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n],
+        generateStartingPositions([6n], false),
+      ]);
+
+      const thrusterAttrs = await game.read.getShipAttributes([1n, 1n]);
+      const noSpecialAttrs = await game.read.getShipAttributes([1n, 2n]);
+      expect(thrusterAttrs.movement).to.equal(noSpecialAttrs.movement + 3);
+
+      const gameData = (await game.read.getGame([
+        1n,
+      ])) as unknown as GameDataView;
+      const thrusterPos = findShipPosition(gameData, 1n);
+      await expect(
+        game.write.moveShip(
+          [1n, 1n, thrusterPos.row, thrusterPos.col, ActionType.Special, 0n],
+          { account: creator.account },
+        ),
+      ).to.be.rejectedWith("InvalidMove");
+    });
+
+    it("should revert InvalidMove for Drone Swarm's slot equipped on a variant 1 ship (no resolver registered for that (variant, slot) pair)", async function () {
+      const { creatorLobbies, joinerLobbies, creator, joiner, ships, game, randomManager, owner } =
+        await loadFixture(deployGameFixture);
+
+      await ships.write.purchaseWithFlow(
+        [creator.account.address, 0n, joiner.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+      await ships.write.purchaseWithFlow(
+        [joiner.account.address, 0n, creator.account.address, 1],
+        { value: parseEther("4.99") },
+      );
+
+      for (let i = 1; i <= 10; i++) {
+        const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
+        const ship = tupleToShip(shipTuple);
+        await randomManager.write.revealRandomness([ship.traits.serialNumber]);
+      }
+
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+
+      // Special is a per-faction local slot now — Game.specialResolvers is
+      // keyed by (variant, slot), and Drone Swarm's resolver is only
+      // registered at (variant 2, slot 5). A variant-1 ship equipping slot
+      // 5 hits an unregistered (variant, slot) pair entirely, reverting
+      // InvalidMove before any range check ever runs.
+      const wrongFactionShip = buildCustomShip({
+        name: "Wrong Faction Ship",
+        id: 1n,
+        owner: creator.account.address,
+        special: 5, // DroneSwarm
+        variant: 1,
+      });
+      await ships.write.customizeShip([1n, wrongFactionShip], {
+        account: owner.account,
+      });
+      await ships.write.constructShip([6n], { account: joiner.account });
+
+      await creatorLobbies.write.createLobby([
+        1000n,
+        300n,
+        true,
+        0n,
+        100n,
+        zeroAddress,
+      ]);
+      await joinerLobbies.write.joinLobby([1n]);
+      await creatorLobbies.write.createFleet([
+        1n,
+        [1n],
+        generateStartingPositions([1n], true),
+      ]);
+      await joinerLobbies.write.createFleet([
+        1n,
+        [6n],
+        generateStartingPositions([6n], false),
+      ]);
+
+      await game.write.debugSetShipPosition([1n, 1n, 5, 0], {
+        account: owner.account,
+      });
+      await game.write.debugSetShipPosition([1n, 6n, 5, 1], {
+        account: owner.account,
+      });
+
+      await expect(
+        game.write.moveShip([1n, 1n, 5, 0, ActionType.Special, 6n], {
+          account: creator.account,
+        }),
+      ).to.be.rejectedWith("InvalidMove");
+    });
+
+    it("should revert InvalidVariant when minting a ship with variant 3 (only 2 variants exist now)", async function () {
+      const { ships, owner, creator } = await loadFixture(deployGameFixture);
+
+      await ships.write.setIsAllowedToCreateShips(
+        [owner.account.address, true],
+        { account: owner.account },
+      );
+
+      const variant3Ship = buildCustomShip({
+        name: "Phantom Variant Ship",
+        id: 0n,
+        owner: creator.account.address,
+        special: 0,
+        variant: 3,
+      });
+
+      await expect(
+        ships.write.createSpecificShip(
+          [creator.account.address, variant3Ship],
+          { account: owner.account },
+        ),
+      ).to.be.rejectedWith("InvalidVariant");
+    });
+  });
+
   describe("Turn Timeout", function () {
     it("should enforce turn timeouts correctly", async function () {
       const {
@@ -5404,6 +6297,7 @@ describe("Game", function () {
         joiner,
         ships,
         game,
+        pvpMatch,
         fleets,
         lobbies,
         randomManager,
@@ -5424,7 +6318,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -5473,10 +6367,10 @@ describe("Game", function () {
 
       // Timeout: other player calls endGameOnTimeout to claim win (timed-out player forfeits)
       await expect(
-        game.write.endGameOnTimeout([gameId], { account: creator.account }),
+        pvpMatch.write.endGameOnTimeout([gameId], { account: creator.account }),
       ).to.be.rejectedWith("InvalidMove");
 
-      await game.write.endGameOnTimeout([gameId], {
+      await pvpMatch.write.endGameOnTimeout([gameId], {
         account: joiner.account,
       });
 
@@ -5494,6 +6388,7 @@ describe("Game", function () {
         joiner,
         ships,
         game,
+        pvpMatch,
         fleets,
         lobbies,
         randomManager,
@@ -5515,7 +6410,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -5557,7 +6452,7 @@ describe("Game", function () {
       ); // winner (zero address means game not over)
 
       // Creator flees
-      await game.write.flee([gameId], { account: creator.account });
+      await pvpMatch.write.flee([gameId], { account: creator.account });
 
       // Check game status after flee
       const gameAfterFlee = await game.read.getGame([gameId]);
@@ -5584,7 +6479,7 @@ describe("Game", function () {
 
       // Verify that the other player cannot flee again
       await expect(
-        game.write.flee([gameId], { account: joiner.account }),
+        pvpMatch.write.flee([gameId], { account: joiner.account }),
       ).to.be.rejectedWith("InvalidMove");
     });
 
@@ -5596,6 +6491,7 @@ describe("Game", function () {
         joiner,
         ships,
         game,
+        pvpMatch,
         randomManager,
         gameResults,
       } = await loadFixture(deployGameFixture);
@@ -5612,7 +6508,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -5675,7 +6571,7 @@ describe("Game", function () {
 
       // Drive the game to completion (creator flees -> joiner wins) and verify
       // GameResults is keyed by the sparse game id (2), with nothing at id 1.
-      await game.write.flee([2n], { account: creator.account });
+      await pvpMatch.write.flee([2n], { account: creator.account });
 
       const finishedGame = (await game.read.getGame([2n])) as GameDataView;
       expect(finishedGame.metadata.winner.toLowerCase()).to.equal(
@@ -5703,6 +6599,7 @@ describe("Game", function () {
         joiner,
         ships,
         game,
+        pvpMatch,
         fleets,
         lobbies,
         randomManager,
@@ -5723,7 +6620,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -5816,7 +6713,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -5919,7 +6816,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -6022,7 +6919,7 @@ describe("Game", function () {
       for (let i = 1; i <= 10; i++) {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
-        await randomManager.write.fulfillRandomRequest([
+        await randomManager.write.revealRandomness([
           ship.traits.serialNumber,
         ]);
       }
@@ -6118,7 +7015,7 @@ describe("Game", function () {
         const shipTuple = (await ships.read.ships([BigInt(i)])) as ShipTuple;
         const ship = tupleToShip(shipTuple);
         const serialNumber = ship.traits.serialNumber;
-        await randomManager.write.fulfillRandomRequest([serialNumber]);
+        await randomManager.write.revealRandomness([serialNumber]);
       }
 
       // Construct all ships for both players
@@ -6132,7 +7029,7 @@ describe("Game", function () {
         { row: 5, col: 10 },
       ];
 
-      await maps.write.createPresetMap([blockedPositions], {
+      await maps.write.createPresetMap([blockedPositions, MapMode.Both], {
         account: owner.account,
       });
       const mapId = await maps.read.mapCount();

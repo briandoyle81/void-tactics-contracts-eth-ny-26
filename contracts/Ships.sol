@@ -6,9 +6,7 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
-// TODO: CRITICAL Confirm which reentrancy guard to use
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-// import "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
 import "./Types.sol";
 import "./IRenderer.sol";
@@ -16,6 +14,8 @@ import "./IRandomManager.sol";
 import "./IGenerateNewShip.sol";
 import "./IUniversalCredits.sol";
 import "./IShipAttributes.sol";
+import "./IDroneEnergyCores.sol";
+import "./IVariantPurchaseGate.sol";
 
 contract Ships is ERC721, Ownable, ReentrancyGuard {
     using EnumerableSet for EnumerableSet.UintSet;
@@ -24,11 +24,7 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
     uint public shipCount;
 
     mapping(address => EnumerableSet.UintSet) private shipsOwned;
-    mapping(address => uint256) public lastClaimTimestamp;
     mapping(address => uint) public amountPurchased;
-
-    // 4 weeks in seconds (28 days * 24 hours * 60 minutes * 60 seconds)
-    uint256 public claimCooldownPeriod = 28 days;
 
     mapping(address => uint) public referralCount;
 
@@ -50,7 +46,6 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
     error InvalidVariant(uint16);
     error ReferralTransferFailed();
     error WithdrawalFailed();
-    error ClaimCooldownNotPassed();
 
     struct ContractConfig {
         address gameAddress;
@@ -83,6 +78,13 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
     // TODO: Should variants have different weapons or props?
 
     IUniversalCredits public universalCredits;
+    IDroneEnergyCores public droneEnergyCores;
+    // Per-variant purchase gate registry (e.g. requiring the Shattered Hive
+    // Campaign medal for variant 2) — see _mintShip/VariantPurchaseGate.sol.
+    // Ships.sol deliberately knows nothing about which variants are gated or
+    // on what; that's owner-configured entirely inside the gate contract, so
+    // future gated variants need zero Ships.sol changes.
+    address purchaseGate;
     uint public recycleReward = 0.1 ether; // 0.1 UC tokens
 
     // Only Owner TODO
@@ -117,7 +119,8 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         address _to,
         uint _amount,
         uint16 _variant,
-        uint8 _tier
+        uint8 _tier,
+        bool _isFreeShip
     ) external {
         if (!isAllowedToCreateShips[msg.sender]) {
             revert NotAuthorized(msg.sender);
@@ -125,17 +128,22 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
 
         uint8 tierRankCount = _tier + 1;
         for (uint i = 0; i < _amount; i++) {
-            if (i < tierRankCount) {
+            if (!_isFreeShip && i < tierRankCount) {
                 uint8 rank = _tier + 1 - uint8(i);
                 _mintShip(_to, _variant, _getKillsForRank(rank));
             } else {
                 _mintShip(_to, _variant, 0);
             }
+            if (_isFreeShip) {
+                ships[shipCount].shipData.isFreeShip = true;
+            }
         }
 
-        // TODO: CRITICAL -> Evaluate side effects of this
-
-        amountPurchased[_to] += _amount;
+        // Free-ship claims don't count as purchases (referral/tier stats key
+        // off actual paid volume).
+        if (!_isFreeShip) {
+            amountPurchased[_to] += _amount;
+        }
     }
 
     function purchaseWithFlow(
@@ -182,11 +190,17 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         }
     }
 
-    // Used for bonuses, special ships, events, etc.
-    // TODO CRITICAL:
-    // This allows players to predict which ships to overwrite
-    // with special ships.
-    // I don't think I care, but should I?
+    // Used for bonuses, special ships, events, etc. Overwrites _id's traits
+    // regardless of current owner — no ownership check by design (matches
+    // customizeShip's other authorized-caller-only callers). This makes any
+    // "mint now, customize a predicted future id later" flow genuinely
+    // exploitable: shipCount is public and sequential, so an outside
+    // address could predict the target id and acquire it before the
+    // customize call lands, diverting the special ship's value to itself.
+    // Never build a feature that mints then customizes by id in a later,
+    // separate call — use createSpecificShip below instead, which mints
+    // and customizes atomically to a caller-specified recipient in one
+    // transaction, closing that window entirely.
     function customizeShip(uint _id, Ship calldata _ship) external {
         if (!isAllowedToCreateShips[msg.sender]) {
             revert NotAuthorized(msg.sender);
@@ -235,6 +249,15 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         ship.traits.accuracy = _ship.traits.accuracy;
         ship.traits.hull = _ship.traits.hull;
         ship.traits.speed = _ship.traits.speed;
+        // NOTE: traits.variant is not bounds-checked against maxVariant here.
+        // DroneYard.validateShip is currently the only caller-side enforcement
+        // of that bound (variant == 0 or > maxVariant reverts there). Ships.sol
+        // has almost no bytecode headroom left (see
+        // docs/ShipsSizeOptimizationAnalysis.md for identified savings), so a
+        // second check here was deliberately deferred. Any future
+        // isAllowedToCreateShips-authorized caller that lets end users set
+        // variant must enforce this bound itself until there's room to
+        // centralize it.
         ship.traits.variant = _ship.traits.variant;
         ship.traits.colors = _ship.traits.colors;
         ship.equipment = _ship.equipment;
@@ -296,6 +319,11 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
             modifications += 3;
         }
 
+        // Count variant change as 3 modifications, matching shiny's weight
+        if (_currentShip.traits.variant != _newShip.traits.variant) {
+            modifications += 3;
+        }
+
         return modifications;
     }
 
@@ -312,6 +340,13 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
             revert ShipConstructed(_id);
         }
 
+        // Reveals (locks in, permanently) this ship's randomness on first
+        // call if the commit-reveal entropy window has opened, then returns
+        // it — no separate prior reveal transaction required. Reverts
+        // TooSoonToReveal if called before block.prevrandao has actually
+        // changed since the ship was minted (see RandomManager.sol's header
+        // comment for why this must be a genuine change, not just a later
+        // block number).
         uint64 randomBase = config.randomManager.fulfillRandomRequest(
             newShip.traits.serialNumber
         );
@@ -362,9 +397,9 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         if (ship.shipData.inFleet) {
             revert ShipInFleet(_id);
         }
-        ship.shipData.costsVersion = config
-            .shipAttributes
-            .getCurrentCostsVersion();
+        ship.shipData.costsVersion = config.shipAttributes.getCurrentCostsVersion(
+            ship.traits.variant
+        );
         ship.shipData.cost = config.shipAttributes.calculateShipCost(ship);
     }
 
@@ -459,8 +494,13 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         if (_variant > maxVariant || _variant == 0) {
             revert InvalidVariant(_variant);
         }
+        if (purchaseGate != address(0)) {
+            IVariantPurchaseGate(purchaseGate).checkGate(_variant, _to);
+        }
 
-        shipCount++;
+        unchecked {
+            shipCount++;
+        }
         Ship storage newShip = ships[shipCount];
         newShip.id = shipCount;
 
@@ -520,7 +560,14 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         isAllowedToCreateShips[_address] = _isAllowed;
     }
 
-    function setTimestampDestroyed(uint _id, uint _destroyerId) external {
+    // Decomposed from a single combined setTimestampDestroyed into two
+    // primitives (this + recordKill) so ShipsRouter can orchestrate a kill
+    // that spans this contract and AIShips.sol — the destroyed ship and the
+    // destroyer ship no longer always live in the same contract's storage.
+    // The DEC/UTC reward payout itself now lives entirely in ShipsRouter,
+    // which is the only caller that can see both ships' owners regardless
+    // of which contract holds them.
+    function markDestroyed(uint _id) external returns (address ownerOut) {
         if (msg.sender != owner() && msg.sender != config.gameAddress) {
             revert NotAuthorized(msg.sender);
         }
@@ -531,16 +578,17 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
 
         // ERC-5192: Lock when destroyed
         emit Locked(_id);
-
-        ships[_destroyerId].shipData.shipsDestroyed++;
-
-        // Pay the destroyer 1/4 of salvage value (base recycleReward)
-        address destroyerOwner = ships[_destroyerId].owner;
-        if (destroyerOwner != address(0)) {
-            universalCredits.mint(destroyerOwner, recycleReward >> 2); // Division by 4
-        }
-
         emit MetadataUpdate(_id);
+
+        return ships[_id].owner;
+    }
+
+    function recordKill(uint _destroyerId) external returns (address ownerOut) {
+        if (msg.sender != owner() && msg.sender != config.gameAddress) {
+            revert NotAuthorized(msg.sender);
+        }
+        ships[_destroyerId].shipData.shipsDestroyed++;
+        return ships[_destroyerId].owner;
     }
 
     function setPurchaseInfo(
@@ -556,13 +604,16 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
 
     function setConfig(
         address _gameAddress,
-        address _lobbyAddress,
+        address _lobbyAddress, // now SinglePlayerMatch's address — see DestroyRewardLib/ILobbiesOrchestratorCheck
+
         address _fleetsAddress,
         address _shipGenerator,
         address _randomManager,
         address _metadataRenderer,
         address _shipAttributes,
-        address _universalCredits
+        address _universalCredits,
+        address _droneEnergyCores,
+        address _purchaseGate
     ) public onlyOwner {
         config.gameAddress = _gameAddress;
         config.lobbyAddress = _lobbyAddress;
@@ -572,6 +623,8 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         config.metadataRenderer = IRenderMetadata(_metadataRenderer);
         config.shipAttributes = IShipAttributes(_shipAttributes);
         universalCredits = IUniversalCredits(_universalCredits);
+        droneEnergyCores = IDroneEnergyCores(_droneEnergyCores);
+        purchaseGate = _purchaseGate;
     }
 
     function setPaused(bool _paused) external onlyOwner {
@@ -593,12 +646,6 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         recycleReward = _newReward;
     }
 
-    function setClaimCooldownPeriod(
-        uint256 _newCooldownPeriod
-    ) public onlyOwner {
-        claimCooldownPeriod = _newCooldownPeriod;
-    }
-
     // function setShipModified(uint _id, bool _modified) public onlyOwner {
     //     Ship storage ship = ships[_id];
     //     if (ship.id == 0) {
@@ -607,28 +654,6 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
     //     ship.shipData.modified = _modified;
     //     emit MetadataUpdate(_id);
     // }
-
-    function claimFreeShips(uint16 _variant) external {
-        uint256 lastClaim = lastClaimTimestamp[msg.sender];
-        uint256 currentTime = block.timestamp;
-
-        // Check if 4 weeks have passed since last claim
-        // Note: When lastClaim == 0 (first claim), currentTime (block.timestamp) will always be
-        // much larger than claimCooldownPeriod (28 days), so the check won't revert for new users
-        if (currentTime < lastClaim + claimCooldownPeriod) {
-            revert ClaimCooldownNotPassed();
-        }
-
-        // Grant 10 free ships
-        for (uint i = 0; i < 10; i++) {
-            _mintShip(msg.sender, _variant, 0);
-            // Mark the ship as free (shipCount was incremented in _mintShip, so it's the ID of the ship just minted)
-            ships[shipCount].shipData.isFreeShip = true;
-        }
-
-        // Record the timestamp of this claim
-        lastClaimTimestamp[msg.sender] = currentTime;
-    }
 
     /**
      * @dev VIEW
@@ -669,15 +694,24 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
         return shipsOwned[_owner].values();
     }
 
-    // // TODO CRITICAL: This almost certainly needs to be paginated
-    // function getShipsOwned(address _owner) public view returns (Ship[] memory) {
-    //     uint[] memory ids = getShipIdsOwned(_owner);
-    //     Ship[] memory shipsFetched = new Ship[](ids.length);
-    //     for (uint i = 0; i < ids.length; i++) {
-    //         shipsFetched[i] = ships[ids[i]];
-    //     }
-    //     return shipsFetched;
-    // }
+    // GR-01 pagination escape hatch (see docs/pre-audit.md) for owners with
+    // too many ships for getShipIdsOwned's full-array return to fit in an
+    // RPC provider's eth_call response/gas cap. Deliberately the two
+    // smallest possible primitives (count + index) rather than a single
+    // paginated-array function, to minimize bytecode in this
+    // already-near-the-limit contract — a caller pages by calling
+    // shipIdOwnedAt in a loop (or a JSON-RPC batch request) from _offset to
+    // min(_offset + _limit, shipsOwnedCount(_owner)) itself.
+    function shipsOwnedCount(address _owner) external view returns (uint) {
+        return shipsOwned[_owner].length();
+    }
+
+    function shipIdOwnedAt(
+        address _owner,
+        uint _index
+    ) external view returns (uint) {
+        return shipsOwned[_owner].at(_index);
+    }
 
     function getShipsByIds(
         uint[] calldata _ids
@@ -687,15 +721,6 @@ contract Ships is ERC721, Ownable, ReentrancyGuard {
             shipsFetched[i] = ships[_ids[i]];
         }
         return shipsFetched;
-    }
-
-    /**
-     * @dev PURE
-     */
-
-    // TODO: Do tiers need to be adjustable?
-    function getTierOfTrait(uint _trait) external pure returns (uint8) {
-        return _trait < 50 ? 0 : (_trait < 80 ? 1 : 2);
     }
 
     function shipBreaker(uint[] calldata _shipIds) external nonReentrant {

@@ -1,0 +1,12 @@
+---
+description: Assume extreme hostility from all outside actors on every smart contract operation
+alwaysApply: true
+---
+
+# Assume hostile outside actors
+
+When designing, reviewing, or reasoning about any smart contract operation — especially permissionless ones (no access control, callable by any address) — assume extreme hostility from every outside actor. Never reason about whether an attacker has "a reason to" grief, front-run, or otherwise abuse a call; assume they will if it is possible and costs them nothing (or only gas), even if it gains them no funds and only harms someone else's UX or availability.
+
+- Do not dismiss a griefing/DoS vector because it's "not profitable" for the attacker, or because "no one would bother." Pure griefing (wasting a victim's gas, forcing a worse UX path, breaking an invariant another function relies on) is a valid, real attack in a permissionless system and must be treated as such.
+- This was found and fixed 2026-08-26: `RandomManager.revealRandomnessBatch` initially reverted its entire batch if any single id in it was already revealed. Since `revealRandomness` is deliberately permissionless (anyone can call it, by design — see `RandomManager.sol`), any outside address could front-run one id out of a victim's pending batch for the cost of gas alone, forcing that player back to one-at-a-time reveals with no benefit to the attacker beyond breaking someone else's transaction. The fix (tolerating an already-revealed id as a no-op instead of reverting) only happened after this was explicitly flagged — the first-pass design had reasoned "no outside actor has any reason to do this," which is exactly the assumption to never make.
+- When adding or reviewing any function with no `onlyOwner`/allowlist gate, explicitly ask: "what is the worst thing a purely malicious, zero-profit-seeking caller could do to someone else by calling this, and does the design tolerate it?" — not just "what would a rational, profit-seeking attacker do?"

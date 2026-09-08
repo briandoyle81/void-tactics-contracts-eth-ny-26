@@ -1,0 +1,118 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.28;
+
+import "../Types.sol";
+import "../Renderers/RenderUtils.sol";
+
+contract RenderWeapon3SelfTest {
+    string private constant PART_1 = '<path d="M127 79L126 81L129 80L129 79ZM135 79L137 80L140 79ZM140 82L140 86L130 86L141 88L141 85ZM166 82L168 83L169 82ZM126 86L126 88L129 87L129 86ZM142 86L147 87L152 86ZM153 86L154 88L155 88L155 86ZM140 89L140 94L141 91ZM161 91L161 93L156 93L157 95L154 95L155 93L151 94L152 97L159 96L158 95L163 92L166 92L169 95L169 91ZM126 93L126 94L129 96L129 93ZM145 93L144 95L140 94L139 96L143 96L140 99L141 103L141 98L143 98L146 93ZM130 95L133 96L136 95ZM146 95L146 100L147 97ZM145 98L142 100L144 100L145 98ZM135 100L137 101L140 100ZM133 101L133 103L135 103L134 101Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_2 = ';"/><path d="M162 81L164 82L167 81ZM131 85L135 86L139 85ZM144 85L147 86L150 85ZM150 85L152 86L155 85ZM164 89L164 91L167 91L167 89ZM168 89L169 91L171 92L170 89ZM150 92L153 93L157 92ZM129 93L128 95L130 95L130 93ZM131 93L131 95L136 96L138 93ZM142 93L142 95L144 95L143 93ZM163 93L163 94L168 95L167 93ZM147 94L149 95L150 94ZM149 100L150 102L151 102L151 100Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_3 = ';"/><path d="M140 78L140 80L151 79L155 78ZM168 80L168 82L171 83L171 92L172 84ZM162 82L164 83L167 82ZM124 93L126 95L127 94ZM144 99L146 100L149 99ZM151 100L150 103L156 103L156 101L153 102ZM138 102L141 103L144 102ZM144 102L147 103L150 102Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_4 = ';"/><path d="M144 79L147 80L150 79ZM150 79L152 80L155 79ZM130 87L130 91L131 88ZM144 89L143 92L141 91L142 93L143 93L145 89ZM135 96L137 97L140 96ZM152 96L149 98L151 98L152 96ZM152 100L153 102L155 101L155 100ZM136 101L138 102L139 101Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_5 = ';"/><path d="M157 79L159 80L160 79ZM162 80L164 81L165 80ZM157 82L156 84L159 85L160 85ZM133 84L136 85L139 84ZM157 86L156 88L158 87L161 90L161 88ZM134 92L136 93L139 92ZM146 92L148 93L149 92ZM163 95L166 96L169 95ZM146 100L147 102L150 102L149 100Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_6 = ';"/><path d="M155 85L155 89L157 86L161 85ZM161 89L161 91L164 91L164 89ZM163 92L165 93L168 92ZM137 94L136 96L140 97L139 94ZM158 94L160 95L161 94ZM163 94L165 95L168 94Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_7 = ';"/><path d="M131 83L131 85L133 84L133 83ZM144 83L144 85L146 84L146 83ZM159 86L162 89L165 89L165 88L163 88ZM131 87L133 88L134 87ZM137 90L134 92L137 92L137 90ZM144 91L147 92L150 91Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_8 = ';"/><path d="M136 76L138 77L139 76ZM167 78L164 80L167 80L167 78ZM157 81L159 82L160 81ZM150 83L152 84L153 83ZM168 85L169 88L167 89L171 89L169 86L170 85ZM153 89L150 91L154 91L153 89ZM133 90L133 92L135 91L135 90ZM144 90L146 91L149 90Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_9 = ';"/><path d="M129 79L131 80L132 79ZM128 83L129 86L130 87L131 83L129 87ZM138 83L138 87L139 84Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_10 = ';"/><path d="M165 77L167 78L168 77ZM164 85L161 87L163 87L164 85ZM151 88L150 90L152 90L152 88Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_11 = ';"/><path d="M156 88L153 90L155 90L156 88ZM150 94L149 98L151 95Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_12 = ';"/><path d="M145 80L144 82L147 82L148 82L149 80ZM156 80L156 82L158 81L158 80ZM131 81L133 82L136 81ZM150 81L153 82L156 81Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_13 = ';"/><path d="M134 82L136 83L139 82Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_14 = ';"/><path d="M150 80L152 81L155 80ZM152 88L154 89L155 88Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_15 = ';"/><path d="M161 83L162 85L164 84L164 83Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_16 = ';"/><path d="M163 78L165 79L166 78Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_17 = ';"/><path d="M121 91L124 92L127 91Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_18 = ';"/><path d="M121 83L121 84L126 85L126 83Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_19 = ';"/><path d="M120 90L122 91L125 90Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_20 = ';"/><path d="M126 82L126 86L127 83Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_21 = ';"/><path d="M164 83L166 84L169 83Z" fill-rule="evenodd" style="fill:';
+    string private constant PART_22 = ';"/>';
+    string private constant COLOR_1 = 'hsl(218, 20%, 8%)';
+    string private constant COLOR_2 = 'hsl(213, 10%, 17%)';
+    string private constant COLOR_3 = 'hsl(210, 23%, 5%)';
+    string private constant COLOR_4 = 'hsl(204, 4%, 23%)';
+    string private constant COLOR_5 = 'hsl(206, 7%, 20%)';
+    string private constant COLOR_6 = 'hsl(210, 11%, 14%)';
+    string private constant COLOR_7 = 'hsl(206, 5%, 25%)';
+    string private constant COLOR_8 = 'hsl(180, 2%, 28%)';
+    string private constant COLOR_9 = 'hsl(210, 15%, 11%)';
+    string private constant COLOR_10 = 'hsl(75, 2%, 33%)';
+    string private constant COLOR_11 = 'hsl(150, 1%, 31%)';
+    string private constant COLOR_12 = 'hsl(54, 5%, 36%)';
+    string private constant COLOR_13 = 'hsl(100, 2%, 35%)';
+    string private constant COLOR_14 = 'hsl(60, 4%, 40%)';
+    string private constant COLOR_15 = 'hsl(48, 4%, 45%)';
+    string private constant COLOR_16 = 'hsl(60, 4%, 25%)';
+    string private constant COLOR_17 = 'hsl(3, 44%, 26%)';
+    string private constant COLOR_18 = 'hsl(5, 51%, 31%)';
+    string private constant COLOR_19 = 'hsl(7, 54%, 39%)';
+    string private constant COLOR_20 = 'hsl(5, 33%, 7%)';
+    string private constant COLOR_21 = 'hsl(57, 10%, 61%)';
+
+    function render(Ship memory ship) external pure returns (string memory) {
+        string memory result = string.concat(
+            PART_1,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_1) : COLOR_1,
+            PART_2,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_2) : COLOR_2,
+            PART_3,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_3) : COLOR_3,
+            PART_4
+        );
+        result = string.concat(
+            result,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_4) : COLOR_4,
+            PART_5,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_5) : COLOR_5,
+            PART_6,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_6) : COLOR_6,
+            PART_7,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_7) : COLOR_7
+        );
+        result = string.concat(
+            result,
+            PART_8,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_8) : COLOR_8,
+            PART_9,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_9) : COLOR_9,
+            PART_10,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_10) : COLOR_10,
+            PART_11
+        );
+        result = string.concat(
+            result,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_11) : COLOR_11,
+            PART_12,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_12) : COLOR_12,
+            PART_13,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_13) : COLOR_13,
+            PART_14,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_14) : COLOR_14
+        );
+        result = string.concat(
+            result,
+            PART_15,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_15) : COLOR_15,
+            PART_16,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_16) : COLOR_16,
+            PART_17,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_17) : COLOR_17,
+            PART_18
+        );
+        result = string.concat(
+            result,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_18) : COLOR_18,
+            PART_19,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_19) : COLOR_19,
+            PART_20,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_20) : COLOR_20,
+            PART_21,
+            ship.shipData.shiny ? blendHSL(ship.traits.colors.h1, ship.traits.colors.s1, ship.traits.colors.l1, COLOR_21) : COLOR_21
+        );
+        result = string.concat(
+            result,
+            PART_22
+        );
+        return result;
+    }
+}

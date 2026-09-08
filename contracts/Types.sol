@@ -4,10 +4,10 @@ pragma solidity ^0.8.28;
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 enum MainWeapon {
-    Laser,
-    Railgun,
-    MissileLauncher,
-    PlasmaCannon,
+    Generic,
+    Sniper,
+    Missile,
+    Close,
     future1,
     future2,
     future3,
@@ -38,15 +38,67 @@ enum Shields {
     future4
 }
 
+// A per-faction (traits.variant) LOCAL slot index, not a global item
+// identity. Slot 0 (None) always means "no special equipped," the same for
+// every faction. Slots 1-7 mean whatever that faction's own
+// ShipAttributes.VariantAttributeData.specials/Game.specialResolvers
+// configuration says they mean — faction A's slot 1 and faction B's slot 1
+// can be (and usually are) completely different specials with different
+// resolvers and different display names (RenderMetadata.specialNames).
+// This enum is deliberately finished at exactly 8 members forever: no
+// faction will ever have more than 8 specials including None, so new
+// specials for new factions reuse these same 8 slot numbers rather than
+// growing this enum.
 enum Special {
     None,
-    EMP,
-    RepairDrones,
-    FlakArray,
-    future1,
-    future2,
-    future3,
-    future4
+    Slot1,
+    Slot2,
+    Slot3,
+    Slot4,
+    Slot5,
+    Slot6,
+    Slot7
+}
+
+// Single-player AI behavior tag, assigned per AIShipConfig (AIEncounters.sol)
+// and looked up per minted AI ship (SinglePlayerMatch.shipArchetype) to pick
+// which ordered priority-list of rules takeAITurn applies to that ship.
+enum Archetype {
+    Grunt, // shoot what's in range, else close distance
+    Aggressor, // prioritize kills over safety, closes distance hard
+    Sniper, // shoots at range, retreats rather than engaging adjacent
+    Support, // heals the weakest ally in range (RepairDrones), hangs back
+    Turtle, // seeks/holds scoring tiles, fights only opportunistically
+    Rammer // faction-1 only: hunts 0-HP enemies to Ram, else shoots
+}
+
+// Which game mode(s) a preset map is valid for. Enforced at the point a
+// map gets attached to something a player can actually enter — NodeMap
+// (campaign nodes, PvE) and Lobbies (createLobby/createLobbyForAddresses,
+// PvP) — rather than in Maps.sol itself, which has no notion of lobbies or
+// campaigns. Both means the map is valid in either context.
+enum MapMode {
+    PvP,
+    PvE,
+    Both
+}
+
+// Declarative outcome of a resolver-backed effect — a faction ability or an
+// equipped Special (see IEffectResolver) — applied by Game.sol without
+// re-validating anything — the resolver owns all pre-dispatch checks for
+// its own effect. One entry per affected ship; a resolver may return any
+// number of these.
+// newRow/newCol double as the "relocate" flag: type(int16).min (an
+// unreachable grid coordinate) means "don't move this ship". Fewer, denser
+// fields keep the external-call ABI decode/encode Game.sol pays for as
+// small as possible — this struct crosses a contract boundary every time.
+struct SpecialEffect {
+    uint shipId;
+    int16 hullDelta; // negative = damage, positive = heal; capped at maxHullPoints
+    int8 reactorTimerDelta; // added to reactorCriticalTimer; still auto-removes at >=3
+    int16 newRow; // type(int16).min = no relocation
+    int16 newCol;
+    uint8 removalKind; // 0 = none, 1 = retreat, 2 = destroy (mirrors _removeShipFromGame's retreat/destroy flag)
 }
 
 // Raw Traits Will Never Change
@@ -131,6 +183,12 @@ struct GameMetadata {
     // source of truth for "has this game ended." Packs into winner's storage
     // slot (address is 20 bytes, bool is 1), so this costs no extra slot.
     bool ended;
+    // The contract that called startGame for this session (e.g. PvPMatch).
+    // Only this address may call forceEndSession, and it's who Game.sol
+    // calls back into (via IGameOrchestrator.onGameEnded) when the session
+    // ends, so each game mode can decide what "ended" means for it without
+    // core Game.sol needing to know about leaderboards/results contracts.
+    address orchestrator;
 }
 
 // Game turn state - turn and timing related data
@@ -216,6 +274,9 @@ struct ShipData {
     uint timestampDestroyed;
 }
 
+// Costs are per-variant (see ShipAttributes.costsByVariant), so this struct
+// carries no variant field of its own — a same-struct flat addend would be
+// redundant now that every variant has its own full Costs.
 struct Costs {
     uint16 version;
     uint8 baseCost;
@@ -257,8 +318,42 @@ struct SpecialData {
     int8 movement;
 }
 
+// Everything a faction (traits.variant) needs to fully differentiate itself:
+// base stats, per-tier bonuses, weapon/armor/shield stats, and equipped
+// Special data. Nested in a mapping (not an array) inside AttributesVersion
+// since AttributesVersion only ever lives in storage (never copied to
+// memory), so a mapping field is safe here.
+struct VariantAttributeData {
+    uint8 baseHull;
+    uint8 baseSpeed;
+    uint8[] foreAccuracy; // "bridge": indexed by traits.accuracy tier (0-2)
+    uint8[] hull; // indexed by traits.hull tier (0-2)
+    uint8[] engineSpeeds; // "engine": indexed by traits.speed tier (0-2)
+    GunData[] guns;
+    ArmorData[] armors;
+    ShieldData[] shields;
+    SpecialData[] specials; // indexed by Special enum (0-7)
+}
+
+// Just a version number and the per-variant data behind it — every stat
+// that used to live directly here (baseHull/baseSpeed/guns/armors/shields)
+// moved into VariantAttributeData so each faction can diverge fully.
 struct AttributesVersion {
     uint16 version;
+    mapping(uint16 => VariantAttributeData) variantData; // keyed by traits.variant
+}
+
+// Bundled into a struct rather than passed as flat parameters to
+// ShipAttributes.setVariantAttributes: it now covers every per-variant stat
+// (base hull/speed, tier bonuses, weapon/armor/shield stats, specials), and
+// legacy Solidity codegen runs out of stack slots quickly across an
+// external function with this many dynamic-array parameters (hit this
+// exact wall building the equipped-Special resolvers earlier this
+// session). Declared here (not nested in ShipAttributes) so
+// IShipAttributes can reference it too without a circular import.
+struct SetVariantAttributesParams {
+    uint16 version;
+    uint16 variant;
     uint8 baseHull;
     uint8 baseSpeed;
     uint8[] foreAccuracy;
@@ -339,7 +434,11 @@ enum ActionType {
     Shoot,
     Retreat,
     Assist,
-    Special
+    Special,
+    // Innate to every ship of a given faction (traits.variant), independent
+    // of loadout — unlike Special, which requires equipping a specific
+    // equipment.special slot. Dispatched by faction, not by an equipped item.
+    FactionAbility
 }
 
 // Last move information stored in game data

@@ -1,0 +1,598 @@
+import { expect } from "chai";
+import { loadFixture } from "@nomicfoundation/hardhat-toolbox-viem/network-helpers";
+import hre from "hardhat";
+import { MapMode } from "./types";
+
+// Standalone tests — NodeMap only depends on Maps (read-only, via
+// mapExists), so this deploys just those two contracts directly rather than
+// the full DeployAndConfig module, matching test/AIEncounters.test.ts's
+// convention.
+describe("NodeMap", function () {
+  async function deployFixture() {
+    const [owner, editor, completer, other, player1, player2] =
+      await hre.viem.getWalletClients();
+
+    const maps = await hre.viem.deployContract("Maps", []);
+    const nodeMap = await hre.viem.deployContract("NodeMap", [maps.address]);
+
+    const editorNodeMap = await hre.viem.getContractAt(
+      "NodeMap",
+      nodeMap.address,
+      { client: { wallet: editor } },
+    );
+    const otherNodeMap = await hre.viem.getContractAt(
+      "NodeMap",
+      nodeMap.address,
+      { client: { wallet: other } },
+    );
+    const completerNodeMap = await hre.viem.getContractAt(
+      "NodeMap",
+      nodeMap.address,
+      { client: { wallet: completer } },
+    );
+
+    // One real campaign for node tests to reference (id 1, deterministic —
+    // the only createCampaign call in this fixture).
+    await nodeMap.write.createCampaign();
+
+    // Two real preset maps for node tests to reference.
+    await maps.write.createPresetMap([[], MapMode.Both]);
+    await maps.write.createPresetMap([[], MapMode.Both]);
+
+    return {
+      maps,
+      nodeMap,
+      editorNodeMap,
+      otherNodeMap,
+      completerNodeMap,
+      owner,
+      editor,
+      completer,
+      other,
+      player1,
+      player2,
+    };
+  }
+
+  const defaultNodeArgs = (mapId: bigint, prerequisites: bigint[] = []) =>
+    [1n, mapId, prerequisites, 2000n, 600n, 20n, true] as const;
+
+  describe("Node editor role", function () {
+    it("owner can grant and revoke node-editor rights", async function () {
+      const { nodeMap, editor } = await loadFixture(deployFixture);
+
+      expect(await nodeMap.read.isNodeEditor([editor.account.address])).to.be
+        .false;
+
+      await nodeMap.write.setNodeEditor([editor.account.address, true]);
+      expect(await nodeMap.read.isNodeEditor([editor.account.address])).to.be
+        .true;
+
+      await nodeMap.write.setNodeEditor([editor.account.address, false]);
+      expect(await nodeMap.read.isNodeEditor([editor.account.address])).to.be
+        .false;
+    });
+
+    it("reverts createNode from a non-owner, non-editor address", async function () {
+      const { otherNodeMap } = await loadFixture(deployFixture);
+
+      await expect(
+        otherNodeMap.write.createNode(defaultNodeArgs(1n)),
+      ).to.be.rejectedWith("NotNodeEditor");
+    });
+
+    it("allows a granted editor to create nodes", async function () {
+      const { nodeMap, editorNodeMap, editor } = await loadFixture(
+        deployFixture,
+      );
+      await nodeMap.write.setNodeEditor([editor.account.address, true]);
+
+      await editorNodeMap.write.createNode(defaultNodeArgs(1n));
+      expect(await nodeMap.read.nodeCount()).to.equal(1n);
+    });
+  });
+
+  describe("createNode", function () {
+    it("reverts when the map does not exist", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+
+      await expect(
+        nodeMap.write.createNode(defaultNodeArgs(999n)),
+      ).to.be.rejectedWith("MapNotFound");
+    });
+
+    it("reverts when a prerequisite does not exist", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+
+      await expect(
+        nodeMap.write.createNode(defaultNodeArgs(1n, [999n])),
+      ).to.be.rejectedWith("PrerequisiteNotFound");
+    });
+
+    it("reverts a self-referential prerequisite", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+
+      // The next node created will be id 1 — pass that as its own
+      // prerequisite.
+      await expect(
+        nodeMap.write.createNode(defaultNodeArgs(1n, [1n])),
+      ).to.be.rejectedWith("SelfPrerequisite");
+    });
+
+    it("stores the node's fields and emits NodeCreated", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+
+      await nodeMap.write.createNode([
+        1n,
+        1n,
+        [],
+        1500n,
+        300n,
+        10n,
+        false,
+      ]);
+      const node = await nodeMap.read.getNode([1n]);
+
+      expect(node.id).to.equal(1n);
+      expect(node.campaignId).to.equal(1n);
+      expect(node.mapId).to.equal(1n);
+      expect(node.costLimit).to.equal(1500n);
+      expect(node.turnTime).to.equal(300n);
+      expect(node.maxScore).to.equal(10n);
+      expect(node.creatorGoesFirst).to.equal(false);
+      expect(node.exists).to.equal(true);
+    });
+
+    it("reverts createNode with CampaignNotFound for a nonexistent campaign", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+
+      await expect(
+        nodeMap.write.createNode([999n, 1n, [], 1n, 1n, 1n, true]),
+      ).to.be.rejectedWith("CampaignNotFound");
+    });
+
+    it("reverts InvalidMapMode when the map is PvP-only", async function () {
+      const { nodeMap, maps } = await loadFixture(deployFixture);
+
+      await maps.write.createPresetMap([[], MapMode.PvP]);
+      const pvpMapId = await maps.read.mapCount();
+
+      await expect(
+        nodeMap.write.createNode(defaultNodeArgs(pvpMapId)),
+      ).to.be.rejectedWith("InvalidMapMode");
+    });
+
+    it("succeeds when the map is PvE or Both", async function () {
+      const { nodeMap, maps } = await loadFixture(deployFixture);
+
+      await maps.write.createPresetMap([[], MapMode.PvE]);
+      const pveMapId = await maps.read.mapCount();
+      await maps.write.createPresetMap([[], MapMode.Both]);
+      const bothMapId = await maps.read.mapCount();
+
+      await nodeMap.write.createNode(defaultNodeArgs(pveMapId));
+      await nodeMap.write.createNode(defaultNodeArgs(bothMapId));
+
+      expect(await nodeMap.read.nodeCount()).to.equal(2n);
+    });
+  });
+
+  describe("updateNode / addPrerequisite / removePrerequisite", function () {
+    it("updates an existing node's fields", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+      await nodeMap.write.createNode(defaultNodeArgs(1n));
+
+      await nodeMap.write.updateNode([
+        1n,
+        1n,
+        2n,
+        [],
+        999n,
+        111n,
+        5n,
+        false,
+      ]);
+      const node = await nodeMap.read.getNode([1n]);
+      expect(node.mapId).to.equal(2n);
+      expect(node.costLimit).to.equal(999n);
+      expect(node.turnTime).to.equal(111n);
+      expect(node.maxScore).to.equal(5n);
+      expect(node.creatorGoesFirst).to.equal(false);
+    });
+
+    it("reverts updateNode for a node that doesn't exist", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+
+      await expect(
+        nodeMap.write.updateNode([999n, 1n, 1n, [], 1n, 1n, 1n, true]),
+      ).to.be.rejectedWith("NodeNotFound");
+    });
+
+    it("reverts updateNode with CampaignNotFound for a nonexistent campaign", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+      await nodeMap.write.createNode(defaultNodeArgs(1n));
+
+      await expect(
+        nodeMap.write.updateNode([1n, 999n, 1n, [], 1n, 1n, 1n, true]),
+      ).to.be.rejectedWith("CampaignNotFound");
+    });
+
+    it("moves a node between campaigns and keeps getNodesInCampaign in sync", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+      await nodeMap.write.createCampaign(); // campaign 2
+      await nodeMap.write.createNode(defaultNodeArgs(1n)); // node 1, campaign 1
+
+      expect(await nodeMap.read.getNodesInCampaign([1n])).to.deep.equal([1n]);
+      expect(await nodeMap.read.getNodesInCampaign([2n])).to.deep.equal([]);
+
+      await nodeMap.write.updateNode([
+        1n,
+        2n,
+        1n,
+        [],
+        2000n,
+        600n,
+        20n,
+        true,
+      ]);
+
+      expect(await nodeMap.read.getNodesInCampaign([1n])).to.deep.equal([]);
+      expect(await nodeMap.read.getNodesInCampaign([2n])).to.deep.equal([1n]);
+      expect((await nodeMap.read.getNode([1n])).campaignId).to.equal(2n);
+    });
+
+    it("adds and removes a prerequisite", async function () {
+      const { nodeMap, player1 } = await loadFixture(deployFixture);
+      await nodeMap.write.createNode(defaultNodeArgs(1n)); // node 1
+      await nodeMap.write.createNode(defaultNodeArgs(2n)); // node 2
+
+      expect(
+        await nodeMap.read.isNodeUnlocked([player1.account.address, 2n]),
+      ).to.equal(true);
+
+      await nodeMap.write.addPrerequisite([2n, 1n]);
+      expect(await nodeMap.read.getPrerequisites([2n])).to.deep.equal([1n]);
+      expect(
+        await nodeMap.read.isNodeUnlocked([player1.account.address, 2n]),
+      ).to.equal(false);
+
+      await nodeMap.write.removePrerequisite([2n, 1n]);
+      expect(await nodeMap.read.getPrerequisites([2n])).to.deep.equal([]);
+      expect(
+        await nodeMap.read.isNodeUnlocked([player1.account.address, 2n]),
+      ).to.equal(true);
+    });
+
+    it("reverts removePrerequisite when the prerequisite isn't on the node", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+      await nodeMap.write.createNode(defaultNodeArgs(1n));
+      await nodeMap.write.createNode(defaultNodeArgs(2n));
+
+      await expect(
+        nodeMap.write.removePrerequisite([2n, 1n]),
+      ).to.be.rejectedWith("PrerequisiteNotInNode");
+    });
+  });
+
+  describe("isNodeUnlocked (ANY-of semantics)", function () {
+    it("a node with no prerequisites is always unlocked", async function () {
+      const { nodeMap, player1 } = await loadFixture(deployFixture);
+      await nodeMap.write.createNode(defaultNodeArgs(1n));
+
+      expect(
+        await nodeMap.read.isNodeUnlocked([player1.account.address, 1n]),
+      ).to.equal(true);
+    });
+
+    it("reverts for a node that doesn't exist", async function () {
+      const { nodeMap, player1 } = await loadFixture(deployFixture);
+
+      await expect(
+        nodeMap.read.isNodeUnlocked([player1.account.address, 999n]),
+      ).to.be.rejectedWith("NodeNotFound");
+    });
+
+    it("unlocks as soon as ANY one of several prerequisites is completed, not all", async function () {
+      const { nodeMap, completerNodeMap, completer, player1 } =
+        await loadFixture(deployFixture);
+      await nodeMap.write.setIsAllowedToCompleteNodes([
+        completer.account.address,
+        true,
+      ]);
+
+      await nodeMap.write.createNode(defaultNodeArgs(1n)); // node 1 (branch A)
+      await nodeMap.write.createNode(defaultNodeArgs(2n)); // node 2 (branch B)
+      await nodeMap.write.createNode(defaultNodeArgs(1n, [1n, 2n])); // node 3 requires either
+
+      expect(
+        await nodeMap.read.isNodeUnlocked([player1.account.address, 3n]),
+      ).to.equal(false);
+
+      // Complete only branch B (node 2) — should be enough (ANY-of, not
+      // ALL-of), demonstrating a shortcut converging back into node 3.
+      await completerNodeMap.write.recordCompletion([
+        player1.account.address,
+        2n,
+      ]);
+
+      expect(
+        await nodeMap.read.isNodeUnlocked([player1.account.address, 3n]),
+      ).to.equal(true);
+      // Branch A was never completed, confirming this isn't an ALL-of check.
+      expect(
+        await nodeMap.read.isNodeCompleted([player1.account.address, 1n]),
+      ).to.equal(false);
+    });
+  });
+
+  describe("recordCompletion", function () {
+    it("reverts from an address not authorized to complete nodes", async function () {
+      const { nodeMap, otherNodeMap, player1 } = await loadFixture(
+        deployFixture,
+      );
+      await nodeMap.write.createNode(defaultNodeArgs(1n));
+
+      await expect(
+        otherNodeMap.write.recordCompletion([player1.account.address, 1n]),
+      ).to.be.rejectedWith("NotAllowedToCompleteNodes");
+    });
+
+    it("reverts for a node that doesn't exist even from an authorized completer", async function () {
+      const { nodeMap, completerNodeMap, completer, player1 } =
+        await loadFixture(deployFixture);
+      await nodeMap.write.setIsAllowedToCompleteNodes([
+        completer.account.address,
+        true,
+      ]);
+
+      await expect(
+        completerNodeMap.write.recordCompletion([
+          player1.account.address,
+          999n,
+        ]),
+      ).to.be.rejectedWith("NodeNotFound");
+    });
+
+    it("is idempotent — completing the same node twice doesn't revert and stays completed", async function () {
+      const { nodeMap, completerNodeMap, completer, player1 } =
+        await loadFixture(deployFixture);
+      await nodeMap.write.setIsAllowedToCompleteNodes([
+        completer.account.address,
+        true,
+      ]);
+      await nodeMap.write.createNode(defaultNodeArgs(1n));
+
+      await completerNodeMap.write.recordCompletion([
+        player1.account.address,
+        1n,
+      ]);
+      await completerNodeMap.write.recordCompletion([
+        player1.account.address,
+        1n,
+      ]);
+
+      expect(
+        await nodeMap.read.isNodeCompleted([player1.account.address, 1n]),
+      ).to.equal(true);
+    });
+
+    it("tracks completion per-player independently", async function () {
+      const { nodeMap, completerNodeMap, completer, player1, player2 } =
+        await loadFixture(deployFixture);
+      await nodeMap.write.setIsAllowedToCompleteNodes([
+        completer.account.address,
+        true,
+      ]);
+      await nodeMap.write.createNode(defaultNodeArgs(1n));
+
+      await completerNodeMap.write.recordCompletion([
+        player1.account.address,
+        1n,
+      ]);
+
+      expect(
+        await nodeMap.read.isNodeCompleted([player1.account.address, 1n]),
+      ).to.equal(true);
+      expect(
+        await nodeMap.read.isNodeCompleted([player2.account.address, 1n]),
+      ).to.equal(false);
+    });
+  });
+
+  describe("Campaigns", function () {
+    it("creates campaigns with sequential ids and emits CampaignCreated", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+
+      // deployFixture already created campaign 1.
+      expect(await nodeMap.read.campaignCount()).to.equal(1n);
+      expect(await nodeMap.read.campaignExists([1n])).to.equal(true);
+      expect(await nodeMap.read.campaignExists([2n])).to.equal(false);
+
+      await nodeMap.write.createCampaign();
+
+      expect(await nodeMap.read.campaignCount()).to.equal(2n);
+      expect(await nodeMap.read.campaignExists([2n])).to.equal(true);
+    });
+
+    it("reverts createCampaign from a non-editor", async function () {
+      const { otherNodeMap } = await loadFixture(deployFixture);
+
+      await expect(
+        otherNodeMap.write.createCampaign(),
+      ).to.be.rejectedWith("NotNodeEditor");
+    });
+
+    it("getNodesInCampaign reflects every node created under that campaign, in creation order", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+      await nodeMap.write.createNode(defaultNodeArgs(1n)); // node 1
+      await nodeMap.write.createNode(defaultNodeArgs(1n)); // node 2
+      await nodeMap.write.createCampaign(); // campaign 2
+      await nodeMap.write.updateNode([
+        2n,
+        2n,
+        1n,
+        [],
+        2000n,
+        600n,
+        20n,
+        true,
+      ]); // move node 2 to campaign 2
+
+      expect(await nodeMap.read.getNodesInCampaign([1n])).to.deep.equal([
+        1n,
+      ]);
+      expect(await nodeMap.read.getNodesInCampaign([2n])).to.deep.equal([
+        2n,
+      ]);
+      // An id with no campaign created for it at all — empty, not a revert.
+      expect(await nodeMap.read.getNodesInCampaign([999n])).to.deep.equal([]);
+    });
+
+    it("getCampaignCompletion reports per-node completion for a player within one campaign", async function () {
+      const { nodeMap, completerNodeMap, completer, player1 } =
+        await loadFixture(deployFixture);
+      await nodeMap.write.setIsAllowedToCompleteNodes([
+        completer.account.address,
+        true,
+      ]);
+      await nodeMap.write.createNode(defaultNodeArgs(1n)); // node 1
+      await nodeMap.write.createNode(defaultNodeArgs(1n)); // node 2
+
+      await completerNodeMap.write.recordCompletion([
+        player1.account.address,
+        1n,
+      ]);
+
+      const [nodeIds, completed] = await nodeMap.read.getCampaignCompletion([
+        player1.account.address,
+        1n,
+      ]);
+      expect(nodeIds).to.deep.equal([1n, 2n]);
+      expect(completed).to.deep.equal([true, false]);
+    });
+
+    it("isCampaignFullyCompleted is false until every node in the campaign is completed, then true", async function () {
+      const { nodeMap, completerNodeMap, completer, player1 } =
+        await loadFixture(deployFixture);
+      await nodeMap.write.setIsAllowedToCompleteNodes([
+        completer.account.address,
+        true,
+      ]);
+      await nodeMap.write.createNode(defaultNodeArgs(1n)); // node 1
+      await nodeMap.write.createNode(defaultNodeArgs(1n)); // node 2
+
+      expect(
+        await nodeMap.read.isCampaignFullyCompleted([
+          player1.account.address,
+          1n,
+        ]),
+      ).to.equal(false);
+
+      await completerNodeMap.write.recordCompletion([
+        player1.account.address,
+        1n,
+      ]);
+      expect(
+        await nodeMap.read.isCampaignFullyCompleted([
+          player1.account.address,
+          1n,
+        ]),
+      ).to.equal(false);
+
+      await completerNodeMap.write.recordCompletion([
+        player1.account.address,
+        2n,
+      ]);
+      expect(
+        await nodeMap.read.isCampaignFullyCompleted([
+          player1.account.address,
+          1n,
+        ]),
+      ).to.equal(true);
+    });
+
+    it("isCampaignFullyCompleted is false for an empty/nonexistent campaign", async function () {
+      const { nodeMap, player1 } = await loadFixture(deployFixture);
+
+      expect(
+        await nodeMap.read.isCampaignFullyCompleted([
+          player1.account.address,
+          999n,
+        ]),
+      ).to.equal(false);
+    });
+  });
+
+  describe("setCampaignRequiredVariant", function () {
+    it("defaults to 0 (unrestricted) for any campaign", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+
+      expect(
+        await nodeMap.read.campaignRequiredVariant([1n]),
+      ).to.equal(0);
+    });
+
+    it("lets the owner set and read back a campaign's required variant", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+
+      await nodeMap.write.setCampaignRequiredVariant([1n, 1]);
+
+      expect(
+        await nodeMap.read.campaignRequiredVariant([1n]),
+      ).to.equal(1);
+    });
+
+    it("lets a granted node editor set a campaign's required variant", async function () {
+      const { nodeMap, editorNodeMap, editor } = await loadFixture(
+        deployFixture,
+      );
+      await nodeMap.write.setNodeEditor([editor.account.address, true]);
+
+      await editorNodeMap.write.setCampaignRequiredVariant([1n, 2]);
+
+      expect(
+        await nodeMap.read.campaignRequiredVariant([1n]),
+      ).to.equal(2);
+    });
+
+    it("reverts from a non-owner, non-editor address", async function () {
+      const { otherNodeMap } = await loadFixture(deployFixture);
+
+      await expect(
+        otherNodeMap.write.setCampaignRequiredVariant([1n, 1]),
+      ).to.be.rejectedWith("NotNodeEditor");
+    });
+
+    it("reverts for a campaign that doesn't exist", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+
+      await expect(
+        nodeMap.write.setCampaignRequiredVariant([999n, 1]),
+      ).to.be.rejectedWith("CampaignNotFound");
+    });
+
+    it("can be reset back to 0 (unrestricted)", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+
+      await nodeMap.write.setCampaignRequiredVariant([1n, 1]);
+      expect(
+        await nodeMap.read.campaignRequiredVariant([1n]),
+      ).to.equal(1);
+
+      await nodeMap.write.setCampaignRequiredVariant([1n, 0]);
+      expect(
+        await nodeMap.read.campaignRequiredVariant([1n]),
+      ).to.equal(0);
+    });
+  });
+
+  describe("View helpers", function () {
+    it("getNode reverts for a node that doesn't exist", async function () {
+      const { nodeMap } = await loadFixture(deployFixture);
+
+      await expect(nodeMap.read.getNode([999n])).to.be.rejectedWith(
+        "NodeNotFound",
+      );
+    });
+  });
+});
