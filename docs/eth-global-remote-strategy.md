@@ -38,11 +38,22 @@ first pass at all:
   **Chainlink VRF** as "the only way to remove [a documented residual randomness risk]
   entirely." `IRandomManager` was kept deliberately stable so a provider swap needs no changes
   to `Ships.sol`/`Tournament.sol` beyond their existing owner-gated config setters.
-- **Confirmed real:** `ShipPurchaser.purchaseUTCWithFlow()` (FLOW → UTC) already exists, and
-  `docs/UTC_Price_Prediction_10k_Players.md` already *assumes* an external market price for UTC
-  and arbitrage against it — but no DEX integration exists anywhere in the repo. A Uniswap v4
-  pool + hook would be building the market the game's own economics docs already assume, not
-  bolting on an unrelated feature.
+- **Needs your confirmation — flagged, not asserted:** `ShipPurchaser.purchaseUTCWithFlow()` is
+  a `payable` direct mint-sale — whatever native currency the deployed chain uses as
+  `msg.value` (ETH on the live Base Sepolia deployment; "Flow" in the function name does not
+  mean the Flow blockchain is actually in play) buys newly-minted UTC at a fixed admin-set
+  price per tier. This is one-directional and already solves "buy UTC with native currency" —
+  it needs no DEX. Separately, `docs/UTC_Price_Prediction_10k_Players.md` models an "external
+  market price" for UTC and arbitrage against that fixed mint rate, which only means something
+  if UTC actually trades somewhere with a price that can diverge from the mint rate — no such
+  secondary market exists today. The Uniswap idea below was: deploy a real UTC/ETH pool so that
+  external market actually exists, not to replace `purchaseUTCWithFlow`. **Note (2026-09-08):
+  `docs/UTC_Price_Prediction_10k_Players.md` explicitly models a "0.95 - 1.0 FLOW per UTC"
+  target price, i.e. it assumes Flow blockchain was the actual deploy target — but the live
+  deployment is Base Sepolia (ETH-denominated). That doc needs to be re-examined against the
+  current deploy target before anything here leans on its numbers.** Unconfirmed whether a
+  real secondary market was ever an actual goal here vs. a modeling assumption in that doc —
+  if it's the latter, this pitch loses its grounding and should be dropped.
 - **Confirmed real, low-risk:** the deploy/ops tooling (`scripts/allowFirebaseMinter.ts`, the
   `METAMASK_WALLET_1` hot key pattern in `.env`) is exactly the kind of leaked-secret risk
   Ledger's Key Ring track targets, and fixing it touches ops scripts, not contract bytecode — no

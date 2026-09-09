@@ -1,5 +1,12 @@
 # UTC Market Price Prediction: 10,000 Regular Players
 
+> **Flagged 2026-09-08 (needs re-examination):** this doc models price in FLOW terms and
+> assumes a Flow-blockchain deploy target. The live deployment is Base Sepolia
+> (ETH-denominated `msg.value` via `ShipPurchaser.purchaseUTCWithFlow`), and no secondary
+> market for UTC exists today, so the "external market price" / arbitrage assumptions below
+> should be re-checked against the current chain and economy before being relied on. See
+> `docs/eth-global-remote-strategy.md` for context.
+
 ## Executive Summary
 
 **Predicted Healthy Market Price: 0.95 - 1.0 FLOW per UTC**
